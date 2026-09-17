@@ -1,0 +1,144 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Um push novo cancela a execução anterior do mesmo branch.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # O build precisa das variáveis públicas existirem, mas não precisa de um
+  # projeto real: as páginas do painel são dinâmicas e nada é buscado em build.
+  # Valores de marcação, nunca de um projeto de verdade.
+  NEXT_PUBLIC_SUPABASE_URL: https://ci-sem-projeto.supabase.co
+  NEXT_PUBLIC_SUPABASE_ANON_KEY: chave-anon-de-marcacao-para-o-build-do-ci
+
+jobs:
+  qualidade:
+    name: Lint, tipos, testes e build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Instalar dependências
+        run: pnpm install --frozen-lockfile
+
+      - name: Formatação
+        run: pnpm format:check
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Tipos
+        run: pnpm typecheck
+
+      - name: Testes de unidade
+        run: pnpm test
+
+      - name: Build
+        run: pnpm build
+
+  rls:
+    name: Testes de RLS
+    runs-on: ubuntu-latest
+
+    # Postgres de verdade: a RLS é um recurso do banco, então testá-la exige um.
+    # Não precisamos do Supabase inteiro — `supabase/tests/helpers/` reproduz o
+    # contrato que ele expõe (auth.uid(), papéis anon/authenticated/service_role).
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Instalar o cliente psql
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends postgresql-client
+
+      - name: Rodar os testes de RLS
+        env:
+          PGURL: postgres://postgres:postgres@127.0.0.1:5432/postgres
+          PGPASSWORD: postgres
+        run: ./scripts/test-rls.sh
+
+  tipos-do-banco:
+    name: Tipos do banco em dia
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: storefy_local
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Instalar dependências
+        run: pnpm install --frozen-lockfile
+
+      - name: Instalar o cliente psql
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends postgresql-client
+
+      - name: Aplicar o schema
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -h 127.0.0.1 -U postgres -d storefy_local -v ON_ERROR_STOP=1 -q \
+            -f supabase/tests/helpers/supabase_stubs.sql
+          for arquivo in supabase/migrations/*.sql; do
+            psql -h 127.0.0.1 -U postgres -d storefy_local -v ON_ERROR_STOP=1 -q -f "$arquivo"
+          done
+
+      - name: Regenerar e comparar
+        env:
+          PGURL: postgres://postgres:postgres@127.0.0.1:5432/storefy_local
+        run: |
+          pnpm db:types
+          # Uma migration sem regenerar os tipos deixa o app compilando contra um
+          # schema que não existe mais. O diff abaixo reprova esse caso.
+          if ! git diff --exit-code --stat packages/db/src/database.types.ts; then
+            echo ""
+            echo "Os tipos do banco estão desatualizados. Rode 'pnpm db:types' e commite o resultado."
+            exit 1
+          fi

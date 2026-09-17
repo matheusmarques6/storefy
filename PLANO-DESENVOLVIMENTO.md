@@ -452,6 +452,52 @@ Um app interno, publicado uma única vez na conta da Storefy, que o lojista usa 
 
 **Pronto quando:** login funciona nos dois subdomínios, RLS é testado (usuário A não vê a loja de B) e o CI está verde.
 
+**Progresso (atualizado em 17/09/2026)**
+
+| Item | Situação |
+|---|---|
+| Monorepo pnpm + Turborepo, TypeScript strict, ESLint, Prettier, Husky | ✅ |
+| `packages/config-schema` com Zod + 22 testes Vitest | ✅ |
+| Migrations: organizations, memberships, platform_admins, stores, apps, app_configs, audit_logs | ✅ |
+| RLS em todas as tabelas + 49 asserções de teste | ✅ |
+| Trigger de criação da organização no cadastro | ✅ |
+| Auditoria automática de criar, editar e excluir | ✅ |
+| Tipos gerados em `packages/db` | ✅ |
+| `apps/web` com route groups `(client)` e `(admin)` | ✅ |
+| `middleware.ts` com roteamento por painel | ✅ |
+| Auth: cadastro, login, logout, recuperação, redefinição, confirmação | ✅ |
+| Login com Google | ✅ código pronto, desabilitado até a credencial existir |
+| Guarda do admin exigindo `platform_admins` | ✅ |
+| C01, criação automática da org, CRUD de lojas, store switcher | ✅ |
+| Configurações da organização e da conta | ✅ |
+| Dashboard com dados reais e estado vazio | ✅ |
+| A01, listas de organizações e lojas com busca e paginação | ✅ |
+| Detalhe da organização e logs de auditoria | ✅ |
+| `pnpm bootstrap:admin` | ✅ |
+| `.env.example` completo e comentado | ✅ |
+| CI no GitHub Actions | ✅ |
+| README com passo a passo | ✅ |
+| Specs Playwright dos fluxos principais | ✅ escritas; rodam onde houver Supabase alcançável |
+
+**Bloqueado, dependendo de ação humana**
+
+| Item | O que falta |
+|---|---|
+| Projeto Supabase | A organização `convertfy` tem faturas em aberto, e o Supabase recusa criar projeto novo até a regularização. Todo o resto está pronto para apontar assim que o projeto existir. |
+| Google OAuth | Criar a credencial no Google Cloud e ligar o provedor no Supabase. O botão já existe, desabilitado com aviso. |
+| Resend como SMTP | Criar a chave e configurá-la em Authentication → Emails → SMTP no Supabase. |
+| Projeto Vercel | Criar o projeto e cadastrar as variáveis de ambiente. |
+
+**Decisões tomadas nesta fase**
+
+- Papéis: `owner` exclui loja e organização e gere membros; `admin` cria e edita lojas e dados da organização; `member` só lê.
+- Loja ativa em cookie `httpOnly`, revalidado no servidor a cada request.
+- `slug` da organização derivado do nome, com sufixo numérico em colisão.
+- Auditoria por triggers no Postgres, e não na aplicação, para pegar também escrita fora do painel.
+- Zod 4 com `z.email()` no lugar do `.email()` encadeado, que foi deprecado.
+- Organização criada no cadastro por trigger; loja criada já gera o registro em `apps` (1:1 nesta fase).
+- `apps` e `app_configs` entram como schema + RLS, sem tela: a interface é da Fase 2.
+
 **Prompt:**
 > "Leia CLAUDE.md e PLANO-DESENVOLVIMENTO.md. Execute a Fase 0 completa. Crie as migrations do item 4 apenas para as tabelas da Fase 0, com RLS e testes de RLS. Ao final, liste o que foi feito e o que depende de mim (chaves e domínios)."
 

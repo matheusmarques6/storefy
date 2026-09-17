@@ -27,6 +27,6 @@ export default [
     settings: { react: { version: '19.3' } },
   },
   {
-    ignores: ['.next/**', 'next-env.d.ts', 'playwright-report/**', 'test-results/**', 'e2e/**'],
+    ignores: ['.next/**', 'next-env.d.ts', 'playwright-report/**', 'test-results/**'],
   },
 ];
