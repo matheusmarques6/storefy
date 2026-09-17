@@ -1,0 +1,41 @@
+# Impeccable — artefatos de runtime, nunca versionados.
+# Os binários do engine são baixados por plataforma na primeira execução;
+# o launcher (.claude/skills/impeccable/scripts/impeccable) é o arquivo versionado.
+**/skills/impeccable/scripts/bin/
+**/.impeccable/hook.cache.json
+**/.impeccable/hook.pending.json
+**/skills/impeccable/scripts/config.json
+
+# Estado local do Impeccable no projeto
+.impeccable/config.local.json
+.impeccable/history/
+.impeccable/provider-smoke/
+.impeccable/critique/*
+!.impeccable/critique/ignore.md
+.impeccable/live/server.json
+.impeccable/live/codex-worker.json
+.impeccable/live/codex-worker.log
+.impeccable/live/sessions/
+.impeccable/live/previews/
+.impeccable/live/annotations/
+.impeccable/live/artifacts/
+.impeccable/live/accept-receipts/
+.impeccable/live/locks/
+.impeccable/live/cache/
+.impeccable/live/benchmarks/
+.impeccable/live/manual-edit-apply-transaction.json
+.impeccable/live/manual-edit-events.jsonl
+.impeccable/live/manual-edit-evidence/
+.impeccable/live/pending-manual-edits.json
+.impeccable/live/deferred-svelte-component-accepts.json
+
+# Live mode legado
+.impeccable-live.json
+.impeccable-live/
+
+# Configuração local do Claude Code (por desenvolvedor)
+.claude/settings.local.json
+
+# Sistema operacional
+.DS_Store
+Thumbs.db
