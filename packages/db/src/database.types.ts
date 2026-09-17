@@ -291,7 +291,16 @@ export type Database = {
       };
     };
     Views: Record<never, never>;
-    Functions: Record<never, never>;
+    Functions: {
+      admin_email_do_usuario: {
+        Args: { p_user_id: string };
+        Returns: string;
+      };
+      admin_membros_da_org: {
+        Args: { p_org_id: string };
+        Returns: { user_id: string | null; email: string | null; role: Database["public"]["Enums"]["membership_role"] | null; created_at: string | null; ultimo_acesso: string | null }[];
+      };
+    };
     Enums: {
       app_config_status: "draft" | "published";
       audit_action: "create" | "update" | "delete";

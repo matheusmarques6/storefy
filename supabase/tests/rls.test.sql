@@ -279,6 +279,45 @@ select tests.ok('admin',
     'delete from public.stores where id = %L', (select loja_b from tests.lojas))),
   'platform admin NÃO escreve pelo painel do cliente (leitura por RLS; escrita exige service role auditada)');
 
+select tests.ok('admin',
+  tests.contar(format(
+    'select count(*) from public.admin_membros_da_org(%L)', (select org_a from tests.ids))) = 3,
+  'platform admin lista os membros de uma organização com e-mail');
+
+reset role;
+
+-- As funções admin_* precisam recusar quem não é da equipe.
+select tests.login('a-owner@teste.local');
+set role authenticated;
+
+do $$
+declare
+  v_barrado boolean := false;
+begin
+  begin
+    perform * from public.admin_membros_da_org((select org_a from tests.ids));
+  exception when insufficient_privilege then
+    v_barrado := true;
+  end;
+  perform tests.ok('admin', v_barrado,
+    'admin_membros_da_org recusa usuário comum');
+end
+$$;
+
+do $$
+declare
+  v_barrado boolean := false;
+begin
+  begin
+    perform public.admin_email_do_usuario((select u_b_owner from tests.ids));
+  exception when insufficient_privilege then
+    v_barrado := true;
+  end;
+  perform tests.ok('admin', v_barrado,
+    'admin_email_do_usuario recusa usuário comum');
+end
+$$;
+
 reset role;
 
 -- ============================================ grupo 4: auditoria é somente-anexar

@@ -30,6 +30,12 @@ interface Coluna {
   is_identity: boolean;
 }
 
+interface FuncaoSql {
+  nome: string;
+  argumentos: string;
+  retorno: string;
+}
+
 interface ChaveEstrangeira {
   tabela: string;
   coluna: string;
@@ -87,6 +93,78 @@ function escalarTs(udt: string): string {
   }
 }
 
+/** Converte "p_org_id uuid, p_x text" em um objeto TypeScript. */
+function argumentosTs(argumentos: string, enums: Map<string, string[]>): string {
+  const partes = argumentos
+    .split(',')
+    .map((parte) => parte.trim())
+    .filter((parte) => parte !== '');
+
+  if (partes.length === 0) return 'Record<string, never>';
+
+  const campos = partes.map((parte) => {
+    const pedacos = parte.split(/\s+/);
+    const nome = pedacos[0] ?? 'arg';
+    const tipo = pedacos.slice(1).join(' ');
+    return `${nome}: ${tipoDeclaradoTs(tipo, enums)}`;
+  });
+
+  return `{ ${campos.join('; ')} }`;
+}
+
+/** Converte "TABLE(a uuid, b text)" ou um tipo escalar no tipo de retorno. */
+function retornoTs(retorno: string, enums: Map<string, string[]>): string {
+  const tabela = /^TABLE\((.*)\)$/is.exec(retorno.trim());
+  if (tabela?.[1] != null) {
+    const campos = tabela[1]
+      .split(',')
+      .map((parte) => parte.trim())
+      .filter((parte) => parte !== '')
+      .map((parte) => {
+        const pedacos = parte.split(/\s+/);
+        const nome = pedacos[0] ?? 'coluna';
+        const tipo = pedacos.slice(1).join(' ');
+        return `${nome}: ${tipoDeclaradoTs(tipo, enums)} | null`;
+      });
+    return `{ ${campos.join('; ')} }[]`;
+  }
+
+  const semSetof = retorno.replace(/^SETOF\s+/i, '').trim();
+  const base = tipoDeclaradoTs(semSetof, enums);
+  return /^SETOF\s/i.test(retorno) ? `${base}[]` : base;
+}
+
+/** Mapeia um tipo como aparece no DDL ("uuid", "public.membership_role"). */
+function tipoDeclaradoTs(tipo: string, enums: Map<string, string[]>): string {
+  const limpo = tipo
+    .replace(/^public\./, '')
+    .replace(/\[\]$/, '')
+    .trim()
+    .toLowerCase();
+  const ehArray = tipo.trim().endsWith('[]');
+
+  let base: string;
+  if (enums.has(limpo)) {
+    base = `Database["public"]["Enums"]["${limpo}"]`;
+  } else {
+    base = escalarTs(
+      {
+        'timestamp with time zone': 'timestamptz',
+        'timestamp without time zone': 'timestamp',
+        'character varying': 'varchar',
+        integer: 'int4',
+        bigint: 'int8',
+        smallint: 'int2',
+        boolean: 'bool',
+        'double precision': 'float8',
+        real: 'float4',
+      }[limpo] ?? limpo,
+    );
+  }
+
+  return ehArray ? `${base}[]` : base;
+}
+
 async function main(): Promise<void> {
   const client = new Client({ connectionString: PGURL });
   await client.connect();
@@ -137,6 +215,20 @@ async function main(): Promise<void> {
       on ccu.constraint_name = tc.constraint_name and ccu.table_schema = tc.table_schema
     where tc.constraint_type = 'FOREIGN KEY' and tc.table_schema = 'public'
     order by kcu.table_name, kcu.column_name
+  `);
+
+  const { rows: funcoes } = await client.query<FuncaoSql>(`
+    select
+      p.proname                        as nome,
+      pg_get_function_arguments(p.oid) as argumentos,
+      pg_get_function_result(p.oid)    as retorno
+    from pg_proc p
+    join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'public'
+      and p.prokind = 'f'
+      -- Só as funções chamadas por .rpc(); gatilhos e helpers de policy ficam de fora.
+      and p.proname like 'admin\\_%'
+    order by p.proname
   `);
 
   await client.end();
@@ -209,7 +301,18 @@ export type Database = {
 
   partes.push('    };');
   partes.push('    Views: Record<never, never>;');
-  partes.push('    Functions: Record<never, never>;');
+  if (funcoes.length === 0) {
+    partes.push('    Functions: Record<never, never>;');
+  } else {
+    partes.push('    Functions: {');
+    for (const funcao of funcoes) {
+      partes.push(`      ${funcao.nome}: {`);
+      partes.push(`        Args: ${argumentosTs(funcao.argumentos, enums)};`);
+      partes.push(`        Returns: ${retornoTs(funcao.retorno, enums)};`);
+      partes.push('      };');
+    }
+    partes.push('    };');
+  }
 
   partes.push('    Enums: {');
   for (const [nome, valores] of [...enums.entries()].sort()) {

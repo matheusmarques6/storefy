@@ -58,7 +58,7 @@ export default tseslint.config(
     // pacote, então o project service não consegue tipá-los. Sem desligar as
     // regras que exigem tipos, o lint quebra com "was not found by the
     // project service".
-    files: ['*.config.{js,mjs,ts}', 'eslint.config.mjs'],
+    files: ['**/*.config.{js,mjs,ts}', '**/eslint.config.mjs'],
     extends: [tseslint.configs.disableTypeChecked],
   },
   {
