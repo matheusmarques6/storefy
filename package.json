@@ -1,0 +1,54 @@
+{
+  "name": "storefy",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Storefy by Convertfy \u2014 transforma lojas Shopify em apps iOS e Android.",
+  "packageManager": "pnpm@10.33.0",
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "scripts": {
+    "dev": "turbo run dev",
+    "build": "turbo run build",
+    "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck",
+    "test": "turbo run test",
+    "test:rls": "pnpm --filter @storefy/db run test:rls",
+    "e2e": "pnpm --filter @storefy/web run e2e",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "bootstrap:admin": "tsx scripts/bootstrap-admin.ts",
+    "db:types": "tsx scripts/gen-db-types.ts",
+    "prepare": "husky"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.0",
+    "eslint": "^10.10.0",
+    "eslint-config-prettier": "^10.1.8",
+    "husky": "^9.1.7",
+    "lint-staged": "^16.2.6",
+    "prettier": "^3.9.7",
+    "prettier-plugin-tailwindcss": "^0.7.2",
+    "tsx": "^4.20.6",
+    "turbo": "^2.10.13",
+    "typescript": "6.0.3",
+    "typescript-eslint": "^8.70.0"
+  },
+  "lint-staged": {
+    "*.{ts,tsx,js,jsx,mjs,cjs}": [
+      "prettier --write",
+      "eslint --fix --max-warnings=0"
+    ],
+    "*.{json,md,yml,yaml,css}": [
+      "prettier --write"
+    ],
+    "*.sql": [
+      "prettier --write --parser sql"
+    ]
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ]
+  }
+}

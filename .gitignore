@@ -1,3 +1,32 @@
+# Dependências e artefatos de build
+node_modules/
+.next/
+out/
+dist/
+.turbo/
+*.tsbuildinfo
+
+# Testes
+coverage/
+playwright-report/
+test-results/
+blob-report/
+.playwright/
+
+# Variáveis de ambiente — nunca versionar. Use .env.example como modelo.
+.env
+.env.*
+!.env.example
+
+# Supabase CLI (estado local)
+supabase/.branches/
+supabase/.temp/
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
 # Impeccable — artefatos de runtime, nunca versionados.
 # Os binários do engine são baixados por plataforma na primeira execução;
 # o launcher (.claude/skills/impeccable/scripts/impeccable) é o arquivo versionado.

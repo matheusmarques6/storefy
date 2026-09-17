@@ -1,0 +1,7 @@
+# Bloqueia mensagens de commit vazias ou de uma linha genérica demais.
+msg_file="$1"
+primeira_linha=$(head -1 "$msg_file" | sed 's/[[:space:]]*$//')
+if [ ${#primeira_linha} -lt 15 ]; then
+  echo "Mensagem de commit curta demais: descreva o que mudou e por quê." >&2
+  exit 1
+fi

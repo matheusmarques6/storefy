@@ -1,0 +1,17 @@
+node_modules
+.next
+dist
+.turbo
+coverage
+playwright-report
+test-results
+pnpm-lock.yaml
+packages/db/src/database.types.ts
+
+# Skills e agents instalados (conteúdo de terceiros, versionado como veio)
+.claude/
+
+# Documentos de especificação do projeto: fonte de verdade escrita pelo time,
+# não reformatar.
+CLAUDE.md
+PLANO-DESENVOLVIMENTO.md
