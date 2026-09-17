@@ -11,7 +11,7 @@
     "dev": "turbo run dev",
     "build": "turbo run build",
     "lint": "turbo run lint",
-    "typecheck": "turbo run typecheck",
+    "typecheck": "tsc --noEmit && turbo run typecheck",
     "test": "turbo run test",
     "test:rls": "./scripts/test-rls.sh",
     "e2e": "pnpm --filter @storefy/web run e2e",
@@ -23,10 +23,13 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.0",
+    "@types/node": "^22.20.3",
+    "@types/pg": "^8.23.1",
     "eslint": "^10.10.0",
     "eslint-config-prettier": "^10.1.8",
     "husky": "^9.1.7",
     "lint-staged": "^16.2.6",
+    "pg": "^8.23.0",
     "prettier": "^3.9.7",
     "prettier-plugin-tailwindcss": "^0.7.2",
     "tsx": "^4.20.6",
@@ -37,7 +40,7 @@
   "lint-staged": {
     "*.{ts,tsx,js,jsx,mjs,cjs}": [
       "prettier --write",
-      "eslint --fix --max-warnings=0"
+      "eslint --fix --max-warnings=0 --no-warn-ignored"
     ],
     "*.{json,md,yml,yaml,css}": [
       "prettier --write"
