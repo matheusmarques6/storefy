@@ -13,7 +13,7 @@
     "lint": "turbo run lint",
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
-    "test:rls": "pnpm --filter @storefy/db run test:rls",
+    "test:rls": "./scripts/test-rls.sh",
     "e2e": "pnpm --filter @storefy/web run e2e",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
@@ -41,9 +41,6 @@
     ],
     "*.{json,md,yml,yaml,css}": [
       "prettier --write"
-    ],
-    "*.sql": [
-      "prettier --write --parser sql"
     ]
   },
   "pnpm": {
