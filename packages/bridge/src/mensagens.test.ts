@@ -51,6 +51,19 @@ describe('lerMensagemDaWeb — mensagens válidas', () => {
     expect(resultado.ok).toBe(true);
   });
 
+  it('aceita CART_UPDATED só com a contagem', () => {
+    // Quando `/cart.js` passa por proxy ou cache do tema, um campo pode não
+    // vir. O observador omite o que faltou em vez de inventar, e o badge
+    // continua funcionando.
+    const resultado = lerMensagemDaWeb(comoPostMessage({ type: 'CART_UPDATED', count: 3 }));
+    expect(resultado.ok).toBe(true);
+    if (resultado.ok && resultado.mensagem.type === 'CART_UPDATED') {
+      expect(resultado.mensagem.count).toBe(3);
+      expect(resultado.mensagem.currency).toBeUndefined();
+      expect(resultado.mensagem.token).toBeUndefined();
+    }
+  });
+
   it('aceita CUSTOMER_IDENTIFIED sem nenhum identificador', () => {
     // A loja pode sinalizar que houve login sem revelar quem é.
     expect(lerMensagemDaWeb(comoPostMessage({ type: 'CUSTOMER_IDENTIFIED' })).ok).toBe(true);
@@ -99,8 +112,25 @@ describe('lerMensagemDaWeb — recusa entrada hostil ou quebrada', () => {
     expect(lerMensagemDaWeb(comoPostMessage({ type: 'EXECUTAR_QUALQUER_COISA' })).ok).toBe(false);
   });
 
+  it('recusa CART_UPDATED sem count', () => {
+    // `count` é o número do badge: sem ele a mensagem não tem para que servir.
+    const semCount = { type: 'CART_UPDATED', token: 'abc', totalCents: 1, currency: 'BRL' };
+    expect(lerMensagemDaWeb(comoPostMessage(semCount)).ok).toBe(false);
+  });
+
   it('recusa campo obrigatório ausente', () => {
-    expect(lerMensagemDaWeb(comoPostMessage({ type: 'CART_UPDATED', count: 1 })).ok).toBe(false);
+    expect(lerMensagemDaWeb(comoPostMessage({ type: 'CHECKOUT_STARTED' })).ok).toBe(false);
+    expect(lerMensagemDaWeb(comoPostMessage({ type: 'ORDER_COMPLETED', orderId: '1' })).ok).toBe(
+      false,
+    );
+  });
+
+  it('recusa campo opcional presente e vazio', () => {
+    // Omitir é diferente de mandar vazio: `token: ''` seria um token inventado.
+    const base = { type: 'CART_UPDATED', count: 1 };
+    expect(lerMensagemDaWeb(comoPostMessage({ ...base, token: '' })).ok).toBe(false);
+    expect(lerMensagemDaWeb(comoPostMessage({ ...base, currency: '' })).ok).toBe(false);
+    expect(lerMensagemDaWeb(comoPostMessage({ ...base, totalCents: -1 })).ok).toBe(false);
   });
 
   it('recusa quantidade negativa e valor fracionado', () => {

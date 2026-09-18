@@ -17,17 +17,28 @@ export const CANAL = 'ReactNativeWebView' as const;
 
 // ------------------------------------------------------------ Web -> Nativo
 
-/** Carrinho mudou. Alimenta o badge da aba e a tabela `cart_events`. */
+/**
+ * Carrinho mudou. Alimenta o badge da aba e a tabela `cart_events`.
+ *
+ * POR QUE SÓ `count` É OBRIGATÓRIO: quem produz esta mensagem é o observador
+ * injetado, que lê `/cart.js`. A Shopify devolve os quatro campos, mas quem
+ * responde ali é o tema do lojista — com proxy, cache de borda ou app de
+ * terceiro no caminho, um campo pode não vir. Nesse caso o observador **omite**
+ * o campo em vez de inventar um valor: dizer `currency: 'BRL'` para uma loja em
+ * dólar, ou `totalCents: 0` para um carrinho cheio, é dado falso gravado em
+ * `cart_events` (regra 1 do CLAUDE.md). Sem `count` a mensagem não serve para
+ * nada — é o número do badge —, então esse continua exigido.
+ */
 export const CartUpdatedSchema = z.object({
   type: z.literal('CART_UPDATED'),
   /** Quantidade de itens. Nunca negativa. */
   count: z.number().int().min(0),
   /** Token do carrinho da Shopify, usado para casar com o pedido depois. */
-  token: z.string().min(1),
+  token: z.string().min(1).optional(),
   /** Em centavos, para não carregar ponto flutuante em dinheiro. */
-  totalCents: z.number().int().min(0),
+  totalCents: z.number().int().min(0).optional(),
   /** Código ISO-4217, ex.: BRL. */
-  currency: z.string().length(3),
+  currency: z.string().length(3).optional(),
 });
 
 /** A loja identificou o cliente. Vira `externalId` no OneSignal. */

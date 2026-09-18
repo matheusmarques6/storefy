@@ -548,9 +548,11 @@ Um app interno, publicado uma única vez na conta da Storefy, que o lojista usa 
 | Ordem dos plugins nativos (regra 5) | ✅ garantida por função, com 8 testes |
 | Carregamento da config com cache e fallback (seção 5.3) | ✅ 15 testes |
 | Config da loja demo (Oak Vintage) | ✅ valida no `AppConfigSchema` |
+| Resolução das abas a partir da config (seção 5.2) | ✅ 15 testes |
+| Observador de carrinho (script injetado, seção 5.4) | ✅ 29 testes, sete mutações detectadas |
 | Telas do app e abas nativas (expo-router) | ⬜ |
 | WebViews persistentes por aba | ⬜ |
-| Observador de carrinho com badge | ⬜ |
+| Badge do carrinho ligado ao observador | ⬜ |
 | Telas offline, erro e atualização obrigatória | ⬜ |
 | Testar em 3 lojas reais | ⬜ depende de aparelho físico e de URLs de loja |
 | Builds de desenvolvimento via EAS | ⬜ depende de conta Expo |
@@ -571,6 +573,22 @@ Um app interno, publicado uma única vez na conta da Storefy, que o lojista usa 
   escondido, sem aviso.
 - A comparação de domínio é por limite de ponto. `endsWith` ingênuo deixaria
   `minha-loja.com.br.evil.com` passar como se fosse a loja.
+- O observador de carrinho guarda a `fetch` original **antes** de embrulhar.
+  Capturada depois, a própria leitura de `/cart.js` passaria pelo observador,
+  que leria `/cart.js` de novo, em laço infinito dentro da loja do cliente.
+  O teste que prova isso roda o script gerado num contexto do `node:vm`, com
+  `fetch`, `XMLHttpRequest` e relógio falsos — sintaxe não bastaria.
+- `CART_UPDATED` passou a exigir só `count`. Quem responde `/cart.js` é o tema
+  do lojista, com proxy, cache de borda e apps de terceiro no caminho; quando um
+  campo não vem, o observador **omite** em vez de completar. Dizer
+  `currency: 'BRL'` para uma loja em dólar, ou `totalCents: 0` para um carrinho
+  cheio, seria dado falso gravado em `cart_events` (regra 1). Sem `count` não há
+  mensagem: é o número do badge, e é a única coisa que a mensagem serve para
+  dizer.
+- `@types/node` entrou no `apps/mobile` por causa de `app.config.ts` e dos
+  testes, e junto veio o risco de alguém importar `node:*` em código que roda no
+  aparelho — compila e quebra na mão do cliente. O eslint do pacote barra
+  `node:*` fora dos testes.
 
 ### Fase 2 — Config remota + Editor do App (5–7 dias)
 **Tarefas**

@@ -4,9 +4,12 @@
     "lib": ["ES2022", "DOM"],
     "jsx": "react-jsx",
     "moduleResolution": "bundler",
-    "types": ["vitest/globals"],
+    // `node` entra por causa dos arquivos de build — `app.config.ts` lê
+    // `process.env` e os testes usam `node:vm`. O código que roda no aparelho
+    // não pode importar `node:*`, e isso é barrado no eslint.config.mjs.
+    "types": ["vitest/globals", "node"],
     "paths": { "@/*": ["./src/*"] }
   },
-  "include": ["**/*.ts", "**/*.tsx"],
+  "include": ["**/*.ts", "**/*.tsx", "**/*.mts"],
   "exclude": ["node_modules", ".expo", "android", "ios"]
 }
