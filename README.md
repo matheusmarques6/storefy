@@ -33,9 +33,29 @@ Escolha **um** caminho.
 
 #### Opção A — projeto no Supabase Cloud (recomendada)
 
-1. Crie um projeto em [supabase.com](https://supabase.com/dashboard).
-2. Copie `.env.example` para `.env.local` e preencha, com os valores de
-   **Project Settings → Data API**:
+> **O projeto já existe.** `storefy`, região `sa-east-1` (São Paulo),
+> ref `npmftaxkhqsxppcqlbdd`. Todas as migrations já foram aplicadas nele.
+> Você só precisa preencher o `.env.local`.
+
+1. Copie `.env.example` para `.env.local`:
+
+   ```bash
+   cp .env.example .env.local
+   ```
+
+2. Preencha com os valores de **Project Settings → API Keys**:
+
+   | Variável                        | Valor                                            |
+   | ------------------------------- | ------------------------------------------------ |
+   | `NEXT_PUBLIC_SUPABASE_URL`      | `https://npmftaxkhqsxppcqlbdd.supabase.co`       |
+   | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | `sb_publishable_xGUCRTlQQzljZpAQpe6phw_qLO1JSzx` |
+   | `SUPABASE_SERVICE_ROLE_KEY`     | copie do painel — **nunca comite**               |
+
+<details>
+<summary>Começando um projeto Supabase do zero</summary>
+
+1. Crie o projeto em [supabase.com](https://supabase.com/dashboard).
+2. Preencha o `.env.local` com os valores de **Project Settings → Data API**:
 
    ```bash
    cp .env.example .env.local
@@ -47,7 +67,7 @@ Escolha **um** caminho.
    | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | chave `anon` / publishable              |
    | `SUPABASE_SERVICE_ROLE_KEY`     | chave `service_role` — **nunca comite** |
 
-3. Aplique as migrations. Com a CLI do Supabase:
+3. Aplique as migrations:
 
    ```bash
    npx supabase link --project-ref <ref-do-projeto>
@@ -56,6 +76,8 @@ Escolha **um** caminho.
 
    Sem a CLI, rode os arquivos de `supabase/migrations/` em ordem pelo SQL Editor
    do painel.
+
+</details>
 
 #### Opção B — Postgres local, sem Docker
 

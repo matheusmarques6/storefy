@@ -7,6 +7,7 @@ import { Check, ChevronsUpDown, Plus, Store as IconeLoja } from 'lucide-react';
 import { toast } from 'sonner';
 import type { Store } from '@storefy/db';
 import { trocarLojaAtiva } from './acoes';
+import { ehControleDeFluxoDoNext, mensagemDeErro } from '@/lib/erros';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -33,7 +34,8 @@ export function SeletorLoja({ lojas, lojaAtiva }: { lojas: Store[]; lojaAtiva: S
           router.refresh();
         })
         .catch((erro: unknown) => {
-          toast.error(erro instanceof Error ? erro.message : 'Não foi possível trocar de loja.');
+          if (ehControleDeFluxoDoNext(erro)) return;
+          toast.error(mensagemDeErro(erro, 'Não foi possível trocar de loja.'));
         });
     });
   }

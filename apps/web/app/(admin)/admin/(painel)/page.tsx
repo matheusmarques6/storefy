@@ -5,6 +5,7 @@ import { Building2 } from 'lucide-react';
 import { ROTULO_STATUS_ORG } from '@storefy/db';
 import { criarClientServidor } from '@/lib/supabase/server';
 import { CampoBusca, Paginacao, lerParams } from './paginacao';
+import { termoParaIlike } from '@/lib/listagem';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -36,7 +37,7 @@ export default async function PaginaOrganizacoes({
 
   if (busca !== '') {
     // Escapa a vírgula, que separa cláusulas na sintaxe `or` do PostgREST.
-    const termo = busca.replace(/[,()]/g, ' ').trim();
+    const termo = termoParaIlike(busca);
     consulta = consulta.or(`name.ilike.%${termo}%,slug.ilike.%${termo}%`);
   }
 

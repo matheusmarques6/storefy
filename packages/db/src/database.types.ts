@@ -146,14 +146,7 @@ export type Database = {
           diff?: Json | null;
           created_at?: string;
         };
-        Relationships: [
-          {
-            foreignKeyName: "audit_logs_org_id_fkey";
-            columns: ["org_id"];
-            referencedRelation: "organizations";
-            referencedColumns: ["id"];
-          },
-        ];
+        Relationships: [];
       };
       memberships: {
         Row: {

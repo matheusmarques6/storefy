@@ -479,14 +479,35 @@ Um app interno, publicado uma única vez na conta da Storefy, que o lojista usa 
 | README com passo a passo | ✅ |
 | Specs Playwright dos fluxos principais | ✅ escritas; rodam onde houver Supabase alcançável |
 
+**Infraestrutura**
+
+| Item | Situação |
+|---|---|
+| Projeto Supabase | ✅ `storefy`, região `sa-east-1`, ref `npmftaxkhqsxppcqlbdd`. 13 migrations aplicadas, 7/7 tabelas com RLS, 21 policies, 14 triggers. |
+| Advisors de segurança | ✅ De 24 achados para 7, e os 7 restantes são intencionais, com teste provando que não vazam. |
+
 **Bloqueado, dependendo de ação humana**
 
 | Item | O que falta |
 |---|---|
-| Projeto Supabase | A organização `convertfy` tem faturas em aberto, e o Supabase recusa criar projeto novo até a regularização. Todo o resto está pronto para apontar assim que o projeto existir. |
 | Google OAuth | Criar a credencial no Google Cloud e ligar o provedor no Supabase. O botão já existe, desabilitado com aviso. |
 | Resend como SMTP | Criar a chave e configurá-la em Authentication → Emails → SMTP no Supabase. |
 | Projeto Vercel | Criar o projeto e cadastrar as variáveis de ambiente. |
+| `SUPABASE_SERVICE_ROLE_KEY` | Copiar do painel para o `.env.local`. O MCP não expõe essa chave, e com razão. |
+
+**Bugs encontrados na revisão contra o banco real, e corrigidos**
+
+| Bug | Consequência | Correção |
+|---|---|---|
+| `protect_last_owner` não distinguia remoção deliberada de cascata | Ninguém conseguia excluir a própria conta (a LGPD exige que seja possível), nem excluir uma organização. A limpeza dos testes E2E também falhava. | O trigger agora verifica se a conta ou a organização ainda existem: se não existem, é cascata e passa. |
+| `audit_logs.org_id` com `on delete cascade` | Excluir uma organização apagava a trilha dela, e o trigger de auditoria ainda tentava gravar referindo a linha já removida — o que tornava a exclusão impossível. | FK removida. A coluna fica como registro histórico, e o nome da organização sobrevive no `diff`. |
+| Organização podia ficar órfã | Excluída a conta do único owner, a organização ficaria sem dono e inacessível. | Novo trigger: promove o membro mais antigo a owner, ou remove a organização se ela ficou vazia. |
+| Funções de trigger expostas como RPC | `handle_new_user`, `handle_audit` e outras eram chamáveis em `/rest/v1/rpc/`. Os auxiliares de RLS estavam abertos ao `anon`. | EXECUTE revogado. Verificado que revogar não impede o trigger de disparar. |
+| `current_org_ids()` sem uso | Função `security definer` exposta sem nenhuma policy chamá-la. | Removida. |
+| Embed `organizations(...)` em `audit_logs` | Sem a FK, o PostgREST não resolve o select aninhado: a tela de auditoria quebraria em runtime. | Consulta separada, com o nome histórico vindo do `diff` quando a organização já não existe. O typecheck pegou este. |
+| Detecção do redirect do Next pelo `message` | Depois de excluir uma loja com sucesso, o usuário veria um toast vermelho falso. | Passa a checar o `digest`, que é como o Next sinaliza. |
+| Busca e paginação do admin sem limite | `?pagina=99999999999` estouraria o offset e devolveria 400; `%` na busca casaria com tudo. | Extraído para `lib/listagem.ts`, com teto de página e escape de curinga, coberto por 15 testes. |
+| Limpeza dos testes E2E deixava auditoria | Sem a FK, a trilha não cai por cascata e o dado de teste sobraria. | A limpeza coleta as organizações antes de excluir os usuários e remove a trilha delas. |
 
 **Decisões tomadas nesta fase**
 

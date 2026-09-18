@@ -400,6 +400,244 @@ begin
 end
 $$;
 
+-- ================================== grupo 6: permissões de execução
+
+-- O PostgreSQL concede EXECUTE a PUBLIC em toda função nova, e no Supabase isso
+-- vira um endpoint em /rest/v1/rpc/<nome>. A migration de endurecimento revoga
+-- o que não deve ser chamável. Estes testes impedem a regressão.
+
+select tests.login('a-owner@teste.local');
+set role authenticated;
+
+-- Funções de trigger não podem ser chamadas por ninguém.
+do $$
+declare
+  v_barrado boolean := false;
+begin
+  begin
+    perform public.handle_new_user();
+  exception
+    when insufficient_privilege then v_barrado := true;
+    when others then v_barrado := (sqlstate = '42501');
+  end;
+  perform tests.ok('permissões', v_barrado,
+    'authenticated NÃO executa handle_new_user por RPC');
+end
+$$;
+
+do $$
+declare
+  v_barrado boolean := false;
+begin
+  begin
+    perform public.generate_org_slug('sondagem');
+  exception
+    when insufficient_privilege then v_barrado := true;
+    when others then v_barrado := (sqlstate = '42501');
+  end;
+  perform tests.ok('permissões', v_barrado,
+    'authenticated NÃO executa generate_org_slug por RPC');
+end
+$$;
+
+do $$
+declare
+  v_barrado boolean := false;
+begin
+  begin
+    perform public.handle_audit();
+  exception
+    when insufficient_privilege then v_barrado := true;
+    when others then v_barrado := (sqlstate = '42501');
+  end;
+  perform tests.ok('permissões', v_barrado,
+    'authenticated NÃO executa handle_audit por RPC');
+end
+$$;
+
+-- Os auxiliares de policy precisam continuar funcionando para authenticated,
+-- senão toda query com RLS quebraria.
+select tests.ok('permissões',
+  (select public.is_org_member((select org_a from tests.ids))) = true,
+  'authenticated AINDA executa is_org_member (a RLS depende disso)');
+
+reset role;
+
+-- Visitante anônimo não deve alcançar os auxiliares.
+select tests.logout();
+set role anon;
+
+do $$
+declare
+  v_barrado boolean := false;
+begin
+  begin
+    perform public.is_org_member((select org_a from tests.ids));
+  exception
+    when insufficient_privilege then v_barrado := true;
+    when others then v_barrado := (sqlstate = '42501');
+  end;
+  perform tests.ok('permissões', v_barrado,
+    'anon NÃO executa is_org_member por RPC');
+end
+$$;
+
+do $$
+declare
+  v_barrado boolean := false;
+begin
+  begin
+    perform public.is_platform_admin();
+  exception
+    when insufficient_privilege then v_barrado := true;
+    when others then v_barrado := (sqlstate = '42501');
+  end;
+  perform tests.ok('permissões', v_barrado,
+    'anon NÃO executa is_platform_admin por RPC');
+end
+$$;
+
+reset role;
+
+-- Os auxiliares seguem chamáveis por authenticated, e precisam mesmo: a RLS os
+-- avalia com o papel de quem consulta. Isso é seguro porque cada um responde
+-- APENAS sobre o próprio auth.uid() — sondar o id de outra organização devolve
+-- false, sem revelar se ela existe.
+select tests.login('a-owner@teste.local');
+set role authenticated;
+
+select tests.ok('permissões',
+  (select public.is_org_member((select org_b from tests.ids))) = false,
+  'is_org_member sondando outra organização devolve false');
+
+select tests.ok('permissões',
+  (select public.has_org_role((select org_b from tests.ids),
+     array['owner','admin','member']::public.membership_role[])) = false,
+  'has_org_role sondando outra organização devolve false');
+
+select tests.ok('permissões',
+  (select public.is_store_member((select loja_b from tests.lojas))) = false,
+  'is_store_member sondando a loja de outra organização devolve false');
+
+select tests.ok('permissões',
+  (select public.is_org_member(extensions.gen_random_uuid())) = false,
+  'is_org_member com id inexistente devolve false, sem revelar existência');
+
+reset role;
+
+-- A função morta foi removida.
+select tests.ok('permissões',
+  (select count(*) from pg_proc p
+     join pg_namespace n on n.oid = p.pronamespace
+     where n.nspname = 'public' and p.proname = 'current_org_ids') = 0,
+  'current_org_ids foi removida (era security definer sem uso)');
+
+-- Os triggers continuam disparando mesmo sem EXECUTE concedido.
+select tests.ok('permissões',
+  (select count(*) from public.apps a join tests.lojas on a.store_id = tests.lojas.loja_a) = 1,
+  'o trigger de criação de app dispara sem EXECUTE concedido');
+
+-- ===================================== grupo 7: exclusão em cascata
+
+-- Estes casos quebravam antes da migration 20260918000002: o protect_last_owner
+-- não distinguia remoção deliberada de cascata, e a FK de audit_logs impedia
+-- registrar a exclusão de uma organização.
+
+-- Usuários próprios deste grupo, para não mexer no fixture dos anteriores.
+insert into auth.users (email, raw_user_meta_data, email_confirmed_at) values
+  ('exclusao-conta@teste.local',   '{"company_name":"Exclusao Conta"}'::jsonb,   now()),
+  ('exclusao-org@teste.local',     '{"company_name":"Exclusao Org"}'::jsonb,     now()),
+  ('sucessao-dono@teste.local',    '{"company_name":"Sucessao"}'::jsonb,         now()),
+  ('sucessao-segundo@teste.local', '{"company_name":"Pessoal Segundo"}'::jsonb,  now());
+
+-- Excluir a própria conta precisa funcionar: a LGPD garante esse direito, e a
+-- limpeza dos testes E2E depende disso.
+do $$
+declare
+  v_ok boolean := false;
+begin
+  begin
+    delete from auth.users where email = 'exclusao-conta@teste.local';
+    v_ok := true;
+  exception when others then
+    v_ok := false;
+  end;
+  perform tests.ok('exclusão', v_ok, 'excluir a conta do último owner funciona');
+end
+$$;
+
+select tests.ok('exclusão',
+  (select count(*) from public.organizations where name = 'Exclusao Conta') = 0,
+  'a organização sem membros sai junto com a conta');
+
+-- Excluir a organização também precisa funcionar.
+do $$
+declare
+  v_org uuid;
+  v_ok boolean := false;
+begin
+  select m.org_id into v_org from public.memberships m
+    join auth.users u on u.id = m.user_id
+    where u.email = 'exclusao-org@teste.local';
+  begin
+    delete from public.organizations where id = v_org;
+    v_ok := true;
+  exception when others then
+    v_ok := false;
+  end;
+  perform tests.ok('exclusão', v_ok, 'excluir a organização funciona');
+  perform tests.ok('exclusão',
+    exists (select 1 from public.audit_logs
+            where entity = 'organizations' and entity_id = v_org and action = 'delete'),
+    'a exclusão da organização fica registrada e a trilha sobrevive a ela');
+end
+$$;
+
+-- Saindo o último owner, quem fica assume.
+do $$
+declare
+  v_org uuid;
+  v_dono uuid;
+  v_segundo uuid;
+  v_papel public.membership_role;
+begin
+  select m.org_id, m.user_id into v_org, v_dono from public.memberships m
+    join auth.users u on u.id = m.user_id where u.email = 'sucessao-dono@teste.local';
+  select id into v_segundo from auth.users where email = 'sucessao-segundo@teste.local';
+
+  insert into public.memberships (org_id, user_id, role) values (v_org, v_segundo, 'admin');
+  delete from auth.users where id = v_dono;
+
+  select role into v_papel from public.memberships
+    where org_id = v_org and user_id = v_segundo;
+
+  perform tests.ok('exclusão', v_papel = 'owner',
+    'o membro restante é promovido a owner quando o dono sai');
+  perform tests.ok('exclusão',
+    exists (select 1 from public.organizations where id = v_org),
+    'a organização com membros sobrevive à saída do dono');
+end
+$$;
+
+-- A regra original continua valendo: remoção deliberada do último owner é
+-- bloqueada, porque tanto a conta quanto a organização continuam existindo.
+do $$
+declare
+  v_org uuid;
+  v_user uuid;
+  v_bloqueado boolean := false;
+begin
+  select org_b, u_b_owner into v_org, v_user from tests.ids;
+  begin
+    delete from public.memberships where org_id = v_org and user_id = v_user;
+  exception when check_violation then
+    v_bloqueado := true;
+  end;
+  perform tests.ok('exclusão', v_bloqueado,
+    'remover o último owner deliberadamente continua bloqueado');
+end
+$$;
+
 -- ======================================================== relatório
 
 \o

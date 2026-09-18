@@ -5,6 +5,7 @@ import { Store } from 'lucide-react';
 import { ROTULO_STATUS_LOJA } from '@storefy/db';
 import { criarClientServidor } from '@/lib/supabase/server';
 import { CampoBusca, Paginacao, lerParams } from '../paginacao';
+import { termoParaIlike } from '@/lib/listagem';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -37,7 +38,7 @@ export default async function PaginaLojasAdmin({
     .range(de, ate);
 
   if (busca !== '') {
-    const termo = busca.replace(/[,()]/g, ' ').trim();
+    const termo = termoParaIlike(busca);
     consulta = consulta.or(`name.ilike.%${termo}%,primary_url.ilike.%${termo}%`);
   }
 

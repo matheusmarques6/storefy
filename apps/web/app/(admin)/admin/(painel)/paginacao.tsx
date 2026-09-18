@@ -1,8 +1,11 @@
 import Link from 'next/link';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { totalDePaginas } from '@/lib/listagem';
 
-export const POR_PAGINA = 20;
+// A leitura e a sanitização dos parâmetros vivem em `@/lib/listagem`, que tem
+// testes próprios. Aqui fica só o que desenha.
+export { POR_PAGINA, lerParams } from '@/lib/listagem';
 
 /** Paginação por links, para funcionar sem JavaScript e manter o filtro na URL. */
 export function Paginacao({
@@ -16,7 +19,7 @@ export function Paginacao({
   base: string;
   busca: string;
 }) {
-  const ultimaPagina = Math.max(1, Math.ceil(total / POR_PAGINA));
+  const ultimaPagina = totalDePaginas(total);
   if (ultimaPagina <= 1) return null;
 
   const montar = (p: number) => {
@@ -94,12 +97,4 @@ export function CampoBusca({
       </Button>
     </form>
   );
-}
-
-/** Lê e sanitiza os parâmetros de busca e página. */
-export function lerParams(params: { q?: string; pagina?: string }) {
-  const busca = (params.q ?? '').trim();
-  const bruta = Number.parseInt(params.pagina ?? '1', 10);
-  const pagina = Number.isFinite(bruta) && bruta > 0 ? bruta : 1;
-  return { busca, pagina, de: (pagina - 1) * POR_PAGINA, ate: pagina * POR_PAGINA - 1 };
 }

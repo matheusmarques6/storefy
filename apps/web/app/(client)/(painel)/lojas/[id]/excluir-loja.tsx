@@ -4,6 +4,7 @@ import { useTransition } from 'react';
 import { Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { excluirLoja } from '../acoes';
+import { ehControleDeFluxoDoNext, mensagemDeErro } from '@/lib/erros';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -28,9 +29,10 @@ export function ExcluirLoja({ lojaId, nome }: { lojaId: string; nome: string }) 
   function confirmar() {
     iniciar(() => {
       excluirLoja(lojaId).catch((erro: unknown) => {
-        // `redirect()` do Next lança de propósito; não é falha.
-        if (erro instanceof Error && erro.message === 'NEXT_REDIRECT') return;
-        toast.error(erro instanceof Error ? erro.message : 'Não foi possível excluir a loja.');
+        // `redirect()` do Next lança de propósito: a exclusão deu certo e a
+        // navegação está a caminho. Mostrar erro aqui assustaria o usuário.
+        if (ehControleDeFluxoDoNext(erro)) return;
+        toast.error(mensagemDeErro(erro, 'Não foi possível excluir a loja.'));
       });
     });
   }
