@@ -536,6 +536,39 @@ Um app interno, publicado uma única vez na conta da Storefy, que o lojista usa 
 **Prompt:**
 > "Execute a Fase 1 seguindo a seção 5 à risca. Comece por packages/bridge e pelo schema. Use a loja [URL] como demo. Faça testes de unidade para o parser de links e para o gerador de CSS injetado."
 
+**Progresso (18/09/2026)**
+
+| Item | Situação |
+|---|---|
+| `packages/bridge` — contrato tipado da seção 5.5 | ✅ com validação em runtime, não só tipo |
+| Parser de links (seção 5.4) | ✅ 24 testes |
+| Gerador de CSS injetado (seção 5.4) | ✅ 20 testes |
+| Contrato de mensagens | ✅ 18 testes |
+| `apps/mobile` com Expo + expo-router | ⬜ |
+| Abas nativas geradas pela config | ⬜ |
+| WebViews persistentes por aba | ⬜ |
+| Observador de carrinho com badge | ⬜ |
+| Telas offline, erro e atualização obrigatória | ⬜ |
+| Testar em 3 lojas reais | ⬜ depende de aparelho físico e de URLs de loja |
+| Builds de desenvolvimento via EAS | ⬜ depende de conta Expo |
+
+**Decisões desta fase**
+
+- O bridge valida em runtime com Zod, e não confia só no tipo do TypeScript.
+  A página que manda as mensagens não é nossa: roda o tema do lojista, os apps
+  que ele instalou e scripts de terceiros, e qualquer um deles pode chamar
+  `window.ReactNativeWebView.postMessage` com o que quiser.
+- `SHARE` e `OPEN_EXTERNAL` aceitam apenas `http` e `https`. `z.url()` sozinho
+  aceita `javascript:` e `intent://` — são URLs válidas pela especificação — e
+  as duas chegariam ao `Linking.openURL`. No Android, `intent://` dispara
+  activity arbitrária.
+- O CSS injetado sai com **uma regra por seletor**, não uma lista separada por
+  vírgula: o navegador descarta a regra inteira quando um seletor da lista é
+  inválido, então um `.header,,` digitado no painel faria nada mais ser
+  escondido, sem aviso.
+- A comparação de domínio é por limite de ponto. `endsWith` ingênuo deixaria
+  `minha-loja.com.br.evil.com` passar como se fosse a loja.
+
 ### Fase 2 — Config remota + Editor do App (5–7 dias)
 **Tarefas**
 - Tabelas `app_configs` com versões. Endpoint público `/api/public/app-config/[appId]` com cache.
