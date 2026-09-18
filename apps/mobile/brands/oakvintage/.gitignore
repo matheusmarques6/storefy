@@ -1,0 +1,6 @@
+# Assets da loja: baixados pelo pipeline de build, nunca versionados.
+icon.png
+splash.png
+*.jpg
+*.jpeg
+*.webp

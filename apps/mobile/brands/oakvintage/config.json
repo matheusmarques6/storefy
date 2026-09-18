@@ -1,0 +1,44 @@
+{
+  "version": 1,
+  "store": {
+    "name": "Oak Vintage",
+    "url": "https://oakvintage.com.br",
+    "domains": ["oakvintage.com.br"]
+  },
+  "theme": {
+    "primary": "#1a1a1a",
+    "background": "#ffffff",
+    "text": "#1a1a1a",
+    "tabBarBg": "#ffffff",
+    "tabBarActive": "#1a1a1a",
+    "tabBarInactive": "#9ca3af",
+    "statusBar": "dark"
+  },
+  "tabs": [
+    { "id": "home", "label": "Início", "icon": "house", "type": "webview", "url": "/" },
+    { "id": "busca", "label": "Buscar", "icon": "search", "type": "search" },
+    {
+      "id": "carrinho",
+      "label": "Carrinho",
+      "icon": "shopping-bag",
+      "type": "cart",
+      "badge": "cart_count"
+    },
+    { "id": "conta", "label": "Conta", "icon": "user", "type": "account" }
+  ],
+  "webview": {
+    "hideSelectors": [],
+    "customCss": "",
+    "customJs": "",
+    "pullToRefresh": true,
+    "userAgentSuffix": "StorefyApp"
+  },
+  "features": {
+    "pushPromptTiming": "after_first_add_to_cart",
+    "onboardingSlides": [],
+    "appBanner": { "enabled": false, "text": "" },
+    "biometricLogin": false,
+    "rateAppPrompt": true
+  },
+  "minSupportedBuild": 1
+}

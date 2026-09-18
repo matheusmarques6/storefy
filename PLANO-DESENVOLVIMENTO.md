@@ -544,8 +544,11 @@ Um app interno, publicado uma única vez na conta da Storefy, que o lojista usa 
 | Parser de links (seção 5.4) | ✅ 24 testes |
 | Gerador de CSS injetado (seção 5.4) | ✅ 20 testes |
 | Contrato de mensagens | ✅ 18 testes |
-| `apps/mobile` com Expo + expo-router | ⬜ |
-| Abas nativas geradas pela config | ⬜ |
+| `apps/mobile` com Expo SDK 57 + `app.config.ts` dinâmico | ✅ estrutura e configuração de build |
+| Ordem dos plugins nativos (regra 5) | ✅ garantida por função, com 8 testes |
+| Carregamento da config com cache e fallback (seção 5.3) | ✅ 15 testes |
+| Config da loja demo (Oak Vintage) | ✅ valida no `AppConfigSchema` |
+| Telas do app e abas nativas (expo-router) | ⬜ |
 | WebViews persistentes por aba | ⬜ |
 | Observador de carrinho com badge | ⬜ |
 | Telas offline, erro e atualização obrigatória | ⬜ |
