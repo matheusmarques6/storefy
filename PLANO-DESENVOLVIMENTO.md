@@ -598,6 +598,58 @@ Um app interno, publicado uma única vez na conta da Storefy, que o lojista usa 
 
 ---
 
+## 11.1 Reaproveitamento — o que existe nos nossos repositórios
+
+Levantamento feito em 18/09/2026 sobre `matheusmarques6/*`. Registrado aqui
+para não repetir a busca a cada fase.
+
+### `admin-convertfy` — mesma stack, aproveitável de verdade
+
+Next 15 · React 19 · Supabase SSR · Tailwind · Radix · Zod 4 · shadcn.
+É a stack do Storefy, então o código é adaptável quase direto.
+
+| O que | Onde | Para qual fase |
+|---|---|---|
+| `reactflow` montado para editor de fluxo | `src/components` | **Fase 3** — editor de `push_automations` (gatilho → espera → ação), exatamente o que a seção 6 pede |
+| `@hello-pangea/dnd` para arrastar e soltar | `src/components` | **Fase 2** — reordenar abas em C06b |
+| `save-bar.tsx` | `src/components/ui` | **Fase 2** — a barra fixa "Publicar alterações" com contador de pendências (seção 10) |
+| `data-table.tsx` + `@tanstack/react-virtual` | `src/components/ui` | **Fase 6** — tabelas do admin com virtualização |
+| `recharts` + `kpi-card.tsx` + `period-picker.tsx` | `src/components/ui` | **Fase 5** — analytics C11 |
+| `date-range-picker.tsx`, `filter-select.tsx`, `status-tabs.tsx` | `src/components/ui` | **Fases 5–6** — filtros de listagem |
+| `command-palette.tsx` | `src/components/ui` | **Fase 6** — busca rápida no admin |
+
+Já aproveitado nesta fase: o padrão de `loading.tsx` por rota com
+`PageSkeleton`, e a acessibilidade do esqueleto (`role="status"`,
+`aria-live="polite"` e texto `sr-only` anunciando uma vez, com os retângulos
+em `aria-hidden`).
+
+### `app.fy22` — mesmo produto, arquitetura diferente
+
+Tentativa anterior de transformar loja em app. **O shell mobile não serve**:
+usa Capacitor, e a seção 5 do nosso plano é Expo + react-native-webview. O
+`TenantConfig` deles também é bem mais pobre que o nosso `AppConfig` — sem
+abas, sem `hideSelectors`, sem onboarding, sem `minSupportedBuild`.
+
+Vale, porém:
+
+| O que | Onde | Para qual fase |
+|---|---|---|
+| Verificação HMAC de webhook Shopify, com testes | `packages/integrations/src/shopify/webhooks.ts` | **Fase 5** — é segurança fácil de errar sutilmente |
+| Cliente Klaviyo | `packages/integrations/src/klaviyo` | **Fase 5** — integração do C14 |
+| Adapter Shopify com testes | `packages/integrations/src/shopify/adapter.ts` | **Fase 5** — referência de chamadas à Admin API |
+
+**Não usar:** os parsers de seção de tema (`parsers/*.ts`). Eles servem para
+renderizar o tema nativamente, que é outro produto. O nosso espelha o site
+pela WebView.
+
+### Descartados
+
+`app.fy`, `Appsfy1`, `app.fy-0002` (variações da mesma tentativa),
+`track-convertfy`, `convertfy_admin2`, `convertfy-growth-hub` — nada que o
+`admin-convertfy` atual já não cubra melhor.
+
+---
+
 ## 12. Variáveis de ambiente
 
 ```

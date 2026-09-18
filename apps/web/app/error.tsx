@@ -1,38 +1,23 @@
 'use client';
 
-import { useEffect } from 'react';
-import Link from 'next/link';
-import { AlertCircle } from 'lucide-react';
-import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Button } from '@/components/ui/button';
-
 /**
- * Fronteira de erro.
+ * Fronteira de erro da raiz.
  *
- * Mostra a mensagem real em vez de um texto genérico: quase todo erro aqui é
- * acionável pelo usuário ("sem permissão", "sessão expirada") e esconder isso
- * só geraria um chamado de suporte.
+ * Pega o que escapa das fronteiras de segmento — as telas públicas e qualquer
+ * erro fora dos painéis.
  */
-export default function Erro({ error, reset }: { error: Error; reset: () => void }) {
-  useEffect(() => {
-    // O Sentry entra na Fase 8; por enquanto, o console do servidor já registra.
-    console.error(error);
-  }, [error]);
+import { EstadoDeErro } from '@/components/estado-de-erro';
 
+export default function Erro({
+  error,
+  reset,
+}: {
+  error: Error & { digest?: string };
+  reset: () => void;
+}) {
   return (
-    <div className="flex min-h-dvh flex-col items-center justify-center gap-4 px-4 text-center">
-      <Alert variant="destructive" className="max-w-lg text-left">
-        <AlertCircle aria-hidden />
-        <AlertDescription>
-          {error.message === '' ? 'Algo deu errado. Tente novamente.' : error.message}
-        </AlertDescription>
-      </Alert>
-      <div className="flex gap-2">
-        <Button onClick={reset}>Tentar de novo</Button>
-        <Button variant="outline" asChild>
-          <Link href="/">Voltar para o início</Link>
-        </Button>
-      </div>
+    <div className="flex min-h-dvh items-center justify-center px-4">
+      <EstadoDeErro erro={error} tentarDeNovo={reset} />
     </div>
   );
 }
