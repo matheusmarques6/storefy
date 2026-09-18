@@ -1,6 +1,10 @@
 /**
  * Roteamento por painel e renovação de sessão.
  *
+ * Este arquivo usa a convenção `proxy` do Next 16. Ela substitui o antigo
+ * `middleware.ts`, que ainda funciona mas emite aviso de depreciação no build.
+ * O comportamento é o mesmo; muda o nome do arquivo e o da função exportada.
+ *
  * DOIS CAMINHOS PARA O MESMO DESTINO, de propósito:
  *
  *   1. Por subdomínio — `app.localhost` e `admin.localhost` em desenvolvimento,
@@ -33,7 +37,7 @@ function ehHost(hostname: string, configurado: string): boolean {
   return configurado !== '' && hostname === configurado;
 }
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   const { nextUrl } = request;
   const hostname = request.headers.get('host')?.split(':')[0] ?? '';
   const caminho = nextUrl.pathname;
@@ -120,9 +124,34 @@ export async function middleware(request: NextRequest) {
 export const config = {
   matcher: [
     /*
-     * Tudo, menos arquivos estáticos e as rotas de callback do auth, que
-     * precisam rodar sem interferência para trocar o código pela sessão.
+     * Tudo, menos:
+     *
+     *  - arquivos estáticos;
+     *  - `auth/`, que precisa rodar sem interferência para trocar o código
+     *    pela sessão;
+     *  - `api/`, que NÃO deve passar por este middleware.
+     *
+     * A exclusão de `api/` é deliberada. Este middleware redireciona para
+     * `/entrar` quem não tem sessão, o que faz sentido para tela, não para
+     * endpoint: um webhook do EAS ou da Shopify receberia um 307 para a
+     * página de login em vez de ser processado, e o app mobile receberia HTML
+     * ao buscar a própria config. Cada rota de API faz a autenticação que lhe
+     * cabe — assinatura HMAC, segredo de cron, ou nenhuma quando é pública.
      */
-    '/((?!_next/static|_next/image|favicon.ico|auth/|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)',
+    '/((?!_next/static|_next/image|favicon.ico|auth/|api/|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)',
   ],
 };
+
+/**
+ * O mesmo padrão de `config.matcher`, exportado para teste.
+ *
+ * O Next exige que os itens de `matcher` sejam literais estáticos: ele lê esse
+ * campo em tempo de build, sem executar o módulo, e um `build` quebra na hora
+ * se o valor for uma referência. Por isso o literal fica inline acima e esta
+ * constante é DERIVADA dele — assim não há como os dois divergirem.
+ *
+ * O teste está em `lib/rotas.test.ts`. Voltar a capturar `api/` aqui quebraria
+ * todo webhook e todo endpoint público das próximas fases, e só apareceria em
+ * produção.
+ */
+export const PADRAO_DO_MATCHER: string = config.matcher[0] ?? '';

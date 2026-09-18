@@ -464,7 +464,7 @@ Um app interno, publicado uma única vez na conta da Storefy, que o lojista usa 
 | Auditoria automática de criar, editar e excluir | ✅ |
 | Tipos gerados em `packages/db` | ✅ |
 | `apps/web` com route groups `(client)` e `(admin)` | ✅ |
-| `middleware.ts` com roteamento por painel | ✅ |
+| Roteamento por painel por arquivo de proxy | ✅ o plano diz `middleware.ts`; o Next 16 deprecou esse nome em favor de `proxy.ts`. Mesmo comportamento, arquivo renomeado. |
 | Auth: cadastro, login, logout, recuperação, redefinição, confirmação | ✅ |
 | Login com Google | ✅ código pronto, desabilitado até a credencial existir |
 | Guarda do admin exigindo `platform_admins` | ✅ |

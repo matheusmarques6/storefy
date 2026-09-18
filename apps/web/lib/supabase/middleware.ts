@@ -1,5 +1,5 @@
 /**
- * Renovação da sessão no middleware.
+ * Renovação da sessão no proxy.
  *
  * O token do Supabase expira; sem esta passagem, o usuário seria deslogado em
  * qualquer navegação após a expiração. `getUser()` renova e reescreve os

@@ -139,6 +139,70 @@ acrescente ao `/etc/hosts`:
 
 ---
 
+## Deploy na Vercel
+
+### Variáveis de ambiente
+
+Cadastre em **Settings → Environment Variables**, marcando **Production,
+Preview e Development** nas três primeiras — sem Preview, o deploy de cada PR
+sobe sem conseguir falar com o banco.
+
+| Variável                                             | Obrigatória | Valor                                            |
+| ---------------------------------------------------- | ----------- | ------------------------------------------------ |
+| `NEXT_PUBLIC_SUPABASE_URL`                           | **sim**     | `https://npmftaxkhqsxppcqlbdd.supabase.co`       |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY`                      | **sim**     | `sb_publishable_xGUCRTlQQzljZpAQpe6phw_qLO1JSzx` |
+| `SUPABASE_SERVICE_ROLE_KEY`                          | **sim**     | do painel do Supabase — só Production e Preview  |
+| `NEXT_PUBLIC_SITE_URL`                               | recomendada | a URL de produção, sem barra no final            |
+| `NEXT_PUBLIC_GOOGLE_OAUTH_ENABLED`                   | não         | `true` só depois de configurar o provedor        |
+| `NEXT_PUBLIC_CLIENT_HOST` / `NEXT_PUBLIC_ADMIN_HOST` | não         | preencha ao adotar domínio próprio               |
+
+As duas primeiras são `NEXT_PUBLIC_`, ou seja, o Next as embute no bundle **em
+tempo de build**. Cadastrá-las depois não afeta um deploy já feito: é preciso
+redeployar.
+
+Faltando qualquer uma das duas, a aplicação inteira responde com a tela
+"Configuração pendente" listando o que falta. Isso é proposital — melhor do que
+uma tela branca ou um erro de runtime sem explicação.
+
+`RESEND_API_KEY` não é lida pela aplicação nesta fase. O Resend entra como SMTP
+**dentro do Supabase** (Authentication → Emails → SMTP Settings), não pelo
+código. A variável na Vercel só passa a ter uso quando enviarmos e-mail
+transacional direto do painel, na Fase 3.
+
+### Conferindo o deploy
+
+```bash
+curl https://SEU-DEPLOY.vercel.app/api/health
+```
+
+```json
+{
+  "status": "ok",
+  "configuracao": { "supabaseUrl": true, "supabaseAnonKey": true, "...": true },
+  "banco": { "alcancavel": true, "latenciaMs": 82 }
+}
+```
+
+O endpoint devolve **503** quando falta configuração ou o banco não responde, e
+só booleanos — nunca o valor de uma variável. Serve tanto para conferir um
+deploy novo quanto para monitoramento depois.
+
+### Redirects do Supabase Auth
+
+Em **Authentication → URL Configuration**, cadastre em _Redirect URLs_:
+
+```
+https://SEU-DOMINIO/auth/callback
+https://SEU-DOMINIO/auth/confirmar
+https://*-SEU-PROJETO.vercel.app/auth/**
+http://app.localhost:3000/auth/**
+```
+
+Sem isso, o link de confirmação de e-mail e o de recuperação de senha são
+recusados pelo Supabase.
+
+---
+
 ## Comandos
 
 | Comando                        | O que faz                               |
@@ -165,7 +229,7 @@ storefy/
 │  │  ├─ app/(client)/     painel do cliente (C01, C05, lojas, configurações)
 │  │  ├─ app/(admin)/      painel admin (A01, A03, A04, A12)
 │  │  ├─ e2e/              fluxos Playwright
-│  │  └─ middleware.ts     roteamento por painel + renovação de sessão
+│  │  └─ proxy.ts          roteamento por painel + renovação de sessão
 │  └─ mobile/              Expo — Fase 1
 ├─ packages/
 │  ├─ config-schema/       AppConfig em Zod, o contrato painel ⇄ app
