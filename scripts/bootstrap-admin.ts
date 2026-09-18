@@ -21,9 +21,17 @@ import { resolve } from 'node:path';
 import { createClient } from '@supabase/supabase-js';
 import type { Database, PlatformAdminRole } from '@storefy/db';
 
-/** Lê .env.local sem dependência externa, para o script rodar com `tsx` puro. */
+/**
+ * Lê o `.env.local` sem dependência externa, para o script rodar com `tsx` puro.
+ *
+ * Procura em `apps/web/` primeiro, porque é lá que o arquivo mora: o Next
+ * carrega os `.env*` ao lado do próprio app, e não da raiz do monorepo.
+ * A raiz continua na lista para quem preferir manter o arquivo lá e só usar
+ * os scripts.
+ */
 function carregarEnvLocal(): void {
-  for (const arquivo of ['.env.local', '.env']) {
+  const candidatos = ['apps/web/.env.local', 'apps/web/.env', '.env.local', '.env'];
+  for (const arquivo of candidatos) {
     try {
       const conteudo = readFileSync(resolve(import.meta.dirname, '..', arquivo), 'utf8');
       for (const linha of conteudo.split('\n')) {
@@ -77,10 +85,18 @@ async function main(): Promise<void> {
 
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const chave = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (url == null || url === '' || chave == null || chave === '') {
+
+  // Dizer QUAL variável falta poupa uma rodada de tentativa e erro: as duas
+  // vêm de lugares diferentes do painel do Supabase.
+  const faltando: string[] = [];
+  if (url == null || url === '') faltando.push('NEXT_PUBLIC_SUPABASE_URL');
+  if (chave == null || chave === '') faltando.push('SUPABASE_SERVICE_ROLE_KEY');
+
+  if (faltando.length > 0 || url == null || chave == null) {
     abortar(
-      'Faltam NEXT_PUBLIC_SUPABASE_URL e/ou SUPABASE_SERVICE_ROLE_KEY.\n' +
-        '  Copie .env.example para .env.local e preencha com os dados do seu projeto Supabase.',
+      `Faltam estas variáveis: ${faltando.join(', ')}\n` +
+        '  Preencha em apps/web/.env.local (copie de .env.example).\n' +
+        '  A chave de service role está em: Supabase > Project Settings > API Keys > service_role.',
     );
   }
 

@@ -29,6 +29,20 @@ function temValor(variavel: string | undefined): boolean {
   return variavel != null && variavel !== '';
 }
 
+/**
+ * Uma falha de rede no supabase-js costuma chegar com mensagem vazia — o fetch
+ * foi recusado antes de haver resposta para descrever. Devolver `""` num campo
+ * chamado `erro` não ajuda ninguém a diagnosticar, então traduzimos para a
+ * causa provável.
+ */
+function descreverFalha(mensagem: string): string {
+  if (mensagem !== '') return mensagem;
+  return (
+    'Não foi possível alcançar o Supabase. Confira se a URL está correta e se ' +
+    'a rede deste ambiente permite sair para *.supabase.co.'
+  );
+}
+
 export async function GET() {
   const configuracao = {
     supabaseUrl: temValor(process.env.NEXT_PUBLIC_SUPABASE_URL),
@@ -71,10 +85,10 @@ export async function GET() {
     if (error == null) {
       alcancavel = true;
     } else {
-      erro = error.message;
+      erro = descreverFalha(error.message);
     }
   } catch (problema: unknown) {
-    erro = problema instanceof Error ? problema.message : 'Falha ao consultar o banco.';
+    erro = descreverFalha(problema instanceof Error ? problema.message : '');
   }
 
   const corpo: Saude = {

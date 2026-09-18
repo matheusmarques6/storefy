@@ -37,11 +37,16 @@ Escolha **um** caminho.
 > ref `npmftaxkhqsxppcqlbdd`. Todas as migrations já foram aplicadas nele.
 > Você só precisa preencher o `.env.local`.
 
-1. Copie `.env.example` para `.env.local`:
+1. Copie `.env.example` para `apps/web/.env.local`:
 
    ```bash
-   cp .env.example .env.local
+   cp .env.example apps/web/.env.local
    ```
+
+   > O arquivo vai em `apps/web/`, e não na raiz. O Next carrega os `.env*` ao
+   > lado do próprio app; na raiz do monorepo ele não os enxerga, e a aplicação
+   > sobe mostrando "Configuração pendente" como se você não tivesse preenchido
+   > nada. Os scripts da raiz (`bootstrap:admin`, `db:types`) procuram lá.
 
 2. Preencha com os valores de **Project Settings → API Keys**:
 
@@ -55,7 +60,7 @@ Escolha **um** caminho.
 <summary>Começando um projeto Supabase do zero</summary>
 
 1. Crie o projeto em [supabase.com](https://supabase.com/dashboard).
-2. Preencha o `.env.local` com os valores de **Project Settings → Data API**:
+2. Preencha o `apps/web/.env.local` com os valores de **Project Settings → Data API**:
 
    ```bash
    cp .env.example .env.local
