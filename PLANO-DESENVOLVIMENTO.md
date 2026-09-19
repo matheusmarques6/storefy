@@ -647,6 +647,55 @@ Um app interno, publicado uma única vez na conta da Storefy, que o lojista usa 
 
 **Pronto quando:** o lojista muda a cor de uma aba no painel, clica em publicar, fecha e reabre o app, e a mudança aparece.
 
+**Progresso (19/09/2026)**
+
+| Item | Situação |
+|---|---|
+| `app_configs` com versões, publicar e restaurar | ✅ função no Postgres, 28 asserções de RLS |
+| Endpoint público `/api/public/app-config/[appId]` | ✅ com ETag, 304 e cache por situação |
+| Config inicial de toda loja | ✅ app que já funciona, 12 testes |
+| Editor C06 — aparência, abas, loja, recursos, versões | ✅ conferido no navegador em 1280 e 390 px |
+| Prévia ao vivo com a tab bar real | ✅ por `/api/preview-proxy`, sem `allow-same-origin` |
+| Seletor visual de elementos | ✅ 13 testes executando o script num DOM real |
+| Detecção automática de nome, cor e logo (C02–C04) | ✅ 24 testes |
+| Publicar, histórico e restaurar na tela | ✅ com confirmação |
+| App Storefy Preview (QR + config em rascunho) | ⬜ |
+| Verificação ponta a ponta num aparelho | ⬜ depende de aparelho físico |
+
+**Decisões desta fase**
+
+- **O iframe da prévia NÃO recebe a origem do painel.** O documento sai do nosso
+  domínio, e deixá-lo manter essa origem daria ao tema do lojista — e a todo
+  script de terceiro instalado nele — acesso aos cookies e ao armazenamento de
+  quem está editando. O sandbox fica sem `allow-same-origin` e o que esconder
+  viaja por `postMessage`.
+- **O proxy de prévia é o oposto de um proxy aberto:** exige sessão, a loja
+  precisa ser de uma organização do usuário (quem filtra é a RLS), o alvo sai do
+  endereço cadastrado no banco e nunca de uma URL do navegador, e hospedeiro
+  interno é recusado antes de a requisição sair. Cada redirecionamento é
+  reconferido: um `Location` para `169.254.169.254` é o jeito clássico de
+  contornar validação feita só na primeira URL.
+- **Publicar é uma função no Postgres**, e não três queries no servidor web: são
+  quatro escritas que só fazem sentido juntas, e uma falha no meio deixaria o app
+  da loja sem config publicada. É `security invoker`, então a autorização
+  continua sendo a RLS.
+- **Restaurar carrega no rascunho e não publica.** Voltar ao ar uma config de
+  semanas atrás num clique é o tipo de botão que derruba a loja de um cliente.
+- **Nada é chutado na detecção.** Quando a página não diz o nome, o campo volta
+  vazio; o domínio virando "nome provável" apareceria como certeza e o app iria
+  para a loja de aplicativos com ele.
+- **O seletor visual usa uma classe só.** A segunda quase sempre é modificador de
+  estado, que some quando o estado muda. Classe com hash é descartada: muda no
+  próximo deploy do tema e o que foi escondido volta sem aviso.
+- Os nomes de ícone viraram contrato em `packages/config-schema`: o painel
+  desenha com lucide e o app com Ionicons, e cada lado tem teste cobrando que
+  nenhum nome da lista fique sem desenho.
+- O schema apertou cor, id e rótulo de aba **antes de existir config publicada**,
+  que é a única janela em que isso não quebra a regra de compatibilidade.
+- `features.biometricLogin` continua sem tela no editor: nada no app o consome
+  ainda, e um botão que não faz nada é o que a regra 3 proíbe. Entra junto com a
+  área de conta.
+
 ### Fase 3 — Push notifications (5–7 dias)
 **Tarefas**
 - Migrations: `developer_accounts`, `devices`, `push_campaigns`, `push_automations`, `automation_runs`, `cart_events`.
