@@ -26,11 +26,11 @@ import type {
   WebViewHttpErrorEvent,
   WebViewProgressEvent,
 } from 'react-native-webview/lib/WebViewTypes';
-import { destinoDoLink } from '@storefy/bridge';
 import type { AppConfig } from '@storefy/config-schema';
 import type { AbaResolvida } from '../config/abas';
 import { acaoParaMensagem, type AcaoNativa, type ContextoDasAcoes } from '../bridge/acoes';
 import { TelaDeErro, TelaSemConexao } from '../telas/avisos';
+import { decidirNavegacao } from './navegacao';
 import { BarraDeProgresso } from './barra-de-progresso';
 import {
   scriptAntesDoConteudo,
@@ -81,6 +81,12 @@ export function AbaWebView({
   // `useRef<WebView>` fixa um parâmetro que não bate com o que o `ref` espera.
   const referencia = useRef<ComponentRef<typeof WebView>>(null);
   const podeVoltar = useRef(false);
+  /* Onde o cliente está agora. O roteador de links precisa disto, e NÃO da
+   * URL alvo: com o alvo no lugar, todo link vira "mesmo domínio". */
+  const urlAtual = useRef('');
+  /* Deep link que chegou antes de a página existir, para aplicar na carga. */
+  const caminhoPendente = useRef<string | null>(null);
+  const jaCarregou = useRef(false);
   const [progresso, setProgresso] = useState(0);
   const [falha, setFalha] = useState<Falha>(null);
   const [atualizando, setAtualizando] = useState(false);
@@ -88,6 +94,7 @@ export function AbaWebView({
   const [tentativa, setTentativa] = useState(0);
 
   const inicial = aba.url ?? config.store.url;
+  if (urlAtual.current === '') urlAtual.current = inicial;
 
   const antes = useMemo(
     () => scriptAntesDoConteudo(config, contextoDoApp),
@@ -119,6 +126,12 @@ export function AbaWebView({
       recarregar,
       irPara: (caminho: string) => {
         const alvo = new URL(caminho, config.store.url).toString();
+        if (!jaCarregou.current) {
+          // Deep link de abertura a frio: a página ainda não existe e o
+          // `injectJavaScript` cairia no vazio. Fica guardado para a carga.
+          caminhoPendente.current = alvo;
+          return;
+        }
         // `injectJavaScript` em vez de trocar o `source`: assim a navegação
         // entra no histórico e o botão voltar continua fazendo sentido.
         referencia.current?.injectJavaScript(`location.assign(${JSON.stringify(alvo)});true;`);
@@ -144,10 +157,7 @@ export function AbaWebView({
 
   const aoPedirNavegacao = useCallback(
     (pedido: WebViewNavigation): boolean => {
-      const destino = destinoDoLink(pedido.url, {
-        urlAtual: pedido.url,
-        dominios: config.store.domains,
-      });
+      const destino = decidirNavegacao(pedido.url, urlAtual.current, config.store.domains);
 
       if (destino.destino === 'webview') return true;
       if (destino.destino === 'externo') {
@@ -164,7 +174,15 @@ export function AbaWebView({
   const aoTerminar = useCallback((): void => {
     setProgresso(1);
     setAtualizando(false);
+    jaCarregou.current = true;
     aoCarregar?.();
+
+    const pendente = caminhoPendente.current;
+    if (pendente !== null) {
+      caminhoPendente.current = null;
+      referencia.current?.injectJavaScript(`location.assign(${JSON.stringify(pendente)});true;`);
+      return;
+    }
     // O JavaScript do lojista vai numa chamada só dele: um erro de sintaxe ali
     // não pode derrubar o observador de carrinho nem a API da página.
     if (doLojista !== null) referencia.current?.injectJavaScript(doLojista);
@@ -187,9 +205,9 @@ export function AbaWebView({
    * é opcional num e obrigatório no outro); derivar do `prop` evita escolher o
    * lado errado e quebrar a cada atualização do pacote.
    */
-  const aoRolar: NonNullable<ComponentProps<typeof WebView>['onScroll']> = (evento) => {
+  const aoRolar = useCallback<NonNullable<ComponentProps<typeof WebView>['onScroll']>>((evento) => {
     setNoTopo(evento.nativeEvent.contentOffset.y <= 0);
-  };
+  }, []);
 
   const aoErrarHttp = useCallback((evento: WebViewHttpErrorEvent): void => {
     // Só 5xx vira tela de erro. Um 404 é página da loja e o tema já desenha
@@ -212,6 +230,7 @@ export function AbaWebView({
       onShouldStartLoadWithRequest={aoPedirNavegacao}
       onNavigationStateChange={(estado: WebViewNavigation): void => {
         podeVoltar.current = estado.canGoBack;
+        urlAtual.current = estado.url;
       }}
       onLoadProgress={(evento: WebViewProgressEvent): void => {
         setProgresso(evento.nativeEvent.progress);

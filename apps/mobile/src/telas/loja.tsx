@@ -47,6 +47,16 @@ export function Loja({
   const [controles, setControles] = useState<ReadonlyMap<string, ControleDaAba>>(new Map());
   const [linkPendente, setLinkPendente] = useState<{ aba: string; caminho: string } | null>(null);
 
+  /*
+   * A config pode mudar com o app aberto — a busca em segundo plano traz uma
+   * versão nova, e o lojista pode ter removido uma aba. Sem isto, a aba ativa
+   * apontaria para um id que não existe mais e a tela ficaria vazia.
+   */
+  useEffect(() => {
+    if (primeira === undefined) return;
+    if (!abas.some((aba) => aba.id === ativa)) setAtiva(primeira.id);
+  }, [abas, ativa, primeira]);
+
   /* ------------------------------------------------------------ conexão */
 
   useEffect(() => {
@@ -114,10 +124,17 @@ export function Loja({
     [abas, config.store.url],
   );
 
+  // A URL de abertura é lida UMA vez. O efeito roda de novo quando a config
+  // muda, e reler levaria o cliente de volta ao link toda vez que isso
+  // acontecesse — no meio da navegação dele.
+  const inicialLida = useRef(false);
   useEffect(() => {
-    void Linking.getInitialURL().then((url) => {
-      if (url !== null) abrirCaminho(url);
-    });
+    if (!inicialLida.current) {
+      inicialLida.current = true;
+      void Linking.getInitialURL().then((url) => {
+        if (url !== null) abrirCaminho(url);
+      });
+    }
     const inscricao = Linking.addEventListener('url', ({ url }) => {
       abrirCaminho(url);
     });
@@ -201,22 +218,26 @@ export function Loja({
     <View style={[estilos.tela, { backgroundColor: config.theme.background }]}>
       <StatusBar style={config.theme.statusBar === 'light' ? 'light' : 'dark'} />
       <SafeAreaView edges={['top']} style={estilos.area}>
-        {abas
-          .filter((aba) => aba.webview)
-          .map((aba) => (
-            <AbaWebView
-              key={aba.id}
-              aba={aba}
-              config={config}
-              contextoDoApp={contextoDoApp}
-              contextoDasAcoes={contextoDasAcoes}
-              visivel={aba.id === ativa}
-              semConexao={semConexao}
-              aoAgir={aoAgir}
-              registrarControle={registrarControle}
-              aoCarregar={aba.id === primeira.id ? aoCarregar : undefined}
-            />
-          ))}
+        {/*
+         * Toda aba vira uma WebView. A Fase 4 põe aqui a caixa de avisos
+         * nativa, e até lá `abasUsaveis` não deixa uma aba dessas chegar até
+         * este ponto. Se chegasse — config só com abas nativas —, a loja abre
+         * no lugar, porque tela vazia com barra de abas é pior.
+         */}
+        {abas.map((aba) => (
+          <AbaWebView
+            key={aba.id}
+            aba={aba}
+            config={config}
+            contextoDoApp={contextoDoApp}
+            contextoDasAcoes={contextoDasAcoes}
+            visivel={aba.id === ativa}
+            semConexao={semConexao}
+            aoAgir={aoAgir}
+            registrarControle={registrarControle}
+            aoCarregar={aba.id === primeira.id ? aoCarregar : undefined}
+          />
+        ))}
       </SafeAreaView>
       {abas.length > 1 ? (
         <BarraDeAbas

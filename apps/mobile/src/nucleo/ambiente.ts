@@ -65,15 +65,29 @@ export function lerAmbiente(entrada: {
   };
 }
 
+/** O que o app já sabe fazer, independente do que o build configurou. */
+export interface RecursosImplementados {
+  /**
+   * O OneSignal está ligado no app?
+   *
+   * Ter `ONESIGNAL_APP_ID` no build NÃO basta: até a Fase 4 nada inicializa o
+   * SDK, e uma `REQUEST_PUSH_PERMISSION` chegaria a um `case` que não faz
+   * nada. No iOS o sistema mostra o pedido UMA vez; gastar essa vez sem ter
+   * onde registrar o aparelho é perder o cliente para sempre, em silêncio.
+   */
+  push: boolean;
+}
+
+/** A Fase 4 liga o push aqui, e a aba de avisos aparece junto. */
+export const IMPLEMENTADO: RecursosImplementados = { push: false };
+
 /** Os recursos nativos que este build realmente tem. */
 export function recursosDoBuild(ambiente: Ambiente): {
   push: boolean;
   eventos: boolean;
 } {
   return {
-    // O OneSignal entra na Fase 4. Sem o app ID, pedir permissão de push
-    // queimaria a única chance que o iOS dá, sem ter onde registrar ninguém.
-    push: ambiente.oneSignalAppId !== null,
+    push: IMPLEMENTADO.push && ambiente.oneSignalAppId !== null,
     // `cart_events` e `orders` chegam na Fase 5, com o `appId` e a API.
     eventos: false,
   };

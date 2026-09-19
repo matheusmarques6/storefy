@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { lerAmbiente, recursosDoBuild } from './ambiente';
+import { IMPLEMENTADO, lerAmbiente, recursosDoBuild } from './ambiente';
 
 const COMPLETO = {
   extra: {
@@ -64,14 +64,21 @@ describe('lerAmbiente', () => {
 });
 
 describe('recursosDoBuild', () => {
-  it('só liga o push quando existe app ID do OneSignal', () => {
-    expect(recursosDoBuild(lerAmbiente(COMPLETO)).push).toBe(true);
+  it('exige o app ID do OneSignal E o SDK ligado', () => {
+    // Ter a chave no build não basta: até a Fase 4 nada inicializa o SDK, e
+    // pedir permissão de push queimaria a única chance que o iOS dá.
+    expect(recursosDoBuild(lerAmbiente(COMPLETO)).push).toBe(IMPLEMENTADO.push);
 
-    const semPush = lerAmbiente({
+    const semChave = lerAmbiente({
       ...COMPLETO,
       extra: { ...COMPLETO.extra, oneSignalAppId: null },
     });
-    expect(recursosDoBuild(semPush).push).toBe(false);
+    expect(recursosDoBuild(semChave).push).toBe(false);
+  });
+
+  it('na Fase 1 o push está desligado', () => {
+    expect(IMPLEMENTADO.push).toBe(false);
+    expect(recursosDoBuild(lerAmbiente(COMPLETO)).push).toBe(false);
   });
 
   it('eventos seguem desligados até a Fase 5', () => {

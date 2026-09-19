@@ -45,15 +45,6 @@ export async function gravarCache(config: unknown): Promise<boolean> {
   }
 }
 
-/** Apaga o cache. Usado quando o app troca de loja no mesmo aparelho. */
-export async function limparCache(): Promise<void> {
-  try {
-    await AsyncStorage.removeItem(CHAVE_DO_CACHE);
-  } catch {
-    // Sem cache para apagar é o mesmo resultado que apagar com sucesso.
-  }
-}
-
 /** Busca a config publicada. Devolve `null` em qualquer falha. */
 export async function buscarNaRede(url: string): Promise<unknown> {
   const cancelador = new AbortController();
