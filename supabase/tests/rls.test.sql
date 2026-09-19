@@ -972,6 +972,211 @@ select tests.ok('prévia',
 
 reset role;
 
+-- ================== grupo 10: push, eventos e colunas de segredo (fase 3)
+
+-- A RLS é por LINHA; segredo é problema de COLUNA. Estas asserções provam que
+-- o `revoke ... grant (colunas)` está de pé, porque é o que separa "o token
+-- está criptografado" de "o token não chega ao navegador".
+
+select tests.login('a-owner@teste.local');
+set role authenticated;
+
+select tests.ok('segredo',
+  tests.bloqueado('select shopify_access_token_enc from public.stores limit 1'),
+  'owner NÃO lê o token da Shopify');
+
+select tests.ok('segredo',
+  tests.bloqueado('select onesignal_api_key_enc from public.apps limit 1'),
+  'owner NÃO lê a chave do OneSignal');
+
+select tests.ok('segredo',
+  tests.bloqueado('select * from public.stores limit 1'),
+  'um select * em stores FALHA em vez de vazar em silêncio');
+
+select tests.ok('segredo',
+  tests.contar('select count(*) from public.stores') >= 1,
+  'as colunas liberadas continuam legíveis');
+
+select tests.ok('segredo',
+  tests.bloqueado('select asc_key_enc from public.developer_accounts limit 1'),
+  'owner NÃO lê a chave da App Store Connect');
+
+select tests.ok('segredo',
+  tests.bloqueado('select google_service_account_enc from public.developer_accounts limit 1'),
+  'owner NÃO lê a conta de serviço do Google');
+
+reset role;
+
+-- --------------------------------------------------------------- campanhas
+
+select tests.login('a-member@teste.local');
+set role authenticated;
+
+select tests.ok('push',
+  tests.bloqueado(format(
+    'insert into public.push_campaigns (app_id, title, body) values (%L, ''Oi'', ''Corpo'')',
+    (select app_a from tests.lojas))),
+  'member NÃO cria campanha');
+
+reset role;
+
+select tests.login('a-owner@teste.local');
+set role authenticated;
+
+do $$
+declare
+  v_app uuid := (select app_a from tests.lojas);
+  v_campanha uuid;
+  v_bloqueado boolean;
+begin
+  insert into public.push_campaigns (app_id, title, body, deep_link)
+  values (v_app, 'Novidades', 'Chegou coleção nova', '/collections/novidades')
+  returning id into v_campanha;
+  perform tests.ok('push', v_campanha is not null, 'owner cria campanha');
+
+  perform tests.ok('push',
+    (select count(*) from public.audit_logs
+      where entity = 'push_campaigns' and entity_id = v_campanha) = 1,
+    'a criação da campanha vai para a auditoria');
+
+  -- agendada sem horário é campanha que nunca sai
+  v_bloqueado := false;
+  begin
+    update public.push_campaigns set status = 'scheduled' where id = v_campanha;
+  exception when others then
+    v_bloqueado := true;
+  end;
+  perform tests.ok('push', v_bloqueado, 'agendar sem horário é recusado pelo banco');
+
+  update public.push_campaigns
+     set status = 'scheduled', scheduled_at = now() + interval '1 hour'
+   where id = v_campanha;
+  perform tests.ok('push',
+    (select status from public.push_campaigns where id = v_campanha) = 'scheduled',
+    'agendar com horário funciona');
+end
+$$;
+
+-- Campanha enviada não volta atrás: o painel mostraria uma coisa e o celular
+-- do cliente outra. Quem marca como enviada é o job, pela service role.
+reset role;
+update public.push_campaigns set status = 'sent', sent_at = now()
+ where app_id = (select app_a from tests.lojas);
+
+select tests.login('a-owner@teste.local');
+set role authenticated;
+
+select tests.ok('push',
+  tests.bloqueado(
+    'update public.push_campaigns set title = ''Trocado'' where status = ''sent'''),
+  'owner NÃO edita campanha já enviada');
+
+select tests.ok('push',
+  tests.bloqueado('delete from public.push_campaigns where status = ''sent'''),
+  'owner NÃO exclui campanha já enviada');
+
+-- ------------------------------------------------------------- automações
+
+do $$
+declare
+  v_app uuid := (select app_a from tests.lojas);
+  v_bloqueado boolean := false;
+begin
+  insert into public.push_automations (app_id, type, title, body)
+  values (v_app, 'abandoned_cart', 'Esqueceu algo?', 'Seu carrinho está esperando');
+
+  begin
+    insert into public.push_automations (app_id, type, title, body)
+    values (v_app, 'abandoned_cart', 'Outra', 'Outra');
+  exception when others then
+    v_bloqueado := true;
+  end;
+  perform tests.ok('push', v_bloqueado,
+    'duas automações do mesmo tipo disputariam o mesmo gatilho, e o banco recusa');
+
+  perform tests.ok('push',
+    (select delay_minutes from public.push_automations
+      where app_id = v_app and type = 'abandoned_cart') = 60,
+    'o carrinho abandonado nasce com a espera de 60 minutos do plano');
+end
+$$;
+
+reset role;
+
+-- -------------------------------------------- o app escreve, o painel não
+
+-- `devices`, `cart_events` e `automation_runs` só entram pela service role.
+insert into public.devices (app_id, onesignal_subscription_id, platform)
+values ((select app_a from tests.lojas), 'sub-teste-1', 'ios');
+
+insert into public.cart_events (app_id, item_count, event)
+values ((select app_a from tests.lojas), 2, 'add');
+
+select tests.login('a-owner@teste.local');
+set role authenticated;
+
+select tests.ok('push',
+  tests.contar('select count(*) from public.devices') = 1,
+  'o lojista enxerga o aparelho que o app registrou');
+
+select tests.ok('push',
+  tests.bloqueado(format(
+    'insert into public.devices (app_id, onesignal_subscription_id, platform) values (%L, ''forjado'', ''ios'')',
+    (select app_a from tests.lojas))),
+  'o painel NÃO inventa aparelho');
+
+select tests.ok('push',
+  tests.bloqueado(format(
+    'insert into public.cart_events (app_id, item_count, event) values (%L, 1, ''add'')',
+    (select app_a from tests.lojas))),
+  'o painel NÃO inventa evento de carrinho');
+
+select tests.ok('push',
+  tests.contar('select count(*) from public.cart_events') = 1,
+  'mas enxerga os eventos que o app mandou');
+
+reset role;
+
+-- ------------------------------------------------ a outra organização
+
+select tests.login('b-owner@teste.local');
+set role authenticated;
+
+select tests.ok('push',
+  tests.contar('select count(*) from public.push_campaigns') = 0,
+  'B não enxerga as campanhas de A');
+
+select tests.ok('push',
+  tests.contar('select count(*) from public.devices') = 0,
+  'B não enxerga os aparelhos de A');
+
+select tests.ok('push',
+  tests.contar('select count(*) from public.cart_events') = 0,
+  'B não enxerga os eventos de A');
+
+select tests.ok('push',
+  tests.contar('select count(*) from public.push_automations') = 0,
+  'B não enxerga as automações de A');
+
+reset role;
+
+select tests.logout();
+set role anon;
+
+select tests.ok('push',
+  tests.contar('select count(*) from public.devices') = 0,
+  'anon não lê aparelho nenhum');
+
+select tests.ok('push',
+  tests.contar('select count(*) from public.push_campaigns') = 0,
+  'anon não lê campanha nenhuma');
+
+select tests.ok('segredo',
+  tests.bloqueado('select shopify_access_token_enc from public.stores limit 1'),
+  'anon muito menos lê o token da Shopify');
+
+reset role;
+
 -- ======================================================== relatório
 
 \o

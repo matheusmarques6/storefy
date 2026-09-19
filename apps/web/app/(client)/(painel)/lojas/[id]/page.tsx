@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { ArrowLeft, CheckCircle2 } from 'lucide-react';
 import { ROTULO_STATUS_LOJA, podeEscrever, podeExcluir } from '@storefy/db';
+import { COLUNAS_DA_LOJA } from '@storefy/db';
 import { exigirContextoCliente } from '@/lib/contexto';
 import { criarClientServidor } from '@/lib/supabase/server';
 import { editarLoja } from '../acoes';
@@ -29,7 +30,12 @@ export default async function PaginaLoja({
   const supabase = await criarClientServidor();
   // A RLS já limita ao que a organização do usuário pode ver: uma loja de outra
   // empresa simplesmente não é encontrada, e vira 404.
-  const { data: loja } = await supabase.from('stores').select('*').eq('id', id).maybeSingle();
+  // `COLUNAS_DA_LOJA` e não `*`: o token da Shopify não é legível pelo painel.
+  const { data: loja } = await supabase
+    .from('stores')
+    .select(COLUNAS_DA_LOJA)
+    .eq('id', id)
+    .maybeSingle();
 
   if (loja == null) notFound();
 

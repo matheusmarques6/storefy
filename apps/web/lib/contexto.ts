@@ -12,7 +12,12 @@ import 'server-only';
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import type { User } from '@supabase/supabase-js';
-import type { MembershipRole, Organization, Store } from '@storefy/db';
+import {
+  COLUNAS_DA_LOJA,
+  type LojaVisivel,
+  type MembershipRole,
+  type Organization,
+} from '@storefy/db';
 import { criarClientServidor } from '@/lib/supabase/server';
 
 export const COOKIE_ORG = 'storefy_org';
@@ -24,10 +29,10 @@ export interface ContextoCliente {
   papel: MembershipRole;
   /** Todas as organizações do usuário, para trocar de contexto. */
   organizacoes: { organizacao: Organization; papel: MembershipRole }[];
-  /** Lojas da organização ativa. */
-  lojas: Store[];
+  /** Lojas da organização ativa, sem as colunas de segredo. */
+  lojas: LojaVisivel[];
   /** Loja selecionada. Null só quando a organização ainda não tem nenhuma. */
-  lojaAtiva: Store | null;
+  lojaAtiva: LojaVisivel | null;
 }
 
 /** Usuário autenticado, ou null. */
@@ -87,7 +92,10 @@ export async function exigirContextoCliente(): Promise<ContextoCliente> {
 
   const { data: lojas, error: erroLojas } = await supabase
     .from('stores')
-    .select('*')
+    // Colunas listadas, e não `*`: o banco revoga a leitura de
+    // `shopify_access_token_enc` para `authenticated`, então um `*` aqui
+    // falharia com "permission denied" em vez de trazer a loja.
+    .select(COLUNAS_DA_LOJA)
     .eq('org_id', escolhida.organizacao.id)
     .order('created_at', { ascending: true });
 

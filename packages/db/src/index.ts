@@ -27,6 +27,37 @@ export type Store = Row<'stores'>;
 export type App = Row<'apps'>;
 export type AppConfigRow = Row<'app_configs'>;
 export type AuditLog = Row<'audit_logs'>;
+export type Device = Row<'devices'>;
+export type PushCampaign = Row<'push_campaigns'>;
+export type PushAutomation = Row<'push_automations'>;
+export type AutomationRun = Row<'automation_runs'>;
+export type CartEvent = Row<'cart_events'>;
+export type DeveloperAccount = Row<'developer_accounts'>;
+
+/**
+ * Colunas de segredo, que o navegador nunca vê.
+ *
+ * O banco revoga a leitura delas para `authenticated` (migration
+ * `20260919000005_rls_push.sql`): RLS é por linha, e segredo é problema de
+ * coluna. Um `select *` no painel passa a FALHAR em vez de vazar em silêncio,
+ * e estes tipos existem para o TypeScript dizer o mesmo antes de a query sair.
+ */
+export type SemSegredos<T> = Omit<T, `${string}_enc`>;
+
+/** Loja como o painel a enxerga: tudo menos o token da Shopify. */
+export type LojaVisivel = SemSegredos<Store>;
+/** App como o painel o enxerga: tudo menos a chave do OneSignal. */
+export type AppVisivel = SemSegredos<App>;
+/** Conta de desenvolvedor sem as chaves Apple e Google. */
+export type ContaDeDesenvolvedorVisivel = SemSegredos<DeveloperAccount>;
+
+/** As colunas de `stores` que o painel pode pedir. */
+export const COLUNAS_DA_LOJA =
+  'id, org_id, name, shop_domain, primary_url, platform, shopify_scopes, status, created_at, updated_at' as const;
+
+/** As colunas de `apps` que o painel pode pedir. */
+export const COLUNAS_DO_APP =
+  'id, store_id, display_name, bundle_id_ios, package_android, expo_project_id, onesignal_app_id, ios_asc_app_id, apple_team_id, current_config_version, icon_path, splash_path, created_at, updated_at' as const;
 
 export type MembershipRole = Enum<'membership_role'>;
 export type PlatformAdminRole = Enum<'platform_admin_role'>;
@@ -35,6 +66,13 @@ export type StoreStatus = Enum<'store_status'>;
 export type StorePlatform = Enum<'store_platform'>;
 export type AppConfigStatus = Enum<'app_config_status'>;
 export type AuditAction = Enum<'audit_action'>;
+export type DevicePlatform = Enum<'device_platform'>;
+export type PushCampaignStatus = Enum<'push_campaign_status'>;
+export type PushAutomationType = Enum<'push_automation_type'>;
+export type AutomationRunStatus = Enum<'automation_run_status'>;
+export type CartEventType = Enum<'cart_event_type'>;
+export type DeveloperPlatform = Enum<'developer_platform'>;
+export type DeveloperAccountStatus = Enum<'developer_account_status'>;
 
 /**
  * Papéis autorizados a criar e editar lojas e dados da organização.

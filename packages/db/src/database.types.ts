@@ -148,6 +148,208 @@ export type Database = {
         };
         Relationships: [];
       };
+      automation_runs: {
+        Row: {
+          id: string;
+          automation_id: string;
+          device_id: string;
+          trigger_ref: string | null;
+          status: Database["public"]["Enums"]["automation_run_status"];
+          scheduled_for: string;
+          sent_at: string | null;
+          canceled_reason: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          automation_id: string;
+          device_id: string;
+          trigger_ref?: string | null;
+          status?: Database["public"]["Enums"]["automation_run_status"];
+          scheduled_for: string;
+          sent_at?: string | null;
+          canceled_reason?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          automation_id?: string;
+          device_id?: string;
+          trigger_ref?: string | null;
+          status?: Database["public"]["Enums"]["automation_run_status"];
+          scheduled_for?: string;
+          sent_at?: string | null;
+          canceled_reason?: string | null;
+          created_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "automation_runs_automation_id_fkey";
+            columns: ["automation_id"];
+            referencedRelation: "push_automations";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "automation_runs_device_id_fkey";
+            columns: ["device_id"];
+            referencedRelation: "devices";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      cart_events: {
+        Row: {
+          id: string;
+          app_id: string;
+          device_id: string | null;
+          cart_token: string | null;
+          item_count: number;
+          value_cents: number | null;
+          currency: string | null;
+          event: Database["public"]["Enums"]["cart_event_type"];
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          app_id: string;
+          device_id?: string | null;
+          cart_token?: string | null;
+          item_count: number;
+          value_cents?: number | null;
+          currency?: string | null;
+          event: Database["public"]["Enums"]["cart_event_type"];
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          app_id?: string;
+          device_id?: string | null;
+          cart_token?: string | null;
+          item_count?: number;
+          value_cents?: number | null;
+          currency?: string | null;
+          event?: Database["public"]["Enums"]["cart_event_type"];
+          created_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "cart_events_app_id_fkey";
+            columns: ["app_id"];
+            referencedRelation: "apps";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "cart_events_device_id_fkey";
+            columns: ["device_id"];
+            referencedRelation: "devices";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      developer_accounts: {
+        Row: {
+          id: string;
+          org_id: string;
+          platform: Database["public"]["Enums"]["developer_platform"];
+          status: Database["public"]["Enums"]["developer_account_status"];
+          apple_team_id: string | null;
+          asc_key_id: string | null;
+          asc_issuer_id: string | null;
+          asc_key_enc: string | null;
+          apns_key_id: string | null;
+          apns_key_enc: string | null;
+          google_service_account_enc: string | null;
+          verified_at: string | null;
+          notes: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          org_id: string;
+          platform: Database["public"]["Enums"]["developer_platform"];
+          status?: Database["public"]["Enums"]["developer_account_status"];
+          apple_team_id?: string | null;
+          asc_key_id?: string | null;
+          asc_issuer_id?: string | null;
+          asc_key_enc?: string | null;
+          apns_key_id?: string | null;
+          apns_key_enc?: string | null;
+          google_service_account_enc?: string | null;
+          verified_at?: string | null;
+          notes?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          org_id?: string;
+          platform?: Database["public"]["Enums"]["developer_platform"];
+          status?: Database["public"]["Enums"]["developer_account_status"];
+          apple_team_id?: string | null;
+          asc_key_id?: string | null;
+          asc_issuer_id?: string | null;
+          asc_key_enc?: string | null;
+          apns_key_id?: string | null;
+          apns_key_enc?: string | null;
+          google_service_account_enc?: string | null;
+          verified_at?: string | null;
+          notes?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "developer_accounts_org_id_fkey";
+            columns: ["org_id"];
+            referencedRelation: "organizations";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      devices: {
+        Row: {
+          id: string;
+          app_id: string;
+          onesignal_subscription_id: string;
+          platform: Database["public"]["Enums"]["device_platform"];
+          app_version: string | null;
+          external_id: string | null;
+          customer_email_hash: string | null;
+          last_seen_at: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          app_id: string;
+          onesignal_subscription_id: string;
+          platform: Database["public"]["Enums"]["device_platform"];
+          app_version?: string | null;
+          external_id?: string | null;
+          customer_email_hash?: string | null;
+          last_seen_at?: string;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          app_id?: string;
+          onesignal_subscription_id?: string;
+          platform?: Database["public"]["Enums"]["device_platform"];
+          app_version?: string | null;
+          external_id?: string | null;
+          customer_email_hash?: string | null;
+          last_seen_at?: string;
+          created_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "devices_app_id_fkey";
+            columns: ["app_id"];
+            referencedRelation: "apps";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       memberships: {
         Row: {
           org_id: string;
@@ -267,6 +469,116 @@ export type Database = {
           },
         ];
       };
+      push_automations: {
+        Row: {
+          id: string;
+          app_id: string;
+          type: Database["public"]["Enums"]["push_automation_type"];
+          enabled: boolean;
+          delay_minutes: number;
+          title: string;
+          body: string;
+          deep_link: string | null;
+          stats: Json;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          app_id: string;
+          type: Database["public"]["Enums"]["push_automation_type"];
+          enabled?: boolean;
+          delay_minutes?: number;
+          title: string;
+          body: string;
+          deep_link?: string | null;
+          stats?: Json;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          app_id?: string;
+          type?: Database["public"]["Enums"]["push_automation_type"];
+          enabled?: boolean;
+          delay_minutes?: number;
+          title?: string;
+          body?: string;
+          deep_link?: string | null;
+          stats?: Json;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "push_automations_app_id_fkey";
+            columns: ["app_id"];
+            referencedRelation: "apps";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      push_campaigns: {
+        Row: {
+          id: string;
+          app_id: string;
+          title: string;
+          body: string;
+          image_path: string | null;
+          deep_link: string | null;
+          segment: Json;
+          status: Database["public"]["Enums"]["push_campaign_status"];
+          scheduled_at: string | null;
+          sent_at: string | null;
+          onesignal_notification_id: string | null;
+          stats: Json;
+          created_by: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          app_id: string;
+          title: string;
+          body: string;
+          image_path?: string | null;
+          deep_link?: string | null;
+          segment?: Json;
+          status?: Database["public"]["Enums"]["push_campaign_status"];
+          scheduled_at?: string | null;
+          sent_at?: string | null;
+          onesignal_notification_id?: string | null;
+          stats?: Json;
+          created_by?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          app_id?: string;
+          title?: string;
+          body?: string;
+          image_path?: string | null;
+          deep_link?: string | null;
+          segment?: Json;
+          status?: Database["public"]["Enums"]["push_campaign_status"];
+          scheduled_at?: string | null;
+          sent_at?: string | null;
+          onesignal_notification_id?: string | null;
+          stats?: Json;
+          created_by?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "push_campaigns_app_id_fkey";
+            columns: ["app_id"];
+            referencedRelation: "apps";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       stores: {
         Row: {
           id: string;
@@ -343,9 +655,16 @@ export type Database = {
     Enums: {
       app_config_status: "draft" | "published" | "archived";
       audit_action: "create" | "update" | "delete";
+      automation_run_status: "scheduled" | "sent" | "canceled" | "failed";
+      cart_event_type: "add" | "update" | "checkout_started" | "purchased";
+      developer_account_status: "pending" | "invited" | "verified" | "error";
+      developer_platform: "apple" | "google";
+      device_platform: "ios" | "android";
       membership_role: "owner" | "admin" | "member";
       org_status: "trialing" | "active" | "past_due" | "canceled";
       platform_admin_role: "superadmin" | "support";
+      push_automation_type: "welcome" | "abandoned_cart" | "back_in_stock" | "order_shipped" | "inactive_7d" | "custom_webhook";
+      push_campaign_status: "draft" | "scheduled" | "sending" | "sent" | "failed" | "canceled";
       store_platform: "shopify" | "other";
       store_status: "draft" | "building" | "in_review" | "live" | "paused";
     };

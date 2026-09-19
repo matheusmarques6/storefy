@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Check, ChevronsUpDown, Plus, Store as IconeLoja } from 'lucide-react';
 import { toast } from 'sonner';
-import type { Store } from '@storefy/db';
+import type { LojaVisivel } from '@storefy/db';
 import { trocarLojaAtiva } from './acoes';
 import { ehControleDeFluxoDoNext, mensagemDeErro } from '@/lib/erros';
 import { Button } from '@/components/ui/button';
@@ -22,11 +22,17 @@ import {
  * Seletor de loja ativa. A loja escolhida define o contexto de todas as telas
  * (regra 2 das inegociáveis).
  */
-export function SeletorLoja({ lojas, lojaAtiva }: { lojas: Store[]; lojaAtiva: Store | null }) {
+export function SeletorLoja({
+  lojas,
+  lojaAtiva,
+}: {
+  lojas: LojaVisivel[];
+  lojaAtiva: LojaVisivel | null;
+}) {
   const router = useRouter();
   const [pendente, iniciar] = useTransition();
 
-  function selecionar(loja: Store) {
+  function selecionar(loja: LojaVisivel) {
     if (loja.id === lojaAtiva?.id) return;
     iniciar(() => {
       trocarLojaAtiva(loja.id)
