@@ -1587,13 +1587,26 @@ select tests.ok('carrinho',
 
 reset role;
 
--- O horário agendado respeita a janela de silêncio DA LOJA. Em vez de esperar
--- a madrugada chegar, o teste escolhe um fuso que já esteja nela agora — a
--- Terra sempre tem um.
+/*
+ * O horário agendado respeita a janela de silêncio DA LOJA. Em vez de esperar
+ * a madrugada chegar, o teste escolhe um fuso que já esteja nela agora.
+ *
+ * A BUSCA É EM TODOS OS FUSOS, e não só nos das Américas. Os fusos do mundo
+ * cobrem 26 horas de deslocamento, então sempre existe um em que agora é
+ * madrugada; os das Américas cobrem 10, e entre umas 16h e 18h UTC NENHUM
+ * deles está na janela — o `update` gravava null, o `not null` da coluna
+ * estourava, e o teste falhava por causa da hora do dia em que rodou.
+ */
+select tests.ok('silêncio',
+  exists (
+    select 1 from pg_timezone_names
+     where extract(hour from (now() + interval '60 minutes') at time zone name) not between 8 and 21
+  ),
+  'em algum lugar do mundo é madrugada agora');
+
 update public.stores set timezone = (
   select name from pg_timezone_names
    where extract(hour from (now() + interval '60 minutes') at time zone name) not between 8 and 21
-     and name like 'America/%'
    limit 1
 ) where id = (select loja_a from tests.lojas);
 
@@ -2232,6 +2245,37 @@ select tests.ok('auditoria',
      where entity = 'builds' and action = 'create'
   ),
   'pedir um build fica na trilha de auditoria');
+
+/*
+ * As colunas do envio (fase 4).
+ *
+ * `manual_action` decide qual passo a passo a tela mostra. Se o banco aceitasse
+ * qualquer texto ali, um valor errado gravado por um workflow com bug viraria
+ * um card em branco na tela do lojista — um erro que some sem dizer nada.
+ */
+select tests.ok('builds',
+  tests.erro($q$update public.builds set manual_action = 'qualquer_coisa'$q$),
+  'manual_action não aceita valor fora da lista');
+
+select tests.ok('builds',
+  not tests.erro($q$update public.builds set manual_action = 'play_primeiro_envio'$q$)
+  and not tests.erro($q$update public.builds set manual_action = null$q$),
+  'e aceita os valores que a tela sabe mostrar');
+
+/*
+ * O link do binário NÃO é segredo: é justamente o que o lojista baixa quando o
+ * primeiro envio ao Google tem de ser manual. Ele precisa chegar à tela dele.
+ */
+select tests.login('a-owner@teste.local');
+set role authenticated;
+
+select tests.ok('builds',
+  tests.contar($q$select count(*) from public.builds
+               where artifact_url is not null or artifact_url is null$q$) = 1,
+  'o lojista lê artifact_url, submission_id e manual_action do próprio build');
+
+reset role;
+select tests.logout();
 
 /*
  * O Realtime da tela de publicação (C12).

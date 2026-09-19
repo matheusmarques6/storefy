@@ -1,0 +1,191 @@
+# Entrega o binário de uma loja à App Store ou à Play Store (passo 5 do plano).
+#
+# POR QUE É UM WORKFLOW SEPARADO: `build-store-app.yml` roda `eas build` com
+# `--no-wait` e termina em poucos minutos; o binário só fica pronto 15 a 30
+# minutos depois. Quem sabe que ele ficou pronto é o webhook do EAS, e é de lá
+# que este workflow é disparado.
+#
+# OS MESMOS SEGREDOS do workflow de build: STOREFY_API_URL, BUILD_API_SECRET e
+# EXPO_TOKEN.
+
+name: submit-store-app
+
+on:
+  repository_dispatch:
+    types: [storefy-submit]
+
+# Um envio por build. O GitHub reexecuta workflow sozinho, e dois `eas submit`
+# do mesmo binário confundem a contagem de versão na loja.
+concurrency:
+  group: submit-${{ github.event.client_payload.buildId }}
+  cancel-in-progress: false
+
+jobs:
+  submit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Conferir a configuração
+        run: |
+          faltando=""
+          [ -n "${{ secrets.STOREFY_API_URL }}" ]  || faltando="$faltando STOREFY_API_URL"
+          [ -n "${{ secrets.BUILD_API_SECRET }}" ] || faltando="$faltando BUILD_API_SECRET"
+          [ -n "${{ secrets.EXPO_TOKEN }}" ]       || faltando="$faltando EXPO_TOKEN"
+          if [ -n "$faltando" ]; then
+            echo "::error::Faltam segredos no repositório:$faltando"
+            exit 1
+          fi
+
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Buscar as credenciais da loja
+        id: dados
+        env:
+          API: ${{ secrets.STOREFY_API_URL }}
+          SEGREDO: ${{ secrets.BUILD_API_SECRET }}
+          BUILD_ID: ${{ github.event.client_payload.buildId }}
+        run: |
+          # `etapa: submit` devolve SÓ a credencial da loja de aplicativos — sem
+          # config, sem o segredo do app, sem link de asset. O envio não precisa
+          # de nada disso, e espalhar segredo por onde não é preciso é como um
+          # vazamento começa.
+          http=$(curl -sS -o /tmp/submit.json -w '%{http_code}' \
+            --fail-with-body \
+            -X POST "$API/api/internal/build" \
+            -H "Authorization: Bearer $SEGREDO" \
+            -H 'Content-Type: application/json' \
+            -d "{\"buildId\":\"$BUILD_ID\",\"etapa\":\"submit\"}") || true
+
+          if [ "$http" != "200" ]; then
+            echo "::error::A Storefy não liberou as credenciais deste envio (HTTP $http)."
+            exit 1
+          fi
+
+          # Só o que NÃO é segredo sai para as variáveis de passo.
+          {
+            echo "platform=$(jq -r '.platform' /tmp/submit.json)"
+            echo "profile=$(jq -r '.profile' /tmp/submit.json)"
+            echo "eas_build_id=$(jq -r '.easBuildId // empty' /tmp/submit.json)"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Escrever as credenciais no disco
+        env:
+          PLATFORM: ${{ steps.dados.outputs.platform }}
+        run: |
+          mkdir -p /tmp/cred && chmod 700 /tmp/cred
+
+          if [ "$PLATFORM" = "ios" ]; then
+            jq -r '.credenciais.ascKey // empty' /tmp/submit.json > /tmp/cred/asc.p8
+            if [ ! -s /tmp/cred/asc.p8 ]; then
+              echo "::error::A conta Apple desta loja não está conectada."
+              exit 1
+            fi
+          else
+            jq -r '.credenciais.googleServiceAccount // empty' /tmp/submit.json > /tmp/cred/google.json
+            if [ ! -s /tmp/cred/google.json ]; then
+              echo "::error::A conta Google desta loja não está conectada."
+              exit 1
+            fi
+          fi
+          chmod 600 /tmp/cred/*
+
+      - name: Enviar para a loja
+        id: envio
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+          PLATFORM: ${{ steps.dados.outputs.platform }}
+          PROFILE: ${{ steps.dados.outputs.profile }}
+          EAS_BUILD_ID: ${{ steps.dados.outputs.eas_build_id }}
+        working-directory: apps/mobile
+        run: |
+          # Os nomes abaixo são os que `eas.json` interpola com `$`. Vão pelo
+          # ambiente, e não pela linha de comando: `ps` mostra argumento, não
+          # mostra ambiente.
+          export EXPO_ASC_API_KEY_PATH=/tmp/cred/asc.p8
+          export EXPO_ASC_KEY_ID=$(jq -r '.credenciais.ascKeyId // empty' /tmp/submit.json)
+          export EXPO_ASC_ISSUER_ID=$(jq -r '.credenciais.ascIssuerId // empty' /tmp/submit.json)
+          export EXPO_APPLE_TEAM_ID=$(jq -r '.credenciais.appleTeamId // empty' /tmp/submit.json)
+          export EXPO_GOOGLE_SERVICE_ACCOUNT_PATH=/tmp/cred/google.json
+          export EAS_PROJECT_ID=$(jq -r '.expoProjectId // empty' /tmp/submit.json)
+          export APP_NAME=$(jq -r '.nomeDoApp' /tmp/submit.json)
+          export IOS_BUNDLE_ID=$(jq -r '.bundleIdIos // empty' /tmp/submit.json)
+          export ANDROID_PACKAGE=$(jq -r '.packageAndroid // empty' /tmp/submit.json)
+          export STORE_ID=$(jq -r '.storeId' /tmp/submit.json)
+
+          if [ -z "$EAS_BUILD_ID" ]; then
+            echo "::error::Este build não tem id no EAS; não há binário para enviar."
+            exit 1
+          fi
+
+          # A saída inteira vai para um arquivo: quando o envio falha, é dela
+          # que sai a explicação que o lojista lê no painel.
+          set +e
+          pnpm dlx eas-cli@latest submit \
+            --platform "$PLATFORM" \
+            --profile "$PROFILE" \
+            --id "$EAS_BUILD_ID" \
+            --non-interactive --json > /tmp/submit-saida.json 2> /tmp/submit-erro.txt
+          codigo=$?
+          set -e
+
+          if [ $codigo -ne 0 ]; then
+            # O erro vai para o log da execução e para o passo de falha; nunca
+            # para a saída padrão de um passo que possa ser ecoado com segredo.
+            tail -c 4000 /tmp/submit-erro.txt
+            exit $codigo
+          fi
+
+          echo "submission_id=$(jq -r '.id // empty' /tmp/submit-saida.json)" >> "$GITHUB_OUTPUT"
+
+      - name: Avisar que foi enviado
+        if: success()
+        env:
+          API: ${{ secrets.STOREFY_API_URL }}
+          SEGREDO: ${{ secrets.BUILD_API_SECRET }}
+          BUILD_ID: ${{ github.event.client_payload.buildId }}
+        run: |
+          curl -sS -X POST "$API/api/internal/build/status" \
+            -H "Authorization: Bearer $SEGREDO" \
+            -H 'Content-Type: application/json' \
+            -d "$(jq -n \
+              --arg id "$BUILD_ID" \
+              --arg sub "${{ steps.envio.outputs.submission_id }}" \
+              '{buildId: $id, status: "submitted"} + (if $sub == "" then {} else {submissionId: $sub} end)')" \
+            > /dev/null
+
+      # Sem isto, um envio que morre deixa o build em "Binário pronto, indo para
+      # a loja" para sempre — e o lojista espera por algo que já morreu.
+      - name: Avisar que o envio falhou
+        if: failure()
+        env:
+          API: ${{ secrets.STOREFY_API_URL }}
+          SEGREDO: ${{ secrets.BUILD_API_SECRET }}
+          BUILD_ID: ${{ github.event.client_payload.buildId }}
+          PLATFORM: ${{ steps.dados.outputs.platform }}
+        run: |
+          bruto=$(tail -c 3000 /tmp/submit-erro.txt 2>/dev/null || echo "")
+          # A tradução para português e a decisão do passo manual são da
+          # Storefy, e não deste shell: a rota `/api/internal/build/status`
+          # recebe o texto cru e a plataforma.
+          curl -sS -X POST "$API/api/internal/build/status" \
+            -H "Authorization: Bearer $SEGREDO" \
+            -H 'Content-Type: application/json' \
+            -d "$(jq -n \
+              --arg id "$BUILD_ID" \
+              --arg p "$PLATFORM" \
+              --arg e "$bruto" \
+              --arg url "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
+              '{buildId: $id, status: "errored", etapa: "submit", plataforma: $p, erroBruto: $e, logsUrl: $url}')" \
+            > /dev/null || true
+
+      - name: Limpar os segredos do disco
+        if: always()
+        run: rm -rf /tmp/cred /tmp/submit.json /tmp/submit-saida.json /tmp/submit-erro.txt

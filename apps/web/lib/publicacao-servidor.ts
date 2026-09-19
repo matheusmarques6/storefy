@@ -14,6 +14,8 @@ import type { EstadoDaPublicacao } from '@/lib/checklist-de-publicacao';
 
 type Client = SupabaseClient<Database>;
 
+export type AcaoManualDoBuild = 'play_primeiro_envio' | 'envio_manual';
+
 export interface BuildNaLista {
   id: string;
   platform: 'ios' | 'android';
@@ -22,8 +24,23 @@ export interface BuildNaLista {
   buildNumber: number | null;
   error: string | null;
   logsUrl: string | null;
+  /** Link do binário, quando o lojista precisa enviá-lo à mão. */
+  artifactUrl: string | null;
+  /** O passo manual que destrava este build, quando existe um. */
+  acaoManual: AcaoManualDoBuild | null;
   createdAt: string;
   finishedAt: string | null;
+}
+
+/**
+ * Lê a coluna `manual_action` sem confiar no texto que veio.
+ *
+ * A coluna é texto com `check` no banco, e não enum: um valor que o banco
+ * aceite mas a tela não conheça viraria um card em branco. Aqui ele vira
+ * `null`, e a tela cai no caminho normal do erro.
+ */
+export function lerAcaoManual(valor: string | null): AcaoManualDoBuild | null {
+  return valor === 'play_primeiro_envio' || valor === 'envio_manual' ? valor : null;
 }
 
 export interface DadosDaPublicacao {
@@ -70,7 +87,7 @@ export async function dadosDaPublicacao(
     supabase
       .from('builds')
       .select(
-        'id, platform, status, version, build_number, error, logs_url, created_at, finished_at',
+        'id, platform, status, version, build_number, error, logs_url, artifact_url, manual_action, created_at, finished_at',
       )
       .eq('app_id', app.id)
       .order('created_at', { ascending: false })
@@ -101,6 +118,8 @@ export async function dadosDaPublicacao(
       buildNumber: linha.build_number,
       error: linha.error,
       logsUrl: linha.logs_url,
+      artifactUrl: linha.artifact_url,
+      acaoManual: lerAcaoManual(linha.manual_action),
       createdAt: linha.created_at,
       finishedAt: linha.finished_at,
     })),

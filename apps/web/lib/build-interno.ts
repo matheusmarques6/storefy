@@ -19,11 +19,28 @@ import 'server-only';
  *   estiver na fila. Um buildId antigo não devolve credencial nenhuma.
  */
 import { z } from 'zod';
+import type { Database } from '@storefy/db';
 import { iguaisEmTempoConstante } from '@/lib/cripto';
+
+type StatusDeBuild = Database['public']['Enums']['build_status'];
 
 export const CABECALHO_DO_SEGREDO = 'authorization';
 
-export const CorpoDoBuild = z.object({ buildId: z.uuid() });
+/**
+ * O que o workflow manda.
+ *
+ * `etapa` separa as duas visitas do runner: a GERAÇÃO precisa da config, dos
+ * assets e de tudo; o ENVIO precisa só da credencial da loja de aplicativos.
+ * São dois momentos com riscos diferentes, e dar a mesma resposta aos dois
+ * entregaria o segredo do app e a config inteira a quem só ia chamar o
+ * `eas submit`.
+ */
+export const CorpoDoBuild = z.object({
+  buildId: z.uuid(),
+  etapa: z.enum(['build', 'submit']).default('build'),
+});
+
+export type Etapa = z.infer<typeof CorpoDoBuild>['etapa'];
 
 export type Autorizacao = { ok: true } | { ok: false; status: number; motivo: string };
 
@@ -48,11 +65,50 @@ export function autorizarWorkflow(
   return { ok: true };
 }
 
-/** Os status em que faz sentido entregar credenciais. */
-export const STATUS_QUE_PODEM_BUSCAR = ['queued', 'building'] as const;
+/**
+ * Os status em que faz sentido entregar credenciais, por etapa.
+ *
+ * A janela é curta de propósito, e é diferente em cada etapa: um `buildId`
+ * vazado — ele viaja no `client_payload`, que é visível para quem lê as
+ * execuções do repositório — só vale enquanto o build está naquele momento.
+ * Um build aprovado não devolve credencial nenhuma.
+ */
+export const STATUS_QUE_PODEM_BUSCAR: Record<Etapa, readonly string[]> = {
+  build: ['queued', 'building'],
+  // O envio começa quando o binário fica pronto. `submitted` entra porque o
+  // GitHub reexecuta workflow, e uma reexecução do envio não pode virar 404.
+  submit: ['finished', 'submitted'],
+};
 
-export function podeBuscarCredenciais(status: string): boolean {
-  return (STATUS_QUE_PODEM_BUSCAR as readonly string[]).includes(status);
+export function podeBuscarCredenciais(status: string, etapa: Etapa = 'build'): boolean {
+  return STATUS_QUE_PODEM_BUSCAR[etapa].includes(status);
+}
+
+/** O que o workflow pode dizer sobre um build. */
+export type StatusDoWorkflow = 'building' | 'finished' | 'errored' | 'submitted';
+
+/**
+ * De quais status uma linha pode receber ESTE aviso.
+ *
+ * Uma lista só, larga, deixaria a etapa errada mexer na linha: o workflow de
+ * geração poderia marcar como "gerando" um binário que já está pronto, e o de
+ * envio poderia marcar como "enviado" um build que nunca gerou nada. A regra é
+ * por aviso porque o risco é por aviso.
+ *
+ * `errored` é o mais largo de propósito: qualquer uma das duas etapas pode
+ * falhar, e uma falha que não consegue ser registrada deixa o lojista olhando
+ * para "gerando" até desistir.
+ */
+export function origensPermitidas(status: StatusDoWorkflow): readonly StatusDeBuild[] {
+  switch (status) {
+    case 'building':
+    case 'finished':
+      return ['queued', 'building'];
+    case 'submitted':
+      return ['finished'];
+    case 'errored':
+      return ['queued', 'building', 'finished'];
+  }
 }
 
 export interface CredenciaisDoBuild {
@@ -93,6 +149,27 @@ export interface DadosParaOBuild {
    */
   urlDoIcone: string | null;
   urlDaSplash: string | null;
+  credenciais: CredenciaisDoBuild;
+}
+
+/**
+ * O que o workflow de ENVIO recebe.
+ *
+ * Bem menos do que o de geração: nem config, nem segredo do app, nem link de
+ * asset. Só o que o `eas submit` precisa para falar com a loja de aplicativos
+ * em nome do lojista.
+ */
+export interface DadosParaOEnvio {
+  buildId: string;
+  storeId: string;
+  platform: 'ios' | 'android';
+  profile: string;
+  /** Id do build no EAS: é por ele que o `eas submit` acha o binário. */
+  easBuildId: string | null;
+  bundleIdIos: string | null;
+  packageAndroid: string | null;
+  expoProjectId: string | null;
+  nomeDoApp: string;
   credenciais: CredenciaisDoBuild;
 }
 

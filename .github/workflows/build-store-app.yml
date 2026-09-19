@@ -131,6 +131,64 @@ jobs:
           # Os originais saem do disco: o que o build usa são os gerados.
           rm -f "$pasta/icon-original.png" "$pasta/splash-original.png"
 
+      # As credenciais da conta do LOJISTA vão para o disco do runner com
+      # permissão 600, e saem no último passo. O `eas build` precisa delas para
+      # gerar o certificado de distribuição sem ninguém digitar senha.
+      - name: Escrever as credenciais no disco
+        env:
+          PLATFORM: ${{ steps.dados.outputs.platform }}
+        run: |
+          mkdir -p /tmp/cred && chmod 700 /tmp/cred
+          jq -r '.credenciais.ascKey // empty' /tmp/build.json > /tmp/cred/asc.p8
+          jq -r '.credenciais.googleServiceAccount // empty' /tmp/build.json > /tmp/cred/google.json
+          chmod 600 /tmp/cred/* 2>/dev/null || true
+
+          if [ "$PLATFORM" = "ios" ] && [ ! -s /tmp/cred/asc.p8 ]; then
+            echo "::error::A conta Apple desta loja não está conectada."
+            exit 1
+          fi
+          if [ "$PLATFORM" = "android" ] && [ ! -s /tmp/cred/google.json ]; then
+            echo "::error::A conta Google desta loja não está conectada."
+            exit 1
+          fi
+
+      # Primeira publicação de uma loja: o projeto dela ainda não existe no
+      # Expo. O id criado aqui volta para `apps.expo_project_id`, senão a
+      # próxima publicação criaria OUTRO projeto para a mesma loja.
+      - name: Criar o projeto Expo da loja, se for a primeira vez
+        id: projeto
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+          STORE_ID: ${{ steps.dados.outputs.store_id }}
+        working-directory: apps/mobile
+        run: |
+          atual=$(jq -r '.expoProjectId // empty' /tmp/build.json)
+          if [ -n "$atual" ]; then
+            echo "id=$atual" >> "$GITHUB_OUTPUT"
+            echo "novo=nao" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          export APP_NAME=$(jq -r '.nomeDoApp' /tmp/build.json)
+          export IOS_BUNDLE_ID=$(jq -r '.bundleIdIos // empty' /tmp/build.json)
+          export ANDROID_PACKAGE=$(jq -r '.packageAndroid // empty' /tmp/build.json)
+
+          pnpm dlx eas-cli@latest init --non-interactive || true
+
+          # O id é extraído por FORMATO, e não por campo: `eas project:info`
+          # imprime tabela numa versão do CLI e JSON noutra, e um uuid é a única
+          # coisa com esta cara na saída dos dois.
+          criado=$(pnpm dlx eas-cli@latest project:info 2>/dev/null \
+            | grep -ioE '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}' \
+            | head -1)
+
+          if [ -z "$criado" ]; then
+            echo "::error::Esta loja ainda não tem projeto no Expo, e não foi possível criá-lo automaticamente. Crie o projeto na conta Expo da Storefy e grave o id em apps.expo_project_id."
+            exit 1
+          fi
+          echo "id=$criado" >> "$GITHUB_OUTPUT"
+          echo "novo=sim" >> "$GITHUB_OUTPUT"
+
       - name: Gerar o binário
         id: eas
         env:
@@ -145,10 +203,17 @@ jobs:
           export STOREFY_APP_ID=$(jq -r '.appId' /tmp/build.json)
           export ONESIGNAL_APP_ID=$(jq -r '.oneSignalAppId // empty' /tmp/build.json)
           export STOREFY_DEVICE_SECRET=$(jq -r '.deviceSecret // empty' /tmp/build.json)
-          export EAS_PROJECT_ID=$(jq -r '.expoProjectId // empty' /tmp/build.json)
+          export EAS_PROJECT_ID="${{ steps.projeto.outputs.id }}"
           export APP_NAME=$(jq -r '.nomeDoApp' /tmp/build.json)
           export IOS_BUNDLE_ID=$(jq -r '.bundleIdIos // empty' /tmp/build.json)
           export ANDROID_PACKAGE=$(jq -r '.packageAndroid // empty' /tmp/build.json)
+
+          # Os nomes abaixo são os que `eas.json` interpola com `$`.
+          export EXPO_ASC_API_KEY_PATH=/tmp/cred/asc.p8
+          export EXPO_ASC_KEY_ID=$(jq -r '.credenciais.ascKeyId // empty' /tmp/build.json)
+          export EXPO_ASC_ISSUER_ID=$(jq -r '.credenciais.ascIssuerId // empty' /tmp/build.json)
+          export EXPO_APPLE_TEAM_ID=$(jq -r '.credenciais.appleTeamId // empty' /tmp/build.json)
+          export EXPO_GOOGLE_SERVICE_ACCOUNT_PATH=/tmp/cred/google.json
 
           saida=$(pnpm dlx eas-cli@latest build \
             --platform "$PLATFORM" \
@@ -173,7 +238,9 @@ jobs:
               --arg id "$BUILD_ID" \
               --arg eas "${{ steps.eas.outputs.eas_build_id }}" \
               --arg logs "${{ steps.eas.outputs.logs_url }}" \
-              '{buildId: $id, status: "building", easBuildId: $eas, logsUrl: $logs}')" > /dev/null
+              --arg projeto "${{ steps.projeto.outputs.novo == 'sim' && steps.projeto.outputs.id || '' }}" \
+              '{buildId: $id, status: "building", easBuildId: $eas, logsUrl: $logs}
+               + (if $projeto == "" then {} else {expoProjectId: $projeto} end)')" > /dev/null
 
       # `always()` com `failure()`: qualquer passo que quebre acima precisa
       # virar "falhou" na tela do lojista. Sem isto o build ficaria "gerando"
@@ -195,4 +262,4 @@ jobs:
 
       - name: Limpar os segredos do disco
         if: always()
-        run: rm -f /tmp/build.json
+        run: rm -rf /tmp/build.json /tmp/cred

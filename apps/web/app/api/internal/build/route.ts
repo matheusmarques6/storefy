@@ -25,7 +25,9 @@ import {
   autorizarWorkflow,
   canalDaLoja,
   podeBuscarCredenciais,
+  type CredenciaisDoBuild,
   type DadosParaOBuild,
+  type DadosParaOEnvio,
 } from '@/lib/build-interno';
 
 export const dynamic = 'force-dynamic';
@@ -62,7 +64,10 @@ export async function POST(requisicao: NextRequest): Promise<NextResponse> {
   }
 
   try {
-    const dados = await montar(analise.data.buildId);
+    const dados =
+      analise.data.etapa === 'submit'
+        ? await montarEnvio(analise.data.buildId)
+        : await montar(analise.data.buildId);
     if (dados === null) {
       return NextResponse.json(
         { erro: 'build_nao_encontrado' },
@@ -90,7 +95,7 @@ async function montar(buildId: string): Promise<DadosParaOBuild | null> {
     .eq('id', buildId)
     .maybeSingle();
 
-  if (build == null || !podeBuscarCredenciais(build.status)) return null;
+  if (build == null || !podeBuscarCredenciais(build.status, 'build')) return null;
 
   const { data: app } = await servico
     .from('apps')
@@ -125,9 +130,6 @@ async function montar(buildId: string): Promise<DadosParaOBuild | null> {
 
   if (config == null) return null;
 
-  const apple = (contas ?? []).find((conta) => conta.platform === 'apple');
-  const google = (contas ?? []).find((conta) => conta.platform === 'google');
-
   // A partir daqui o build está de fato começando.
   await servico
     .from('builds')
@@ -161,16 +163,86 @@ async function montar(buildId: string): Promise<DadosParaOBuild | null> {
     config: config.config,
     urlDoIcone,
     urlDaSplash,
-    credenciais: {
-      ascKey: abrirOuNulo(apple?.asc_key_enc ?? null, descriptografar),
-      ascKeyId: apple?.asc_key_id ?? null,
-      ascIssuerId: apple?.asc_issuer_id ?? null,
-      appleTeamId: apple?.apple_team_id ?? null,
-      googleServiceAccount: abrirOuNulo(
-        google?.google_service_account_enc ?? null,
-        descriptografar,
-      ),
-    },
+    credenciais: lerCredenciais(contas ?? []),
+  };
+}
+
+/**
+ * O que o workflow de ENVIO precisa, e nada além.
+ *
+ * Sem config, sem segredo do app, sem link de asset: o `eas submit` pega um
+ * binário que já existe e o entrega à loja. Dar a ele a resposta da geração
+ * seria espalhar segredo por um lugar que não precisa dele.
+ *
+ * Esta função NÃO muda o status do build. Quem diz que o envio começou é o
+ * próprio workflow, pela rota de status — aqui ele só está lendo.
+ */
+async function montarEnvio(buildId: string): Promise<DadosParaOEnvio | null> {
+  const servico = criarClientServiceRole();
+
+  const { data: build } = await servico
+    .from('builds')
+    .select('id, app_id, platform, profile, status, eas_build_id')
+    .eq('id', buildId)
+    .maybeSingle();
+
+  if (build == null || !podeBuscarCredenciais(build.status, 'submit')) return null;
+
+  const { data: app } = await servico
+    .from('apps')
+    .select('id, store_id, display_name, bundle_id_ios, package_android, expo_project_id')
+    .eq('id', build.app_id)
+    .maybeSingle();
+  if (app == null) return null;
+
+  const { data: loja } = await servico
+    .from('stores')
+    .select('id, org_id')
+    .eq('id', app.store_id)
+    .maybeSingle();
+  if (loja == null) return null;
+
+  const { data: contas } = await servico
+    .from('developer_accounts')
+    .select(
+      'platform, apple_team_id, asc_key_id, asc_issuer_id, asc_key_enc, google_service_account_enc',
+    )
+    .eq('org_id', loja.org_id);
+
+  return {
+    buildId: build.id,
+    storeId: loja.id,
+    platform: build.platform,
+    profile: build.profile,
+    easBuildId: build.eas_build_id,
+    bundleIdIos: app.bundle_id_ios,
+    packageAndroid: app.package_android,
+    expoProjectId: app.expo_project_id,
+    nomeDoApp: app.display_name,
+    credenciais: lerCredenciais(contas ?? []),
+  };
+}
+
+/** As credenciais da organização, abertas, no formato que o runner espera. */
+function lerCredenciais(
+  contas: readonly {
+    platform: string;
+    apple_team_id: string | null;
+    asc_key_id: string | null;
+    asc_issuer_id: string | null;
+    asc_key_enc: string | null;
+    google_service_account_enc: string | null;
+  }[],
+): CredenciaisDoBuild {
+  const apple = contas.find((conta) => conta.platform === 'apple');
+  const google = contas.find((conta) => conta.platform === 'google');
+
+  return {
+    ascKey: abrirOuNulo(apple?.asc_key_enc ?? null, descriptografar),
+    ascKeyId: apple?.asc_key_id ?? null,
+    ascIssuerId: apple?.asc_issuer_id ?? null,
+    appleTeamId: apple?.apple_team_id ?? null,
+    googleServiceAccount: abrirOuNulo(google?.google_service_account_enc ?? null, descriptografar),
   };
 }
 

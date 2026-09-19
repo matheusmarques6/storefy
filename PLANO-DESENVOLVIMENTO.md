@@ -816,9 +816,11 @@ a pedido de alguém.
 | Envio do ícone e da splash pelo painel, em bucket privado | ✅ caminho `<store_id>/…`, com policy por loja |
 | Checklist de publicação e botão de publicar (C12) | ✅ o checklist é refeito no servidor antes de disparar |
 | `build-store-app.yml` e `/api/internal/build` | ⚠️ escritos e testados; nunca executados no GitHub Actions |
+| Criação do projeto Expo da loja no primeiro build (`eas init`) | ⚠️ escrita; quando não der, o workflow para com a mensagem dizendo o que fazer, e o build vira "falhou" com ela na tela |
 | Webhook do EAS (`/api/webhooks/eas`) | ⚠️ assinatura, tradução de status e trava de reentrega testadas; nunca recebeu um POST do Expo de verdade |
 | Realtime na tela C12 | ✅ conferido no navegador nos dois caminhos: canal de pé (recarrega no evento, sem consulta de reserva) e canal bloqueado (recarrega a cada 20s) |
-| `eas submit` automático | ⬜ |
+| `eas submit` automático (`submit-store-app.yml`) | ⚠️ escrito e testado; o disparo sai do webhook, porque o build roda com `--no-wait` |
+| Primeiro envio manual ao Play Console, guiado na tela | ✅ passo a passo com o arquivo para baixar, conferido no navegador em 1280 e 390 px |
 | Cron de status da revisão (App Store Connect) | ⬜ |
 | Política de privacidade por loja e rascunho da ficha | ⬜ |
 | Canal de EAS Update por loja e botão de correção OTA | ⬜ |

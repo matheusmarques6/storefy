@@ -64,28 +64,86 @@ describe('CorpoDoBuild', () => {
 });
 
 describe('podeBuscarCredenciais', () => {
+  const TODOS = [
+    'queued',
+    'building',
+    'finished',
+    'errored',
+    'submitted',
+    'in_review',
+    'approved',
+    'rejected',
+    'canceled',
+    '',
+  ] as const;
+
   /*
    * Um buildId antigo não devolve credencial. Sem isto, qualquer id que tenha
    * aparecido num log de execução do GitHub continuaria servindo para buscar a
    * chave da Apple de um cliente, para sempre.
    */
-  it('só na fila ou gerando', () => {
-    expect([...STATUS_QUE_PODEM_BUSCAR]).toEqual(['queued', 'building']);
-    for (const status of ['queued', 'building']) {
-      expect(podeBuscarCredenciais(status)).toBe(true);
+  it('a geração só busca na fila ou gerando', () => {
+    expect([...STATUS_QUE_PODEM_BUSCAR.build]).toEqual(['queued', 'building']);
+
+    for (const status of TODOS) {
+      expect(podeBuscarCredenciais(status, 'build')).toBe(
+        status === 'queued' || status === 'building',
+      );
     }
-    for (const status of [
-      'finished',
-      'errored',
-      'submitted',
-      'in_review',
-      'approved',
-      'rejected',
-      'canceled',
-      '',
-    ]) {
-      expect(podeBuscarCredenciais(status)).toBe(false);
+  });
+
+  /** Sem etapa, é a geração: a janela mais fechada é o padrão seguro. */
+  it('sem etapa, vale a da geração', () => {
+    expect(podeBuscarCredenciais('queued')).toBe(true);
+    expect(podeBuscarCredenciais('finished')).toBe(false);
+  });
+
+  /*
+   * O envio começa quando o binário fica pronto, então a janela dele é outra.
+   * `submitted` entra porque o GitHub reexecuta workflow, e uma reexecução do
+   * envio não pode virar 404. O que NÃO pode é um build aprovado continuar
+   * devolvendo a chave da Apple.
+   */
+  it('o envio busca quando o binário ficou pronto, e não depois de aprovado', () => {
+    expect([...STATUS_QUE_PODEM_BUSCAR.submit]).toEqual(['finished', 'submitted']);
+
+    for (const status of TODOS) {
+      expect(podeBuscarCredenciais(status, 'submit')).toBe(
+        status === 'finished' || status === 'submitted',
+      );
     }
+  });
+
+  /** As duas janelas não se encostam: nenhum status serve para as duas. */
+  it('nenhum status abre as duas etapas ao mesmo tempo', () => {
+    for (const status of TODOS) {
+      expect(
+        podeBuscarCredenciais(status, 'build') && podeBuscarCredenciais(status, 'submit'),
+      ).toBe(false);
+    }
+  });
+});
+
+describe('CorpoDoBuild.etapa', () => {
+  it('sem etapa, é geração', () => {
+    const r = CorpoDoBuild.safeParse({ buildId: '11111111-1111-4111-8111-111111111111' });
+    expect(r.success && r.data.etapa).toBe('build');
+  });
+
+  it('aceita submit', () => {
+    const r = CorpoDoBuild.safeParse({
+      buildId: '11111111-1111-4111-8111-111111111111',
+      etapa: 'submit',
+    });
+    expect(r.success && r.data.etapa).toBe('submit');
+  });
+
+  it('recusa etapa inventada', () => {
+    const r = CorpoDoBuild.safeParse({
+      buildId: '11111111-1111-4111-8111-111111111111',
+      etapa: 'tudo',
+    });
+    expect(r.success).toBe(false);
   });
 });
 

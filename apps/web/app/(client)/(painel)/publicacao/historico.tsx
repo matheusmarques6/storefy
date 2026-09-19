@@ -5,12 +5,13 @@
  * motivo aparece aqui — é a diferença entre o lojista entender e abrir um
  * chamado perguntando "o que aconteceu".
  */
-import { History } from 'lucide-react';
+import { Download, History } from 'lucide-react';
 import type { BuildNaLista } from '@/lib/publicacao-servidor';
 import type { Database } from '@storefy/db';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
 import { EstadoVazio } from '@/components/estado-vazio';
+import { PassoManual } from './passo-manual';
 
 type Status = Database['public']['Enums']['build_status'];
 
@@ -37,6 +38,21 @@ const EXPLICACAO: Record<Status, string> = {
   rejected: 'A loja recusou. Veja o motivo e corrija.',
   canceled: 'Interrompido antes de terminar.',
 };
+
+/**
+ * A explicação de uma linha, que depende de ONDE parou — não só do status.
+ *
+ * Um build com passo manual falhou no ENVIO, e não na geração: o binário
+ * existe e está logo ali, para baixar. Dizer "não foi possível gerar o
+ * binário" ao lado de um card que diz "o app está pronto" faz o lojista achar
+ * que a tela está quebrada, e é exatamente o que aparecia antes desta função.
+ */
+export function explicacaoDoBuild(build: BuildNaLista): string {
+  if (build.status === 'errored' && build.acaoManual !== null) {
+    return 'O app foi gerado, mas não chegou à loja. Veja abaixo como enviá-lo.';
+  }
+  return EXPLICACAO[build.status];
+}
 
 const COR: Record<Status, 'default' | 'secondary' | 'destructive' | 'outline'> = {
   queued: 'outline',
@@ -85,7 +101,7 @@ export function HistoricoDeBuilds({ builds }: { builds: readonly BuildNaLista[] 
                   )}
                 </div>
 
-                <p className="text-muted-foreground text-sm">{EXPLICACAO[build.status]}</p>
+                <p className="text-muted-foreground text-sm">{explicacaoDoBuild(build)}</p>
 
                 {/*
                   O motivo do erro fica na tela, e não só no log. É a diferença
@@ -96,22 +112,53 @@ export function HistoricoDeBuilds({ builds }: { builds: readonly BuildNaLista[] 
                   <p className="text-destructive text-sm break-words">{build.error}</p>
                 )}
 
+                {/*
+                  Quando existe um passo manual, ele vem com o passo a passo e o
+                  arquivo: um "falhou" sem saída faria o lojista abrir chamado.
+                */}
+                {build.acaoManual === null ? null : (
+                  <PassoManual
+                    acao={build.acaoManual}
+                    plataforma={build.platform}
+                    artifactUrl={build.artifactUrl}
+                  />
+                )}
+
                 <p className="text-muted-foreground text-xs">
                   <time dateTime={build.createdAt}>{formatar(build.createdAt)}</time>
                   {build.finishedAt === null ? null : ` · terminou ${formatar(build.finishedAt)}`}
                 </p>
               </div>
 
-              {build.logsUrl === null ? null : (
-                <a
-                  href={build.logsUrl}
-                  target="_blank"
-                  rel="noreferrer noopener"
-                  className="text-muted-foreground hover:text-foreground shrink-0 text-sm underline underline-offset-2"
-                >
-                  Ver detalhes
-                </a>
-              )}
+              <div className="flex shrink-0 flex-wrap items-center gap-3">
+                {/*
+                  O arquivo fica à mão mesmo quando deu tudo certo: o lojista
+                  pode querer guardá-lo. Quando há passo manual, o botão de
+                  baixar já aparece dentro dele — aqui seria repetição.
+                */}
+                {build.artifactUrl === null || build.acaoManual !== null ? null : (
+                  <a
+                    href={build.artifactUrl}
+                    target="_blank"
+                    rel="noreferrer noopener"
+                    className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1 text-sm underline underline-offset-2"
+                  >
+                    <Download className="size-3.5" aria-hidden />
+                    Baixar
+                  </a>
+                )}
+
+                {build.logsUrl === null ? null : (
+                  <a
+                    href={build.logsUrl}
+                    target="_blank"
+                    rel="noreferrer noopener"
+                    className="text-muted-foreground hover:text-foreground text-sm underline underline-offset-2"
+                  >
+                    Ver detalhes
+                  </a>
+                )}
+              </div>
             </li>
           ))}
         </ul>

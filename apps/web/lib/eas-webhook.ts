@@ -143,6 +143,19 @@ export function urlDosLogs(corpo: CorpoDoEas): string | undefined {
 }
 
 /**
+ * O link do binário gerado.
+ *
+ * É por ele que o lojista baixa o `.aab` quando o envio automático não é
+ * possível — no Google, o PRIMEIRO envio de um app é sempre manual. Sem
+ * guardar este link, ele não teria o que subir e o build "pronto" não serviria
+ * para nada.
+ */
+export function urlDoBinario(corpo: CorpoDoEas): string | undefined {
+  const url = corpo.artifacts?.buildUrl ?? '';
+  return /^https?:\/\//i.test(url) ? url.slice(0, 2000) : undefined;
+}
+
+/**
  * O erro do EAS em texto para o lojista.
  *
  * A mensagem crua do EAS costuma ser um stack de Gradle ou de Xcode. Quando dá
@@ -176,6 +189,7 @@ export interface AtualizacaoDoBuild {
   version?: string;
   build_number?: number;
   logs_url?: string;
+  artifact_url?: string;
   error?: string;
 }
 
@@ -198,6 +212,7 @@ export function montarAtualizacao(
     version: versaoDoBuild(corpo),
     build_number: numeroDoBuild(corpo),
     logs_url: urlDosLogs(corpo),
+    artifact_url: urlDoBinario(corpo),
     error: status === 'errored' ? mensagemDoErro(corpo.error ?? null) : undefined,
   };
 }

@@ -222,6 +222,9 @@ export type Database = {
           submitted_at: string | null;
           created_at: string;
           updated_at: string;
+          artifact_url: string | null;
+          submission_id: string | null;
+          manual_action: string | null;
         };
         Insert: {
           id?: string;
@@ -241,6 +244,9 @@ export type Database = {
           submitted_at?: string | null;
           created_at?: string;
           updated_at?: string;
+          artifact_url?: string | null;
+          submission_id?: string | null;
+          manual_action?: string | null;
         };
         Update: {
           id?: string;
@@ -260,6 +266,9 @@ export type Database = {
           submitted_at?: string | null;
           created_at?: string;
           updated_at?: string;
+          artifact_url?: string | null;
+          submission_id?: string | null;
+          manual_action?: string | null;
         };
         Relationships: [
           {

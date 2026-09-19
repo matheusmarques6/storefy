@@ -25,6 +25,7 @@ import {
   montarAtualizacao,
   traduzirStatus,
 } from '@/lib/eas-webhook';
+import { dispararSubmissao } from '@/lib/submissao';
 
 export const dynamic = 'force-dynamic';
 
@@ -115,6 +116,18 @@ export async function POST(requisicao: NextRequest): Promise<NextResponse> {
         { status: 404, headers: SEM_CACHE },
       );
     }
+
+    /*
+     * Binário pronto: começa o envio para a loja (passo 5 do plano).
+     *
+     * É aqui e não no workflow de geração porque aquele sai com `--no-wait` e
+     * termina minutos antes de o binário existir. Este webhook é o único lugar
+     * que sabe que ele ficou pronto.
+     */
+    if (status === 'finished') {
+      const buildId = linhas[0]?.id;
+      if (buildId != null) await comecarEnvio(servico, buildId);
+    }
   } catch (erroDoBanco) {
     console.error(
       '[webhook-eas] falhou:',
@@ -124,6 +137,36 @@ export async function POST(requisicao: NextRequest): Promise<NextResponse> {
   }
 
   return NextResponse.json({ ok: true }, { headers: SEM_CACHE });
+}
+
+/**
+ * Pede o envio e, se não der, conta isso na linha.
+ *
+ * Um binário pronto que ninguém enviou é um problema DO LOJISTA, não um
+ * detalhe nosso: deixá-lo em "Binário pronto, indo para a loja" faria ele
+ * esperar por algo que não vai acontecer. Vira `errored` com a explicação e a
+ * ação manual — o link do arquivo já está gravado, então ele consegue enviar
+ * sozinho.
+ */
+async function comecarEnvio(
+  servico: ReturnType<typeof criarClientServiceRole>,
+  buildId: string,
+): Promise<void> {
+  const disparo = await dispararSubmissao(buildId);
+  if (disparo.ok) return;
+
+  console.warn('[webhook-eas] envio não disparado:', disparo.motivo);
+
+  await servico
+    .from('builds')
+    .update({
+      status: 'errored',
+      error: disparo.motivo,
+      manual_action: 'envio_manual',
+      finished_at: new Date().toISOString(),
+    })
+    .eq('id', buildId)
+    .eq('status', 'finished');
 }
 
 /** JSON inválido vira `null`, que o Zod recusa com um 400 limpo. */

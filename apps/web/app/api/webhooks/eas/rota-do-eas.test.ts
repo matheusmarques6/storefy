@@ -12,6 +12,7 @@
 import { createHmac } from 'node:crypto';
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest';
 import { NextRequest } from 'next/server';
+import type * as Submissao from '@/lib/submissao';
 
 const SEGREDO = 'segredo-do-webhook-do-eas';
 const EAS_ID = 'a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d';
@@ -29,12 +30,24 @@ let gravado: Record<string, unknown> | null = null;
 let filtros: { coluna: string; valor: unknown }[] = [];
 /** Quando ligado, o client estoura — simula o Postgres fora do ar. */
 let explodir = false;
+/** Os buildIds para os quais o envio foi pedido. */
+let enviosPedidos: string[] = [];
+/** O que `dispararSubmissao` vai responder. */
+let respostaDoEnvio: { ok: true } | { ok: false; motivo: string } = { ok: true };
 
 vi.mock('@/lib/env', () => ({
   supabaseConfigurado: true,
   serviceRoleConfigurada: true,
   env: { supabaseUrl: 'https://exemplo.supabase.co' },
   chaveServiceRole: () => 'chave-de-teste',
+}));
+
+vi.mock('@/lib/submissao', async (original) => ({
+  ...(await original<typeof Submissao>()),
+  dispararSubmissao: (buildId: string) => {
+    enviosPedidos.push(buildId);
+    return Promise.resolve(respostaDoEnvio);
+  },
 }));
 
 vi.mock('@/lib/supabase/admin', () => ({
@@ -79,6 +92,8 @@ beforeEach(() => {
   gravado = null;
   filtros = [];
   explodir = false;
+  enviosPedidos = [];
+  respostaDoEnvio = { ok: true };
   // O motivo da recusa vai para o log de propósito; o teste não precisa vê-lo.
   avisos = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
   erros = vi.spyOn(console, 'error').mockImplementation(() => undefined);
@@ -113,6 +128,7 @@ const payload = (extra: Record<string, unknown> = {}): string =>
     platform: 'ios',
     status: 'finished',
     buildDetailsPageUrl: 'https://expo.dev/accounts/convertfy/builds/e1',
+    artifacts: { buildUrl: 'https://exemplo/app.aab', logsUrl: 'https://exemplo/logs.txt' },
     metadata: { appVersion: '1.3.0', appBuildVersion: '11' },
     error: null,
     ...extra,
@@ -130,6 +146,51 @@ describe('POST /api/webhooks/eas', () => {
       logs_url: 'https://expo.dev/accounts/convertfy/builds/e1',
     });
     expect(typeof gravado?.finished_at).toBe('string');
+  });
+
+  /*
+   * O link do binário é o que salva o lojista quando o envio automático não é
+   * possível — no Google, o PRIMEIRO envio de um app é sempre manual. Sem
+   * guardá-lo, o build "pronto" não serviria para nada.
+   */
+  it('guarda o link do binário gerado', async () => {
+    await POST(requisicao(payload()));
+    expect(gravado?.artifact_url).toBe('https://exemplo/app.aab');
+  });
+
+  /*
+   * Binário pronto começa o envio (passo 5 do plano). É aqui e não no workflow
+   * de geração porque aquele sai com `--no-wait` e termina minutos antes de o
+   * binário existir.
+   */
+  it('build terminado pede o envio para a loja', async () => {
+    await POST(requisicao(payload()));
+    expect(enviosPedidos).toEqual(['build-1']);
+  });
+
+  it('build que falhou ou foi cancelado não pede envio nenhum', async () => {
+    for (const status of ['errored', 'canceled']) {
+      enviosPedidos = [];
+      await POST(requisicao(payload({ status })));
+      expect(enviosPedidos).toEqual([]);
+    }
+  });
+
+  /*
+   * Um binário pronto que ninguém enviou é um problema DO LOJISTA: deixá-lo em
+   * "indo para a loja" o faria esperar por algo que não vai acontecer. Vira
+   * erro com a explicação e o passo manual — o link do arquivo já está lá.
+   */
+  it('envio que não pôde ser disparado vira erro com passo manual', async () => {
+    respostaDoEnvio = { ok: false, motivo: 'não deu' };
+
+    await POST(requisicao(payload()));
+
+    expect(gravado).toMatchObject({
+      status: 'errored',
+      error: 'não deu',
+      manual_action: 'envio_manual',
+    });
   });
 
   /*
