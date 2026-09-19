@@ -203,6 +203,73 @@ export type Database = {
           },
         ];
       };
+      builds: {
+        Row: {
+          id: string;
+          app_id: string;
+          platform: Database["public"]["Enums"]["device_platform"];
+          profile: Database["public"]["Enums"]["build_profile"];
+          status: Database["public"]["Enums"]["build_status"];
+          eas_build_id: string | null;
+          version: string | null;
+          build_number: number | null;
+          logs_url: string | null;
+          error: string | null;
+          config_version: number | null;
+          triggered_by: string | null;
+          started_at: string | null;
+          finished_at: string | null;
+          submitted_at: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          app_id: string;
+          platform: Database["public"]["Enums"]["device_platform"];
+          profile?: Database["public"]["Enums"]["build_profile"];
+          status?: Database["public"]["Enums"]["build_status"];
+          eas_build_id?: string | null;
+          version?: string | null;
+          build_number?: number | null;
+          logs_url?: string | null;
+          error?: string | null;
+          config_version?: number | null;
+          triggered_by?: string | null;
+          started_at?: string | null;
+          finished_at?: string | null;
+          submitted_at?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          app_id?: string;
+          platform?: Database["public"]["Enums"]["device_platform"];
+          profile?: Database["public"]["Enums"]["build_profile"];
+          status?: Database["public"]["Enums"]["build_status"];
+          eas_build_id?: string | null;
+          version?: string | null;
+          build_number?: number | null;
+          logs_url?: string | null;
+          error?: string | null;
+          config_version?: number | null;
+          triggered_by?: string | null;
+          started_at?: string | null;
+          finished_at?: string | null;
+          submitted_at?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "builds_app_id_fkey";
+            columns: ["app_id"];
+            referencedRelation: "apps";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       cart_events: {
         Row: {
           id: string;
@@ -739,6 +806,8 @@ export type Database = {
       app_config_status: "draft" | "published" | "archived";
       audit_action: "create" | "update" | "delete";
       automation_run_status: "scheduled" | "sent" | "canceled" | "failed";
+      build_profile: "development" | "preview" | "production";
+      build_status: "queued" | "building" | "finished" | "errored" | "submitted" | "in_review" | "approved" | "rejected" | "canceled";
       cart_event_type: "add" | "update" | "checkout_started" | "purchased";
       developer_account_status: "pending" | "invited" | "verified" | "error";
       developer_platform: "apple" | "google";

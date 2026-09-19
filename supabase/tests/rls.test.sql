@@ -2153,6 +2153,86 @@ select tests.ok('permissões',
     and not has_function_privilege('authenticated', 'public.reservar_envios_de_automacao(integer)', 'execute'),
   'o despacho é só da service role: ninguém dispara push pelo PostgREST');
 
+-- ------------------------------------------------ builds (fase 4)
+
+insert into public.builds (app_id, platform, profile, status, version, build_number)
+select app_a, 'ios', 'production', 'queued', '1.0.0', 1 from tests.lojas;
+insert into public.builds (app_id, platform, profile, status)
+select app_b, 'android', 'production', 'queued' from tests.lojas;
+
+select tests.login('a-owner@teste.local');
+set role authenticated;
+
+select tests.ok('builds',
+  tests.contar('select count(*) from public.builds') = 1,
+  'o lojista vê os builds do próprio app');
+
+/*
+ * Publicar é ação de servidor, que valida o checklist inteiro antes de criar a
+ * linha. Deixar o navegador inserir direto permitiria pular a validação e
+ * mandar para a Apple um app sem ícone — que volta rejeitado dias depois.
+ */
+select tests.ok('builds',
+  tests.bloqueado($q$insert into public.builds (app_id, platform)
+    values ((select app_a from tests.lojas), 'ios')$q$),
+  'nem o owner insere build pelo painel');
+
+/*
+ * O histórico de builds é a trilha do que foi mandado para as lojas de
+ * aplicativos. Apagar um build rejeitado é justamente o que ninguém pode
+ * fazer, nem quem é dono da loja.
+ */
+select tests.ok('builds',
+  tests.bloqueado('delete from public.builds'),
+  'e ninguém apaga build: o histórico é a trilha');
+
+select tests.ok('builds',
+  tests.bloqueado($q$update public.builds set status = 'approved'$q$),
+  'nem muda o status na mão para fingir que foi aprovado');
+
+reset role;
+
+select tests.login('b-owner@teste.local');
+set role authenticated;
+
+select tests.ok('isolamento',
+  tests.contar('select count(*) from public.builds') = 1,
+  'B vê só o build da própria loja');
+
+select tests.ok('isolamento',
+  not exists (
+    select 1 from public.builds b
+     where b.app_id = (select app_a from tests.lojas)
+  ),
+  'e não enxerga nenhum build de A');
+
+reset role;
+select tests.logout();
+set role anon;
+
+select tests.ok('builds',
+  tests.contar('select count(*) from public.builds') = 0,
+  'anon não lê build nenhum');
+
+reset role;
+
+select tests.login('equipe@teste.local');
+set role authenticated;
+
+select tests.ok('admin',
+  tests.contar('select count(*) from public.builds') = 2,
+  'o admin da Storefy vê a fila de builds de todo mundo (A05)');
+
+reset role;
+select tests.logout();
+
+select tests.ok('auditoria',
+  exists (
+    select 1 from public.audit_logs
+     where entity = 'builds' and action = 'create'
+  ),
+  'pedir um build fica na trilha de auditoria');
+
 -- --------------------------------------------- nada disso vaza para a org B
 
 select tests.login('b-owner@teste.local');

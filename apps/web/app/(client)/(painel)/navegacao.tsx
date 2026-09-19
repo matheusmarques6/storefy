@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Bell, LayoutDashboard, Settings, Smartphone, Store } from 'lucide-react';
+import { Bell, LayoutDashboard, Rocket, Settings, Smartphone, Store } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const ITENS = [
@@ -10,6 +10,7 @@ const ITENS = [
   { href: '/lojas', rotulo: 'Lojas', icone: Store },
   { href: '/app', rotulo: 'App', icone: Smartphone },
   { href: '/push', rotulo: 'Notificações', icone: Bell },
+  { href: '/publicacao', rotulo: 'Publicação', icone: Rocket },
   { href: '/configuracoes', rotulo: 'Configurações', icone: Settings },
 ] as const;
 
