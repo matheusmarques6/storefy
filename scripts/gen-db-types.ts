@@ -244,6 +244,11 @@ async function main(): Promise<void> {
     'devolver_envios_presos',
     'campanhas_para_estatistica',
     'gravar_estatistica',
+    'builds_em_revisao',
+    'gravar_revisao',
+    'reservar_aviso',
+    'devolver_aviso',
+    'emails_do_build',
     // Usada pelo envio de teste do painel, pela service role.
     'consumir_limite',
   ];

@@ -225,6 +225,7 @@ export type Database = {
           artifact_url: string | null;
           submission_id: string | null;
           manual_action: string | null;
+          notified_status: Database["public"]["Enums"]["build_status"] | null;
         };
         Insert: {
           id?: string;
@@ -247,6 +248,7 @@ export type Database = {
           artifact_url?: string | null;
           submission_id?: string | null;
           manual_action?: string | null;
+          notified_status?: Database["public"]["Enums"]["build_status"] | null;
         };
         Update: {
           id?: string;
@@ -269,6 +271,7 @@ export type Database = {
           artifact_url?: string | null;
           submission_id?: string | null;
           manual_action?: string | null;
+          notified_status?: Database["public"]["Enums"]["build_status"] | null;
         };
         Relationships: [
           {
@@ -746,6 +749,10 @@ export type Database = {
         Args: { p_org_id: string };
         Returns: { user_id: string | null; email: string | null; role: Database["public"]["Enums"]["membership_role"] | null; created_at: string | null; ultimo_acesso: string | null }[];
       };
+      builds_em_revisao: {
+        Args: { p_limite?: number };
+        Returns: { id: string | null; bundle_id_ios: string | null; asc_key_enc: string | null; asc_key_id: string | null; asc_issuer_id: string | null }[];
+      };
       caixa_de_avisos: {
         Args: { p_app_id: string; p_subscription: string; p_limite?: number };
         Returns: { id: string | null; title: string | null; body: string | null; deep_link: string | null; image_path: string | null; sent_at: string | null }[];
@@ -766,6 +773,10 @@ export type Database = {
         Args: { p_chave: string; p_maximo: number; p_janela_segundos?: number };
         Returns: boolean;
       };
+      devolver_aviso: {
+        Args: { p_id: string };
+        Returns: unknown;
+      };
       devolver_campanhas_presas: {
         Args: { p_minutos?: number };
         Returns: number;
@@ -773,6 +784,10 @@ export type Database = {
       devolver_envios_presos: {
         Args: { p_minutos?: number };
         Returns: number;
+      };
+      emails_do_build: {
+        Args: { p_id: string };
+        Returns: { email: string | null; nome_da_loja: string | null }[];
       };
       falhar_campanha: {
         Args: { p_id: string; p_motivo: string };
@@ -786,6 +801,10 @@ export type Database = {
         Args: { p_id: string; p_stats: Json };
         Returns: unknown;
       };
+      gravar_revisao: {
+        Args: { p_id: string; p_status?: Database["public"]["Enums"]["build_status"]; p_erro?: string };
+        Returns: boolean;
+      };
       publicar_config: {
         Args: { p_app_id: string };
         Returns: number;
@@ -797,6 +816,10 @@ export type Database = {
       registrar_evento_de_carrinho: {
         Args: { p_app_id: string; p_subscription: string; p_event: Database["public"]["Enums"]["cart_event_type"]; p_item_count: number; p_cart_token?: string; p_value_cents?: number; p_currency?: string };
         Returns: { event_id: string | null; limitado: boolean | null; agendou: boolean | null; cancelou: number | null }[];
+      };
+      reservar_aviso: {
+        Args: { p_id: string; p_status: Database["public"]["Enums"]["build_status"] };
+        Returns: boolean;
       };
       reservar_campanhas: {
         Args: { p_limite?: number };

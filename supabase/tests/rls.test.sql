@@ -2247,6 +2247,255 @@ select tests.ok('auditoria',
   'pedir um build fica na trilha de auditoria');
 
 /*
+ * A revisão da Apple (fase 4).
+ *
+ * `builds_em_revisao` devolve a chave .p8 CIFRADA de cada loja, e
+ * `gravar_revisao` escreve numa tabela que não tem policy de update. As duas
+ * são do servidor; o navegador não pode chamar nenhuma delas.
+ */
+set role authenticated;
+select tests.ok('segredo',
+  tests.erro('select * from public.builds_em_revisao(10)'),
+  'o lojista não chama builds_em_revisao, que carrega a chave da Apple');
+select tests.ok('segredo',
+  tests.erro($q$select public.gravar_revisao(gen_random_uuid(), 'approved', null)$q$),
+  'nem gravar_revisao, que aprovaria o próprio app');
+reset role;
+
+set role anon;
+select tests.ok('segredo',
+  tests.erro('select * from public.builds_em_revisao(10)'),
+  'anon também não');
+reset role;
+
+set role service_role;
+
+-- A organização A conecta a conta Apple: sem ela o cron não tem com que
+-- perguntar, e o build nem aparece na fila.
+insert into public.developer_accounts (org_id, platform, status, asc_key_id, asc_issuer_id, asc_key_enc)
+select org_a, 'apple', 'verified', 'KEY123', 'ISS-456', 'cifrado-de-mentira' from tests.ids;
+
+-- O app precisa ter bundle: é por ele que a Apple é consultada. Um app sem
+-- bundle não tem o que perguntar, e é por isso que a função o exclui.
+update public.apps set bundle_id_ios = 'br.com.lojaa'
+ where id = (select app_a from tests.lojas);
+update public.apps set package_android = 'br.com.lojab'
+ where id = (select app_b from tests.lojas);
+
+update public.builds set status = 'submitted', submitted_at = now()
+ where app_id = (select app_a from tests.lojas) and platform = 'ios';
+
+drop table if exists tests.build_ios;
+create table tests.build_ios as
+select id from public.builds
+ where app_id = (select app_a from tests.lojas) and platform = 'ios' limit 1;
+
+/*
+ * A função só devolve quem ESPERA decisão. Um build aprovado voltando na lista
+ * faria o cron perguntar à Apple sobre ele de hora em hora para sempre,
+ * gastando a cota da chave do lojista em algo que não muda mais.
+ */
+select tests.ok('revisão',
+  tests.contar('select count(*) from public.builds_em_revisao(50)') = 1,
+  'build de iOS esperando decisão entra na fila do cron');
+
+/*
+ * Um build de Android da MESMA LOJA, com a mesma conta Apple conectada, NÃO
+ * entra: a trilha interna do Google não passa por revisão, e perguntar à Apple
+ * sobre ele seria perguntar à loja errada. A loja é a mesma de propósito —
+ * usar outra provaria só que a outra não tem conta Apple.
+ */
+insert into public.builds (app_id, platform, profile, status, submitted_at)
+select app_a, 'android', 'production', 'submitted', now() from tests.lojas;
+
+select tests.ok('revisão',
+  tests.contar('select count(*) from public.builds_em_revisao(50)') = 1,
+  'e o de Android da mesma loja não entra: a trilha do Google não tem revisão');
+
+/*
+ * Sem bundle não há o que perguntar: a Apple é consultada POR bundle. Deixar
+ * o build na fila faria o cron gastar uma chamada por hora para descobrir a
+ * mesma coisa toda vez.
+ */
+update public.apps set bundle_id_ios = null where id = (select app_a from tests.lojas);
+select tests.ok('revisão',
+  tests.contar('select count(*) from public.builds_em_revisao(50)') = 0,
+  'app sem bundle sai da fila: não há o que perguntar à Apple');
+update public.apps set bundle_id_ios = 'br.com.lojaa'
+ where id = (select app_a from tests.lojas);
+
+select tests.ok('revisão',
+  tests.erro($q$select public.gravar_revisao(
+    (select id from tests.build_ios), 'building', null)$q$),
+  'gravar_revisao recusa status que não é decisão de revisão');
+
+select tests.ok('revisão',
+  (select public.gravar_revisao((select id from tests.build_ios), 'in_review', null)),
+  'gravar_revisao move o build e diz que mudou');
+
+/*
+ * A segunda passada do cron com a MESMA resposta da Apple não pode dizer que
+ * mudou. O build continua em revisão — estado de espera, então a trava de
+ * estado final não entra aqui e quem responde é a comparação com o valor
+ * anterior. Sem ela, uma versão parada em revisão por três dias geraria 72
+ * avisos iguais ao lojista.
+ */
+select tests.ok('revisão',
+  not (select public.gravar_revisao((select id from tests.build_ios), 'in_review', null)),
+  'e não mente que mudou quando a Apple repete a mesma resposta');
+
+select tests.ok('revisão',
+  (select public.gravar_revisao((select id from tests.build_ios), 'approved', null)),
+  'a decisão final move o build');
+
+select tests.ok('revisão',
+  not (select public.gravar_revisao((select id from tests.build_ios), 'approved', null)),
+  'e repetir a decisão final não muda nada');
+
+/*
+ * Depois de aprovado, acabou. Um ciclo do cron rodando sobre dado velho não
+ * pode voltar o build para "em revisão" — o lojista veria o app sair do ar na
+ * tela sem nada ter acontecido.
+ */
+select tests.ok('revisão',
+  not (select public.gravar_revisao((select id from tests.build_ios), 'in_review', null)),
+  'build aprovado não volta para em revisão');
+
+select tests.ok('revisão',
+  tests.contar('select count(*) from public.builds_em_revisao(50)') = 0,
+  'e sai da fila do cron');
+
+/*
+ * O aviso por e-mail. O cron roda de hora em hora: um "aprovado" que não fosse
+ * marcado viraria 24 e-mails por dia para o mesmo lojista.
+ */
+select tests.ok('revisão',
+  (select public.reservar_aviso((select id from tests.build_ios), 'approved')),
+  'o primeiro ciclo reserva o aviso');
+
+select tests.ok('revisão',
+  not (select public.reservar_aviso((select id from tests.build_ios), 'approved')),
+  'e o segundo não manda o mesmo e-mail de novo');
+
+select tests.ok('revisão',
+  not (select public.reservar_aviso((select id from tests.build_ios), 'rejected')),
+  'nem avisa uma decisão diferente da que o build tem');
+
+/*
+ * Devolver é o que impede uma queda de dez minutos do serviço de e-mail de
+ * fazer o lojista NUNCA saber que o app foi aprovado.
+ */
+select public.devolver_aviso((select id from tests.build_ios));
+select tests.ok('revisão',
+  (select public.reservar_aviso((select id from tests.build_ios), 'approved')),
+  'devolver a reserva deixa a próxima hora tentar de novo');
+
+/*
+ * Para quem avisar: só quem decide sobre publicação. Um `member` recebendo
+ * "seu app foi recusado" só gera confusão, porque ele não pode fazer nada.
+ */
+/*
+ * A organização A tem owner, admin e member. O aviso vai para os dois
+ * primeiros e não para o terceiro: um `member` recebendo "seu app foi
+ * recusado" só gera confusão, porque ele não pode publicar.
+ */
+select tests.ok('revisão',
+  (select count(*) from public.emails_do_build((select id from tests.build_ios))) = 2,
+  'emails_do_build avisa owner e admin, e são dois');
+
+select tests.ok('revisão',
+  not exists (
+    select 1 from public.emails_do_build((select id from tests.build_ios)) e
+     where e.email = 'a-member@teste.local'
+  ),
+  'e não avisa quem não decide nada sobre publicação');
+
+select tests.ok('revisão',
+  (select count(*) from public.emails_do_build((select id from tests.build_ios)) e
+    where e.email = 'b-owner@teste.local') = 0,
+  'nem o dono de outra organização');
+
+/*
+ * E-mail não confirmado não recebe aviso.
+ *
+ * Um convite aceito mas nunca confirmado deixa um endereço que pode não ser da
+ * pessoa. Mandar para ele o "seu app foi aprovado" de um cliente conta a um
+ * estranho o que a loja está fazendo — e ainda queima a reputação do nosso
+ * domínio de envio com um endereço que provavelmente rejeita.
+ *
+ * O usuário é criado e apagado aqui de propósito: somá-lo às fixturas mudaria
+ * a contagem de meia dúzia de asserções que não têm nada a ver com isto.
+ */
+reset role;
+insert into auth.users (email, raw_user_meta_data, email_confirmed_at)
+values ('nao-confirmado@teste.local', '{"company_name":"Nao Confirmado"}'::jsonb, null);
+insert into public.memberships (org_id, user_id, role)
+select org_a, (select id from auth.users where email = 'nao-confirmado@teste.local'), 'admin'
+  from tests.ids;
+set role service_role;
+
+select tests.ok('revisão',
+  not exists (
+    select 1 from public.emails_do_build((select id from tests.build_ios)) e
+     where e.email = 'nao-confirmado@teste.local'
+  ),
+  'e não avisa endereço que nunca foi confirmado');
+
+/*
+ * Sai só da organização A. Apagar o usuário inteiro levaria junto a
+ * organização pessoal dele, onde ele é o único owner — e o gatilho que protege
+ * o último owner derruba a transação.
+ */
+reset role;
+delete from public.memberships
+ where org_id = (select org_a from tests.ids)
+   and user_id = (select id from auth.users where email = 'nao-confirmado@teste.local');
+set role service_role;
+
+/*
+ * O nome da loja vem junto porque é ele que vai no assunto do e-mail — "O app
+ * de Loja da Ana foi aprovado". Uma consulta separada para buscá-lo seria uma
+ * ida ao banco a mais por aviso.
+ */
+select tests.ok('revisão',
+  (select nome_da_loja from public.emails_do_build((select id from tests.build_ios)) limit 1)
+    = (select name from public.stores where id = (select loja_a from tests.lojas)),
+  'e leva o nome da loja, que vai no assunto do e-mail');
+
+reset role;
+
+set role authenticated;
+select tests.ok('segredo',
+  tests.erro($q$select * from public.emails_do_build(gen_random_uuid())$q$),
+  'o navegador não lista os e-mails de uma organização');
+select tests.ok('segredo',
+  tests.erro($q$select public.reservar_aviso(gen_random_uuid(), 'approved')$q$),
+  'nem reserva aviso de ninguém');
+reset role;
+
+set role service_role;
+
+/*
+ * Build parado há semanas sai da fila sozinho. A Apple às vezes simplesmente
+ * não responde — app abandonado, conta cancelada, versão substituída — e sem
+ * este corte o cron perguntaria por ele para sempre.
+ */
+update public.builds
+   set status = 'submitted', submitted_at = now() - interval '30 days'
+ where id = (select id from tests.build_ios);
+
+select tests.ok('revisão',
+  tests.contar('select count(*) from public.builds_em_revisao(50)') = 0,
+  'build esquecido há um mês para de gastar cota da chave do lojista');
+
+reset role;
+
+set role service_role;
+update public.builds set artifact_url = 'https://exemplo/app-da-loja-a.aab'
+ where app_id = (select app_a from tests.lojas);
+reset role;
+
+/*
  * As colunas do envio (fase 4).
  *
  * `manual_action` decide qual passo a passo a tela mostra. Se o banco aceitasse
@@ -2264,15 +2513,26 @@ select tests.ok('builds',
 
 /*
  * O link do binário NÃO é segredo: é justamente o que o lojista baixa quando o
- * primeiro envio ao Google tem de ser manual. Ele precisa chegar à tela dele.
+ * primeiro envio ao Google tem de ser manual. Ele precisa chegar à tela DELE —
+ * e só dele. Um link assinado do binário de outra loja daria a um cliente o
+ * app inteiro de um concorrente.
  */
 select tests.login('a-owner@teste.local');
 set role authenticated;
 
 select tests.ok('builds',
-  tests.contar($q$select count(*) from public.builds
-               where artifact_url is not null or artifact_url is null$q$) = 1,
-  'o lojista lê artifact_url, submission_id e manual_action do próprio build');
+  tests.contar('select count(*) from public.builds where artifact_url is not null') >= 1,
+  'o lojista lê o link do binário do próprio build');
+
+reset role;
+select tests.logout();
+
+select tests.login('b-owner@teste.local');
+set role authenticated;
+
+select tests.ok('isolamento',
+  tests.contar('select count(*) from public.builds where artifact_url is not null') = 0,
+  'e o de outra organização não: o binário de um cliente não vaza para outro');
 
 reset role;
 select tests.logout();

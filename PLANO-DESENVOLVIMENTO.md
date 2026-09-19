@@ -821,15 +821,18 @@ a pedido de alguém.
 | Realtime na tela C12 | ✅ conferido no navegador nos dois caminhos: canal de pé (recarrega no evento, sem consulta de reserva) e canal bloqueado (recarrega a cada 20s) |
 | `eas submit` automático (`submit-store-app.yml`) | ⚠️ escrito e testado; o disparo sai do webhook, porque o build roda com `--no-wait` |
 | Primeiro envio manual ao Play Console, guiado na tela | ✅ passo a passo com o arquivo para baixar, conferido no navegador em 1280 e 390 px |
-| Cron de status da revisão (App Store Connect) | ⬜ |
+| Cron de status da revisão (App Store Connect) | ⚠️ escrito e testado; a consulta à API da Apple nunca rodou daqui (rede bloqueada) |
+| Aviso por e-mail da decisão da Apple (Resend) | ⚠️ escrito e testado; depende de `RESEND_API_KEY` e `EMAIL_REMETENTE`. Sem eles o aviso NÃO é descartado: volta para a fila e sai quando as chaves existirem |
 | Política de privacidade por loja e rascunho da ficha | ⬜ |
 | Canal de EAS Update por loja e botão de correção OTA | ⬜ |
 | Chegar ao TestFlight e à trilha interna do Play | ⬜ depende das contas Apple/Google de uma loja real e dos segredos do repositório |
 
 > **O que trava o ponta a ponta:** `EXPO_TOKEN`, `EAS_PROJECT_ID` completo, `EXPO_OWNER`,
-> `GITHUB_DISPATCH_TOKEN`, `GITHUB_REPO`, `BUILD_API_SECRET`, `EAS_WEBHOOK_SECRET` e
-> `STOREFY_API_URL`. O `EAS_WEBHOOK_SECRET` é o valor que o `eas webhook:create` imprime;
-> sem ele a rota do webhook responde 503 de propósito, em vez de aceitar qualquer POST.
+> `GITHUB_DISPATCH_TOKEN`, `GITHUB_REPO`, `BUILD_API_SECRET`, `EAS_WEBHOOK_SECRET`,
+> `STOREFY_API_URL`, `RESEND_API_KEY` e `EMAIL_REMETENTE`. O `EAS_WEBHOOK_SECRET` é o valor
+> que o `eas webhook:create` imprime; sem ele a rota do webhook responde 503 de propósito,
+> em vez de aceitar qualquer POST. As duas do e-mail são as únicas cuja ausência não perde
+> nada: o aviso volta para a fila e sai no ciclo seguinte, quando elas existirem.
 
 ### Fase 5 — Shopify app + analytics (5–7 dias)
 **Tarefas**
