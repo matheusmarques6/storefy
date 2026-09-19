@@ -718,6 +718,83 @@ Um app interno, publicado uma única vez na conta da Storefy, que o lojista usa 
 
 **Pronto quando:** uma campanha agendada chega no celular no horário marcado, o toque abre o produto certo, as aberturas aparecem no painel e o carrinho abandonado dispara após 60 minutos (e é cancelado quando há compra).
 
+**Progresso (19/09/2026)**
+
+| Item | Situação |
+|---|---|
+| Migrations de push, eventos e contas de desenvolvedor | ✅ 7 enums, 6 tabelas, RLS e auditoria |
+| Colunas de segredo fechadas por `grant` coluna a coluna | ✅ com guarda que vale para o schema inteiro |
+| `/api/public/devices` e `/api/public/events` com HMAC e rate limit | ✅ assinatura sobre o texto do corpo |
+| `/api/public/inbox` para a caixa de avisos | ✅ só o que aquele aparelho pode ver |
+| SDK no app: initialize, login, tags, deep link | ✅ 267 testes no app |
+| SHA-256 e HMAC em TypeScript puro | ✅ conferidos contra o `node:crypto` |
+| Pré-prompt de permissão (M03) | ✅ respeita `features.pushPromptTiming` |
+| Caixa de avisos nativa (M07) | ✅ lidos controlados no aparelho |
+| Automação de boas-vindas | ✅ nasce com o aparelho, uma vez só |
+| Automação de carrinho abandonado | ✅ reagenda, cancela na compra e no carrinho vazio |
+| Janela de silêncio e teto de 24h | ✅ conferidos no agendamento E no envio |
+| Telas C07–C10 com prévia de notificação | ✅ conferidas no navegador em 1280 e 390 px |
+| Envio de teste para um aparelho | ✅ com limite de dez por minuto |
+| Jobs de dispatch e de estatísticas | ✅ Vercel Cron, reserva atômica no banco |
+| Criação do app da loja na OneSignal | ⚠️ implementada e testada, mas nunca executada contra a API real — depende da `ONESIGNAL_ORG_API_KEY` e das credenciais Apple/Google (assistentes C13, Fase 4) |
+| Verificação ponta a ponta num aparelho | ⬜ depende de aparelho físico e das chaves de push |
+
+**Decisões desta fase**
+
+- **A reserva do envio acontece dentro do banco**, num `update ... returning`
+  com `for update skip locked`. Duas execuções sobrepostas do cron mandando a
+  mesma campanha significam a base inteira de uma loja recebendo o push duas
+  vezes, e isso não tem desfazer. Ler no servidor web e marcar depois deixaria
+  justamente a janela entre as duas coisas.
+- **Falha permanente e falha passageira têm destinos diferentes.** Chave errada
+  vira `failed` com o motivo, que o lojista vê; rede caindo não marca nada e a
+  linha volta à fila sozinha. Marcar uma queda de rede como falha jogaria fora
+  uma campanha que ia sair no minuto seguinte.
+- **A janela de silêncio e o teto de 24h são reconferidos no envio**, e não só
+  no agendamento: entre agendar e enviar passa pelo menos uma hora, e um job
+  atrasado por queda acordaria o cliente às três da manhã.
+- **A assinatura do app é sobre o TEXTO do corpo**, nunca sobre o objeto
+  parseado. Conferir depois do parse deixaria passar dois corpos diferentes com
+  o mesmo JSON — e trocar `appId` é escrever na loja de outro cliente.
+- **App inexistente e assinatura inválida dão a mesma resposta.** Diferenciar
+  os dois transformaria o endpoint público num verificador de quais lojas
+  existem.
+- **SHA-256 e HMAC escritos à mão.** O React Native não tem `node:crypto`, e
+  `expo-crypto` só digere string — HMAC precisa de bytes arbitrários, que se
+  perdem no caminho do UTF-8. O teste compara com o `node:crypto` em centenas
+  de entradas, incluindo as fronteiras de padding e de tamanho de chave.
+- **O deep link do push só abre caminho da própria loja.** Uma notificação é
+  texto escrito num painel; abrir host de terceiro numa WebView sem barra de
+  endereço, com o ícone da loja em volta, é uma tela de phishing pronta. A
+  comparação usa o `mesmoDominio` do `@storefy/bridge`, e não uma segunda
+  cópia.
+- **Estatística que não chegou é `null`, e a tela mostra traço.** "0 aberturas"
+  é uma afirmação sobre o desempenho da campanha; dita antes de o número
+  chegar, faz o lojista concluir que ela fracassou.
+- **Campanha com segmento não entra na caixa de avisos de ninguém.** A
+  segmentação acontece dentro do OneSignal e a Storefy não guarda quem estava
+  nela; mostrá-la a todos poria na caixa de um cliente uma oferta que não era
+  para ele, muitas vezes com preço diferente.
+- **`rate_limits` nasce com RLS ligada e sem policy.** No PostgREST toda tabela
+  de `public` é uma rota; sem isso, qualquer visitante leria quantas
+  requisições cada app faz por minuto.
+- **Os stubs de teste passaram a reproduzir o grant de EXECUTE do Supabase.**
+  Sem isso, um `revoke ... from public` sozinho fechava a função no teste local
+  e a deixava aberta em produção.
+- **Só as duas automações do MVP aparecem na tela.** "De volta ao estoque",
+  "pedido enviado" e "inativo há 7 dias" estão no plano para depois, e um card
+  deles agora seria um botão que não faz nada.
+
+**Achado que fica para a Fase 6**
+
+A tela de logs do admin diz "Quem fez o quê", mas não tem coluna de autor —
+mostra quando, organização, ação, entidade e campos alterados. O `actor_id` é
+gravado; falta um jeito de resolver vários ids em e-mail de uma vez, no padrão
+das outras funções `admin_*`. Fica para a Fase 6, que é a do painel admin
+completo. Vale notar que uma ação feita pela service role (como ligar as
+notificações) grava `actor_id` nulo de qualquer forma: quem agiu foi o sistema,
+a pedido de alguém.
+
 ### Fase 4 — Build e publicação automatizados (5–8 dias)
 **Tarefas**
 - Tabela `builds` e wizards C13 (Apple: upload da ASC API Key + APNs .p8 com validação via App Store Connect API; Google: service account JSON com validação).
