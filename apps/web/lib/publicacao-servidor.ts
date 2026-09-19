@@ -32,6 +32,18 @@ export interface DadosDaPublicacao {
   builds: BuildNaLista[];
 }
 
+/**
+ * Ainda há build acontecendo?
+ *
+ * Decide se a tela precisa ficar se atualizando sozinha. Só `queued` e
+ * `building` contam: os outros status são desfecho, e um build que terminou não
+ * muda mais por conta própria — quem o mover dali é a Apple ou o Google, pelo
+ * cron da revisão, que é outra história e outra cadência.
+ */
+export function temBuildEmAndamento(builds: readonly BuildNaLista[]): boolean {
+  return builds.some((build) => build.status === 'queued' || build.status === 'building');
+}
+
 export async function dadosDaPublicacao(
   supabase: Client,
   storeId: string,

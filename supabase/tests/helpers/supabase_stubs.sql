@@ -138,3 +138,20 @@ alter default privileges in schema public
 -- produção.
 alter default privileges in schema public
   grant execute on functions to anon, authenticated, service_role;
+
+
+/*
+ * Publicação do Realtime.
+ *
+ * O Supabase cria `supabase_realtime` vazia em todo projeto; as migrations
+ * acrescentam a ela as tabelas cuja mudança o painel acompanha ao vivo. Sem
+ * este stub, a migration que acrescenta `builds` não teria onde acrescentar, e
+ * o teste local passaria sem exercitar a linha que importa.
+ */
+do $$
+begin
+  if not exists (select 1 from pg_publication where pubname = 'supabase_realtime') then
+    create publication supabase_realtime;
+  end if;
+end
+$$;

@@ -806,6 +806,29 @@ a pedido de alguém.
 
 **Pronto quando:** a partir do painel, uma loja de teste (com a sua própria conta Apple/Google) chega ao TestFlight e à trilha interna do Play sem nenhum comando manual depois do setup das chaves.
 
+**Progresso (19/09/2026)**
+
+| Item | Situação |
+|---|---|
+| Tabela `builds`, enums e auditoria da criação | ✅ RLS só de leitura: criar e atualizar é caminho de servidor |
+| Assistentes C13 (Apple e Google) com validação real antes de gravar | ⚠️ implementados e testados; a chamada à API da Apple e à do Google nunca rodou daqui (rede bloqueada) |
+| Geração de assets (`pnpm assets`) com ícone, adaptativo, notificação e splash | ✅ recusa o que a Apple recusaria, em segundos |
+| Envio do ícone e da splash pelo painel, em bucket privado | ✅ caminho `<store_id>/…`, com policy por loja |
+| Checklist de publicação e botão de publicar (C12) | ✅ o checklist é refeito no servidor antes de disparar |
+| `build-store-app.yml` e `/api/internal/build` | ⚠️ escritos e testados; nunca executados no GitHub Actions |
+| Webhook do EAS (`/api/webhooks/eas`) | ⚠️ assinatura, tradução de status e trava de reentrega testadas; nunca recebeu um POST do Expo de verdade |
+| Realtime na tela C12 | ✅ conferido no navegador nos dois caminhos: canal de pé (recarrega no evento, sem consulta de reserva) e canal bloqueado (recarrega a cada 20s) |
+| `eas submit` automático | ⬜ |
+| Cron de status da revisão (App Store Connect) | ⬜ |
+| Política de privacidade por loja e rascunho da ficha | ⬜ |
+| Canal de EAS Update por loja e botão de correção OTA | ⬜ |
+| Chegar ao TestFlight e à trilha interna do Play | ⬜ depende das contas Apple/Google de uma loja real e dos segredos do repositório |
+
+> **O que trava o ponta a ponta:** `EXPO_TOKEN`, `EAS_PROJECT_ID` completo, `EXPO_OWNER`,
+> `GITHUB_DISPATCH_TOKEN`, `GITHUB_REPO`, `BUILD_API_SECRET`, `EAS_WEBHOOK_SECRET` e
+> `STOREFY_API_URL`. O `EAS_WEBHOOK_SECRET` é o valor que o `eas webhook:create` imprime;
+> sem ele a rota do webhook responde 503 de propósito, em vez de aceitar qualquer POST.
+
 ### Fase 5 — Shopify app + analytics (5–7 dias)
 **Tarefas**
 - OAuth Shopify, webhooks (incluindo os de GDPR), Theme App Extension (banner do app + snippet do bridge).

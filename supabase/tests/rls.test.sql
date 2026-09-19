@@ -2233,6 +2233,33 @@ select tests.ok('auditoria',
   ),
   'pedir um build fica na trilha de auditoria');
 
+/*
+ * O Realtime da tela de publicação (C12).
+ *
+ * Sem a tabela na publicação, o canal do painel sobe, não dá erro nenhum e
+ * simplesmente nunca recebe evento — a tela congela mostrando "gerando" para
+ * um app que já ficou pronto. É uma falha silenciosa, e por isso ela precisa
+ * de asserção.
+ */
+select tests.ok('realtime',
+  exists (
+    select 1 from pg_publication_tables
+     where pubname = 'supabase_realtime'
+       and schemaname = 'public'
+       and tablename = 'builds'
+  ),
+  'builds está na publicação do Realtime');
+
+/*
+ * E entrar na publicação NÃO pode ter aberto a tabela: o Realtime só entrega
+ * a linha a quem a policy de SELECT deixaria ler. Se a RLS de `builds` fosse
+ * desligada, a tabela inteira passaria a ser transmitida para qualquer
+ * assinante autenticado — de qualquer organização.
+ */
+select tests.ok('realtime',
+  (select relrowsecurity from pg_class where oid = 'public.builds'::regclass),
+  'e a RLS de builds continua ligada, que é o que o Realtime respeita');
+
 -- ------------------------------------------ assets no Storage (C06a)
 
 /*

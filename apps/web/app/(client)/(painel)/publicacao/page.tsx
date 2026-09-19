@@ -4,12 +4,13 @@ import Link from 'next/link';
 import { Rocket, Smartphone } from 'lucide-react';
 import { exigirContextoCliente } from '@/lib/contexto';
 import { criarClientServidor } from '@/lib/supabase/server';
-import { dadosDaPublicacao } from '@/lib/publicacao-servidor';
+import { dadosDaPublicacao, temBuildEmAndamento } from '@/lib/publicacao-servidor';
 import { montarChecklist } from '@/lib/checklist-de-publicacao';
 import { EstadoVazio } from '@/components/estado-vazio';
 import { Button } from '@/components/ui/button';
 import { ChecklistDaPlataforma } from './checklist';
 import { HistoricoDeBuilds } from './historico';
+import { BuildsAoVivo } from './ao-vivo';
 
 export const metadata: Metadata = { title: 'Publicação' };
 
@@ -55,6 +56,12 @@ export default async function PaginaDePublicacao() {
           O que falta para o seu app chegar à App Store e à Play Store, e o histórico do que já foi
           enviado.
         </p>
+        {/*
+          Enquanto um build acontece, a tela se atualiza sozinha: ele termina
+          por um aviso do EAS que chega minutos depois, sem ninguém clicar em
+          nada.
+        */}
+        <BuildsAoVivo appId={dados.appId} emAndamento={temBuildEmAndamento(dados.builds)} />
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">
