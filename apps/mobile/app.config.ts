@@ -76,6 +76,9 @@ const modoApns =
 const config: ExpoConfig = {
   name: nomeDoApp,
   slug,
+  // Conta ou organização dona do projeto no Expo. Sem isso, o EAS pergunta na
+  // hora — e num workflow sem ninguém para responder, ele para.
+  owner: ambiente['EXPO_OWNER'] ?? undefined,
   scheme: opcional('APP_SCHEME', 'storefy'),
   version: opcional('APP_VERSION', '1.0.0'),
   orientation: 'portrait',

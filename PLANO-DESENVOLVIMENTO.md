@@ -567,7 +567,8 @@ Um app interno, publicado uma única vez na conta da Storefy, que o lojista usa 
 | Face ID opcional (`features.biometricLogin`) | ⬜ Fase 2, com a área de conta |
 | Presets de `hideSelectors` por tema | ⬜ exige renderizar lojas reais |
 | Testar em 3 lojas reais | ⬜ depende de aparelho físico e de rede até as lojas |
-| Builds de desenvolvimento via EAS | ⬜ depende de conta Expo |
+| `eas.json`, `owner` e variáveis de build por loja | ✅ 5 testes, `BUILD.md` com os comandos |
+| Builds de desenvolvimento via EAS | ⬜ o container não alcança `expo.dev`; rodar na máquina do time |
 
 **Decisões desta fase**
 
