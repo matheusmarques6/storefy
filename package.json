@@ -2,7 +2,7 @@
   "name": "storefy",
   "version": "0.0.0",
   "private": true,
-  "description": "Storefy by Convertfy — transforma lojas Shopify em apps iOS e Android.",
+  "description": "Storefy by Convertfy \u2014 transforma lojas Shopify em apps iOS e Android.",
   "packageManager": "pnpm@10.33.0",
   "engines": {
     "node": ">=22.0.0"
@@ -19,7 +19,8 @@
     "format:check": "prettier --check .",
     "bootstrap:admin": "tsx scripts/bootstrap-admin.ts",
     "db:types": "tsx scripts/gen-db-types.ts",
-    "prepare": "husky"
+    "prepare": "husky",
+    "assets": "tsx scripts/gerar-assets.ts"
   },
   "devDependencies": {
     "@eslint/js": "9.39.5",

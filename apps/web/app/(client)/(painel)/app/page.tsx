@@ -6,6 +6,7 @@ import { podeEscrever } from '@storefy/db';
 import { exigirContextoCliente } from '@/lib/contexto';
 import { criarClientServidor } from '@/lib/supabase/server';
 import { garantirRascunho, historicoDeVersoes, versaoPublicada } from '@/lib/configs-servidor';
+import { urlAssinada } from '@/lib/assets-da-loja';
 import { EstadoVazio } from '@/components/estado-vazio';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
@@ -51,9 +52,19 @@ export default async function PaginaDoEditor() {
     historicoDeVersoes(supabase, rascunho.rascunho.appId),
     supabase
       .from('apps')
-      .select('onesignal_app_id')
+      .select('onesignal_app_id, icon_path, splash_path')
       .eq('id', rascunho.rascunho.appId)
       .maybeSingle(),
+  ]);
+
+  /*
+   * O bucket é privado, então a imagem só aparece na tela por link assinado.
+   * Uma hora é o bastante para a pessoa olhar e trocar, e curto o suficiente
+   * para o link não virar um endereço permanente se vazar do histórico.
+   */
+  const [urlDoIcone, urlDaSplash] = await Promise.all([
+    urlAssinada(supabase, app?.icon_path ?? null),
+    urlAssinada(supabase, app?.splash_path ?? null),
   ]);
 
   return (
@@ -62,6 +73,8 @@ export default async function PaginaDoEditor() {
       configInicialDoServidor={rascunho.rascunho.config}
       versao={rascunho.rascunho.version}
       publicada={publicada}
+      urlDoIcone={urlDoIcone}
+      urlDaSplash={urlDaSplash}
       historico={historico}
       somenteLeitura={!podeEscrever(papel)}
       pushConfigurado={(app?.onesignal_app_id ?? null) !== null}

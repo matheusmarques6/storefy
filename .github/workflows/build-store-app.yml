@@ -1,0 +1,198 @@
+# Gera e envia o app de uma loja (seção 7 do plano).
+#
+# Quem dispara é o painel, por `repository_dispatch`, quando o lojista clica em
+# publicar e o checklist inteiro passa. O `client_payload` traz só
+# identificadores: as credenciais vêm de `/api/internal/build`, autenticada,
+# porque o payload de um dispatch fica visível para quem lê as execuções do
+# repositório.
+#
+# O QUE PRECISA ESTAR CONFIGURADO NOS SEGREDOS DO REPOSITÓRIO:
+#   STOREFY_API_URL    — base do painel, ex.: https://app.storefy.com.br
+#   BUILD_API_SECRET   — o mesmo valor que está no ambiente do painel
+#   EXPO_TOKEN         — token de robô da conta Expo da Storefy
+#
+# Sem eles o workflow para no primeiro passo, com a mensagem dizendo qual falta
+# — em vez de falhar vinte minutos depois, dentro do EAS.
+
+name: build-store-app
+
+on:
+  repository_dispatch:
+    types: [storefy-build]
+
+# Um build por loja e plataforma de cada vez. Dois em paralelo disputam o mesmo
+# número de build na loja de aplicativos, e a Apple recusa o segundo — depois
+# de gerar os dois.
+concurrency:
+  group: build-${{ github.event.client_payload.storeId }}-${{ github.event.client_payload.platform }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Conferir a configuração
+        run: |
+          faltando=""
+          [ -n "${{ secrets.STOREFY_API_URL }}" ]  || faltando="$faltando STOREFY_API_URL"
+          [ -n "${{ secrets.BUILD_API_SECRET }}" ] || faltando="$faltando BUILD_API_SECRET"
+          [ -n "${{ secrets.EXPO_TOKEN }}" ]       || faltando="$faltando EXPO_TOKEN"
+          if [ -n "$faltando" ]; then
+            echo "::error::Faltam segredos no repositório:$faltando"
+            exit 1
+          fi
+
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Buscar os dados da loja
+        id: dados
+        env:
+          API: ${{ secrets.STOREFY_API_URL }}
+          SEGREDO: ${{ secrets.BUILD_API_SECRET }}
+          BUILD_ID: ${{ github.event.client_payload.buildId }}
+        run: |
+          # `--fail-with-body` para o corpo do erro aparecer no log; o corpo de
+          # SUCESSO nunca é ecoado, porque traz a chave de publicação da loja.
+          http=$(curl -sS -o /tmp/build.json -w '%{http_code}' \
+            --fail-with-body \
+            -X POST "$API/api/internal/build" \
+            -H "Authorization: Bearer $SEGREDO" \
+            -H 'Content-Type: application/json' \
+            -d "{\"buildId\":\"$BUILD_ID\"}") || true
+
+          if [ "$http" != "200" ]; then
+            echo "::error::A Storefy não liberou os dados deste build (HTTP $http)."
+            exit 1
+          fi
+
+          # Só o que NÃO é segredo sai para as variáveis de passo.
+          {
+            echo "store_id=$(jq -r '.storeId' /tmp/build.json)"
+            echo "platform=$(jq -r '.platform' /tmp/build.json)"
+            echo "profile=$(jq -r '.profile' /tmp/build.json)"
+            echo "canal=$(jq -r '.canal' /tmp/build.json)"
+            echo "nome=$(jq -r '.nomeDoApp' /tmp/build.json)"
+            echo "cor=$(jq -r '.corDeFundo' /tmp/build.json)"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Avisar que começou
+        env:
+          API: ${{ secrets.STOREFY_API_URL }}
+          SEGREDO: ${{ secrets.BUILD_API_SECRET }}
+          BUILD_ID: ${{ github.event.client_payload.buildId }}
+        run: |
+          curl -sS -X POST "$API/api/internal/build/status" \
+            -H "Authorization: Bearer $SEGREDO" \
+            -H 'Content-Type: application/json' \
+            -d "{\"buildId\":\"$BUILD_ID\",\"status\":\"building\"}" > /dev/null
+
+      - name: Separar a config e os assets da loja
+        env:
+          STORE_ID: ${{ steps.dados.outputs.store_id }}
+        run: |
+          pasta="apps/mobile/brands/$STORE_ID"
+          mkdir -p "$pasta"
+          jq '.config' /tmp/build.json > "$pasta/config.json"
+
+          # O ícone e a splash vêm por link ASSINADO, e não por caminho: o
+          # bucket é privado, e dar ao runner a chave do Storage seria dar
+          # acesso aos assets de todas as lojas.
+          icone_url=$(jq -r '.urlDoIcone // empty' /tmp/build.json)
+          if [ -z "$icone_url" ]; then
+            echo "::error::Esta loja ainda não enviou o ícone do app."
+            exit 1
+          fi
+          curl -sS --fail -o "$pasta/icon-original.png" "$icone_url"
+
+          splash_url=$(jq -r '.urlDaSplash // empty' /tmp/build.json)
+          if [ -n "$splash_url" ]; then
+            curl -sS --fail -o "$pasta/splash-original.png" "$splash_url"
+          fi
+
+          # `pnpm assets` recusa o ícone que a Apple recusaria, aqui, em
+          # segundos — em vez de a revisão recusar dias depois.
+          pnpm assets \
+            --icone="$pasta/icon-original.png" \
+            --saida="$pasta" \
+            --cor="${{ steps.dados.outputs.cor }}" \
+            $( [ -f "$pasta/splash-original.png" ] && echo "--splash=$pasta/splash-original.png" )
+
+          # Os originais saem do disco: o que o build usa são os gerados.
+          rm -f "$pasta/icon-original.png" "$pasta/splash-original.png"
+
+      - name: Gerar o binário
+        id: eas
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+          STORE_ID: ${{ steps.dados.outputs.store_id }}
+          PLATFORM: ${{ steps.dados.outputs.platform }}
+          PROFILE: ${{ steps.dados.outputs.profile }}
+        working-directory: apps/mobile
+        run: |
+          # Cada valor vai para o ambiente do processo, e não para a linha de
+          # comando: `ps` mostra argumento, não mostra ambiente.
+          export STOREFY_APP_ID=$(jq -r '.appId' /tmp/build.json)
+          export ONESIGNAL_APP_ID=$(jq -r '.oneSignalAppId // empty' /tmp/build.json)
+          export STOREFY_DEVICE_SECRET=$(jq -r '.deviceSecret // empty' /tmp/build.json)
+          export EAS_PROJECT_ID=$(jq -r '.expoProjectId // empty' /tmp/build.json)
+          export APP_NAME=$(jq -r '.nomeDoApp' /tmp/build.json)
+          export IOS_BUNDLE_ID=$(jq -r '.bundleIdIos // empty' /tmp/build.json)
+          export ANDROID_PACKAGE=$(jq -r '.packageAndroid // empty' /tmp/build.json)
+
+          saida=$(pnpm dlx eas-cli@latest build \
+            --platform "$PLATFORM" \
+            --profile "$PROFILE" \
+            --channel "${{ steps.dados.outputs.canal }}" \
+            --non-interactive --no-wait --json)
+
+          echo "eas_build_id=$(echo "$saida" | jq -r '.[0].id')" >> "$GITHUB_OUTPUT"
+          echo "logs_url=$(echo "$saida" | jq -r '.[0].buildDetailsPageUrl')" >> "$GITHUB_OUTPUT"
+
+      - name: Avisar que o binário está a caminho
+        if: success()
+        env:
+          API: ${{ secrets.STOREFY_API_URL }}
+          SEGREDO: ${{ secrets.BUILD_API_SECRET }}
+          BUILD_ID: ${{ github.event.client_payload.buildId }}
+        run: |
+          curl -sS -X POST "$API/api/internal/build/status" \
+            -H "Authorization: Bearer $SEGREDO" \
+            -H 'Content-Type: application/json' \
+            -d "$(jq -n \
+              --arg id "$BUILD_ID" \
+              --arg eas "${{ steps.eas.outputs.eas_build_id }}" \
+              --arg logs "${{ steps.eas.outputs.logs_url }}" \
+              '{buildId: $id, status: "building", easBuildId: $eas, logsUrl: $logs}')" > /dev/null
+
+      # `always()` com `failure()`: qualquer passo que quebre acima precisa
+      # virar "falhou" na tela do lojista. Sem isto o build ficaria "gerando"
+      # para sempre, e ele esperaria o dia inteiro por algo que já morreu.
+      - name: Avisar que falhou
+        if: failure()
+        env:
+          API: ${{ secrets.STOREFY_API_URL }}
+          SEGREDO: ${{ secrets.BUILD_API_SECRET }}
+          BUILD_ID: ${{ github.event.client_payload.buildId }}
+        run: |
+          curl -sS -X POST "$API/api/internal/build/status" \
+            -H "Authorization: Bearer $SEGREDO" \
+            -H 'Content-Type: application/json' \
+            -d "$(jq -n \
+              --arg id "$BUILD_ID" \
+              --arg url "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
+              '{buildId: $id, status: "errored", logsUrl: $url, erro: "A geração do app não terminou. Nossa equipe já foi avisada."}')" > /dev/null || true
+
+      - name: Limpar os segredos do disco
+        if: always()
+        run: rm -f /tmp/build.json

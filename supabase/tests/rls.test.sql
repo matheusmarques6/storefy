@@ -2233,6 +2233,98 @@ select tests.ok('auditoria',
   ),
   'pedir um build fica na trilha de auditoria');
 
+-- ------------------------------------------ assets no Storage (C06a)
+
+/*
+ * O caminho do arquivo é `<store_id>/<arquivo>`, e é dele que as policies
+ * tiram de quem é. O ataque óbvio é enviar um arquivo com o id de OUTRA loja
+ * no caminho — e é exatamente isso que as asserções abaixo tentam.
+ */
+select tests.login('a-owner@teste.local');
+set role authenticated;
+
+select tests.ok('assets',
+  tests.permitido($q$insert into storage.objects (bucket_id, name)
+    values ('app-assets', (select loja_a from tests.lojas)::text || '/icon.png')$q$),
+  'o owner envia o ícone da própria loja');
+
+/*
+ * Este é o teste que importa: nada impede o navegador de mandar um caminho
+ * com o id de outra loja. Quem barra é a policy, e só ela.
+ */
+select tests.ok('assets',
+  tests.bloqueado($q$insert into storage.objects (bucket_id, name)
+    values ('app-assets', (select loja_b from tests.lojas)::text || '/icon.png')$q$),
+  'mas NÃO consegue enviar para a pasta da loja de outra organização');
+
+select tests.ok('assets',
+  tests.contar($q$select count(*) from storage.objects
+    where bucket_id = 'app-assets'$q$) = 1,
+  'e enxerga só os arquivos da própria loja');
+
+reset role;
+
+-- Um arquivo da loja B, criado por fora (como faria a service role).
+insert into storage.objects (bucket_id, name)
+select 'app-assets', loja_b::text || '/icon.png' from tests.lojas;
+
+select tests.login('a-owner@teste.local');
+set role authenticated;
+
+select tests.ok('isolamento',
+  tests.contar($q$select count(*) from storage.objects
+    where bucket_id = 'app-assets'$q$) = 1,
+  'o arquivo da outra organização não aparece para A');
+
+select tests.ok('assets',
+  tests.bloqueado($q$delete from storage.objects
+    where name like (select loja_b from tests.lojas)::text || '%'$q$),
+  'nem dá para apagar o ícone da loja de outra organização');
+
+reset role;
+
+-- Member não manda ícone: trocar a marca do app é decisão de quem responde
+-- pela organização, o mesmo critério de publicar.
+select tests.login('a-member@teste.local');
+set role authenticated;
+
+select tests.ok('papéis',
+  tests.bloqueado($q$insert into storage.objects (bucket_id, name)
+    values ('app-assets', (select loja_a from tests.lojas)::text || '/outro.png')$q$),
+  'member NÃO troca o ícone do app');
+
+select tests.ok('papéis',
+  tests.bloqueado($q$update storage.objects set updated_at = now()
+    where bucket_id = 'app-assets'
+      and name like (select loja_a from tests.lojas)::text || '%'$q$),
+  'nem troca o arquivo que já está lá');
+
+select tests.ok('papéis',
+  tests.bloqueado($q$delete from storage.objects
+    where bucket_id = 'app-assets'
+      and name like (select loja_a from tests.lojas)::text || '%'$q$),
+  'nem apaga o ícone da própria loja');
+
+select tests.ok('assets',
+  tests.contar($q$select count(*) from storage.objects
+    where bucket_id = 'app-assets'$q$) = 1,
+  'mas enxerga o que existe na loja dele');
+
+reset role;
+select tests.logout();
+set role anon;
+
+select tests.ok('assets',
+  tests.contar($q$select count(*) from storage.objects
+    where bucket_id = 'app-assets'$q$) = 0,
+  'anon não lê asset nenhum: o bucket é privado');
+
+reset role;
+
+select tests.ok('assets',
+  (select not public from storage.buckets where id = 'app-assets'),
+  'e o bucket está mesmo marcado como privado');
+
 -- --------------------------------------------- nada disso vaza para a org B
 
 select tests.login('b-owner@teste.local');

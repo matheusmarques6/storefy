@@ -1,0 +1,135 @@
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import {
+  CorpoDoBuild,
+  STATUS_QUE_PODEM_BUSCAR,
+  abrirOuNulo,
+  autorizarWorkflow,
+  canalDaLoja,
+  podeBuscarCredenciais,
+} from '@/lib/build-interno';
+
+const CHAVE = Buffer.alloc(32, 17).toString('base64');
+let original: string | undefined;
+
+beforeEach(() => {
+  original = process.env.ENCRYPTION_KEY;
+  process.env.ENCRYPTION_KEY = CHAVE;
+});
+afterEach(() => {
+  if (original === undefined) delete process.env.ENCRYPTION_KEY;
+  else process.env.ENCRYPTION_KEY = original;
+});
+
+describe('autorizarWorkflow', () => {
+  it('aceita o segredo certo', () => {
+    expect(autorizarWorkflow('Bearer segredo-do-build', 'segredo-do-build')).toEqual({ ok: true });
+  });
+
+  /*
+   * Esta rota devolve, em claro, a chave que publica na conta Apple de um
+   * cliente. Um modo "ainda não configurei" aqui seria um endpoint público
+   * entregando credenciais de todo mundo.
+   */
+  it('sem BUILD_API_SECRET, recusa tudo', () => {
+    for (const segredo of [undefined, '']) {
+      const r = autorizarWorkflow('Bearer qualquer', segredo);
+      expect(r.ok).toBe(false);
+      if (!r.ok) expect(r.status).toBe(503);
+    }
+  });
+
+  it('recusa segredo errado, faltando ou com formato torto', () => {
+    for (const cabecalho of [null, '', 'Bearer outro', 'segredo-do-build', 'Basic x']) {
+      const r = autorizarWorkflow(cabecalho, 'segredo-do-build');
+      expect(r.ok).toBe(false);
+      if (!r.ok) expect(r.status).toBe(401);
+    }
+  });
+
+  it('não aceita prefixo nem sufixo do segredo certo', () => {
+    expect(autorizarWorkflow('Bearer segredo-do-buil', 'segredo-do-build').ok).toBe(false);
+    expect(autorizarWorkflow('Bearer segredo-do-buildX', 'segredo-do-build').ok).toBe(false);
+  });
+});
+
+describe('CorpoDoBuild', () => {
+  it('exige um uuid', () => {
+    expect(
+      CorpoDoBuild.safeParse({ buildId: '11111111-1111-4111-8111-111111111111' }).success,
+    ).toBe(true);
+    for (const ruim of ['', 'abc', '1', null, undefined, 123]) {
+      expect(CorpoDoBuild.safeParse({ buildId: ruim }).success).toBe(false);
+    }
+  });
+});
+
+describe('podeBuscarCredenciais', () => {
+  /*
+   * Um buildId antigo não devolve credencial. Sem isto, qualquer id que tenha
+   * aparecido num log de execução do GitHub continuaria servindo para buscar a
+   * chave da Apple de um cliente, para sempre.
+   */
+  it('só na fila ou gerando', () => {
+    expect([...STATUS_QUE_PODEM_BUSCAR]).toEqual(['queued', 'building']);
+    for (const status of ['queued', 'building']) {
+      expect(podeBuscarCredenciais(status)).toBe(true);
+    }
+    for (const status of [
+      'finished',
+      'errored',
+      'submitted',
+      'in_review',
+      'approved',
+      'rejected',
+      'canceled',
+      '',
+    ]) {
+      expect(podeBuscarCredenciais(status)).toBe(false);
+    }
+  });
+});
+
+describe('canalDaLoja', () => {
+  /*
+   * Um canal por loja: uma correção OTA mandada para uma não pode vazar para
+   * as outras. É o mesmo raciocínio do app na OneSignal.
+   */
+  it('inclui o id da loja, para o canal não ser compartilhado', () => {
+    expect(canalDaLoja('loja-1', 'production')).toBe('production-loja-1');
+    expect(canalDaLoja('loja-2', 'production')).not.toBe(canalDaLoja('loja-1', 'production'));
+  });
+
+  it('separa também por perfil', () => {
+    expect(canalDaLoja('loja-1', 'preview')).not.toBe(canalDaLoja('loja-1', 'production'));
+  });
+});
+
+describe('abrirOuNulo', () => {
+  const abrir = (valor: string): string => {
+    if (valor === 'cifrado') return 'em claro';
+    throw new Error('não abre');
+  };
+
+  it('abre o que dá', () => {
+    expect(abrirOuNulo('cifrado', abrir)).toBe('em claro');
+  });
+
+  /*
+   * Ausente e ilegível dão o mesmo `null`. A diferença só interessa ao log do
+   * servidor; o workflow reclama igual nos dois casos, porque sem a credencial
+   * ele não tem o que fazer.
+   */
+  it('ausente e ilegível dão o mesmo null', () => {
+    expect(abrirOuNulo(null, abrir)).toBeNull();
+    expect(abrirOuNulo('', abrir)).toBeNull();
+    expect(abrirOuNulo('lixo', abrir)).toBeNull();
+  });
+
+  it('não deixa a exceção escapar', () => {
+    expect(() =>
+      abrirOuNulo('lixo', () => {
+        throw new Error('estourou');
+      }),
+    ).not.toThrow();
+  });
+});

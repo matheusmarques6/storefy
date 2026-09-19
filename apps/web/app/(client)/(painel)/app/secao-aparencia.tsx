@@ -3,6 +3,7 @@
 /** Cores e barra de status (C06a). */
 import type { AppConfig } from '@storefy/config-schema';
 import { CampoDeCor } from './campo-de-cor';
+import { CampoDeImagem } from './campo-de-imagem';
 import { Label } from '@/components/ui/label';
 import { Select } from '@/components/ui/select';
 import { editarTema } from '@/lib/editor-de-config';
@@ -24,13 +25,42 @@ export function SecaoAparencia({
   config,
   aoMudar,
   somenteLeitura,
+  storeId,
+  urlDoIcone,
+  urlDaSplash,
 }: {
   config: AppConfig;
   aoMudar: (config: AppConfig) => void;
   somenteLeitura: boolean;
+  storeId: string;
+  urlDoIcone: string | null;
+  urlDaSplash: string | null;
 }) {
   return (
     <div className="space-y-6">
+      {/*
+        As imagens vêm antes das cores porque são o que a loja de aplicativos
+        exige, e o que mais rejeita app. A cor o lojista muda quando quiser.
+      */}
+      <div className="grid gap-6 sm:grid-cols-2">
+        <CampoDeImagem
+          storeId={storeId}
+          tipo="icone"
+          rotulo="Ícone do app"
+          ajuda="Quadrado, pelo menos 1024×1024, sem fundo transparente e sem cantos arredondados — os dois sistemas arredondam sozinhos."
+          urlAtual={urlDoIcone}
+          somenteLeitura={somenteLeitura}
+        />
+        <CampoDeImagem
+          storeId={storeId}
+          tipo="splash"
+          rotulo="Tela de abertura"
+          ajuda="A imagem que aparece enquanto o app abre. Use a sua logo centralizada, com folga nas bordas."
+          urlAtual={urlDaSplash}
+          somenteLeitura={somenteLeitura}
+        />
+      </div>
+
       <div className="grid gap-4 sm:grid-cols-2">
         {CORES.map(({ campo, rotulo, ajuda }) => (
           <CampoDeCor

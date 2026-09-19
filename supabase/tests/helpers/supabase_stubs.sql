@@ -74,6 +74,54 @@ grant execute on function auth.role() to anon, authenticated, service_role;
 create extension if not exists pgcrypto with schema extensions;
 create extension if not exists unaccent with schema extensions;
 
+/*
+ * Subconjunto do schema `storage` usado pelas migrations.
+ *
+ * O Supabase cria `storage.buckets`, `storage.objects` e a função
+ * `storage.foldername` sozinho. Reproduzi-los aqui é o que permite testar as
+ * POLICIES dos arquivos — quem pode enviar o ícone de qual loja — sem subir a
+ * pilha inteira. As colunas são só as que as nossas policies leem.
+ */
+create schema if not exists storage;
+
+create table if not exists storage.buckets (
+  id text primary key,
+  name text not null,
+  public boolean not null default false,
+  file_size_limit bigint,
+  allowed_mime_types text[],
+  created_at timestamptz not null default now()
+);
+
+create table if not exists storage.objects (
+  id uuid primary key default extensions.gen_random_uuid(),
+  bucket_id text not null references storage.buckets (id),
+  name text not null,
+  owner uuid,
+  metadata jsonb,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+/*
+ * Divide o caminho do arquivo em pastas, como no Supabase: para
+ * `loja-1/icone.png`, devolve {loja-1}. As policies usam o índice 1 para
+ * descobrir de qual loja é o arquivo.
+ */
+create or replace function storage.foldername(name text)
+returns text[]
+language sql
+immutable
+as $$
+  select string_to_array(regexp_replace(name, '/[^/]*$', ''), '/');
+$$;
+
+grant usage on schema storage to anon, authenticated, service_role;
+grant select on storage.buckets to anon, authenticated, service_role;
+grant select, insert, update, delete on storage.objects to anon, authenticated, service_role;
+grant execute on function storage.foldername(text) to anon, authenticated, service_role;
+
+
 -- O Supabase concede isso automaticamente para tabelas novas do schema public.
 -- A RLS é que decide o acesso de fato; sem o grant, tudo seria negado antes de
 -- a policy ser avaliada, e o teste não provaria nada.

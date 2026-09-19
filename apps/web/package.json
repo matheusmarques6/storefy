@@ -33,7 +33,8 @@
     "react-dom": "^19.3.0",
     "sonner": "^2.0.8",
     "tailwind-merge": "^3.4.1",
-    "zod": "^4.6.5"
+    "zod": "^4.6.5",
+    "@storefy/assets": "workspace:*"
   },
   "devDependencies": {
     "@playwright/test": "^1.63.0",

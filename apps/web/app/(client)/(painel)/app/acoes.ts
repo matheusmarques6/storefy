@@ -17,6 +17,9 @@ import {
   type AppConfig,
 } from '@storefy/config-schema';
 import { criarClientServidor } from '@/lib/supabase/server';
+import { criarClientServiceRole } from '@/lib/supabase/admin';
+import { exigirContextoCliente } from '@/lib/contexto';
+import { guardarAsset, removerAsset } from '@/lib/assets-da-loja';
 import { garantirRascunho, salvarRascunho } from '@/lib/configs-servidor';
 import { validarConfig, type Problema } from '@/lib/editor-de-config';
 
@@ -37,6 +40,91 @@ function traduzirErro(codigo: string | undefined, mensagem: string): string {
     return 'Não encontramos o rascunho deste app. Recarregue a página e tente de novo.';
   }
   return mensagem !== '' ? mensagem : 'Não foi possível concluir. Tente novamente.';
+}
+
+/**
+ * Envia o ícone ou a tela de abertura da loja (C06a).
+ *
+ * O `FormData` chega da tela porque é o único jeito de passar um arquivo para
+ * uma ação de servidor. O arquivo é conferido com o MESMO código que o build
+ * usa — é isso que transforma "seu app foi rejeitado pela Apple" numa mensagem
+ * na hora do upload.
+ */
+export async function enviarAsset(
+  storeId: string,
+  tipo: 'icone' | 'splash',
+  formulario: FormData,
+): Promise<EstadoDoEditor> {
+  const { papel } = await exigirContextoCliente();
+  if (papel !== 'owner' && papel !== 'admin') {
+    return { mensagem: 'Apenas proprietários e administradores trocam a imagem do app.' };
+  }
+
+  const supabase = await criarClientServidor();
+
+  /*
+   * A loja é relida pelo client da SESSÃO: é a RLS que decide se este usuário
+   * enxerga esta loja. Um `storeId` forjado simplesmente não volta, e sem ele
+   * o caminho do arquivo nunca é montado.
+   */
+  const { data: app } = await supabase
+    .from('apps')
+    .select('id')
+    .eq('store_id', storeId)
+    .maybeSingle();
+  if (app == null) return { mensagem: 'Loja não encontrada.' };
+
+  const arquivo = formulario.get('arquivo');
+  if (!(arquivo instanceof File)) return { mensagem: 'Escolha uma imagem.' };
+
+  const resultado = await guardarAsset(criarClientServiceRole(), storeId, tipo, {
+    tipoMime: arquivo.type,
+    bytes: new Uint8Array(await arquivo.arrayBuffer()),
+  });
+  if (!resultado.ok) return { mensagem: resultado.motivo };
+
+  const { error } = await criarClientServiceRole()
+    .from('apps')
+    .update(
+      tipo === 'icone' ? { icon_path: resultado.caminho } : { splash_path: resultado.caminho },
+    )
+    .eq('id', app.id);
+
+  if (error != null)
+    return { mensagem: 'A imagem subiu, mas não conseguimos salvá-la. Tente de novo.' };
+
+  revalidatePath('/app');
+  revalidatePath('/publicacao');
+  return {
+    ok: true,
+    mensagem: tipo === 'icone' ? 'Ícone atualizado.' : 'Tela de abertura atualizada.',
+  };
+}
+
+/** Remove o ícone ou a tela de abertura. */
+export async function removerAssetDaLoja(
+  storeId: string,
+  tipo: 'icone' | 'splash',
+): Promise<EstadoDoEditor> {
+  const { papel } = await exigirContextoCliente();
+  if (papel !== 'owner' && papel !== 'admin') {
+    return { mensagem: 'Apenas proprietários e administradores trocam a imagem do app.' };
+  }
+
+  const supabase = await criarClientServidor();
+  const { data: app } = await supabase
+    .from('apps')
+    .select('id')
+    .eq('store_id', storeId)
+    .maybeSingle();
+  if (app == null) return { mensagem: 'Loja não encontrada.' };
+
+  const resultado = await removerAsset(criarClientServiceRole(), storeId, app.id, tipo);
+  if (!resultado.ok) return { mensagem: resultado.motivo };
+
+  revalidatePath('/app');
+  revalidatePath('/publicacao');
+  return { ok: true, mensagem: 'Imagem removida.' };
 }
 
 export async function salvarConfig(storeId: string, configBruta: unknown): Promise<EstadoDoEditor> {

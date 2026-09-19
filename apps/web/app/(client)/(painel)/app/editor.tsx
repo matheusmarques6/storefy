@@ -58,6 +58,9 @@ interface Props {
   historico: VersaoDoHistorico[];
   somenteLeitura: boolean;
   pushConfigurado: boolean;
+  /** Links assinados das imagens atuais. O bucket é privado. */
+  urlDoIcone: string | null;
+  urlDaSplash: string | null;
 }
 
 export function Editor({
@@ -68,6 +71,8 @@ export function Editor({
   historico,
   somenteLeitura,
   pushConfigurado,
+  urlDoIcone,
+  urlDaSplash,
 }: Props) {
   const [config, setConfig] = useState(configInicialDoServidor);
   const [salvo, setSalvo] = useState(configInicialDoServidor);
@@ -266,6 +271,9 @@ export function Editor({
                   config={config}
                   aoMudar={setConfig}
                   somenteLeitura={somenteLeitura}
+                  storeId={storeId}
+                  urlDoIcone={urlDoIcone}
+                  urlDaSplash={urlDaSplash}
                 />
               ) : null}
               {secao === 'abas' ? (

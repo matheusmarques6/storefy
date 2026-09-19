@@ -4,7 +4,8 @@
     "lib": ["ES2023"],
     "types": ["node"],
     "paths": {
-      "@storefy/db": ["./packages/db/src/index.ts"]
+      "@storefy/db": ["./packages/db/src/index.ts"],
+      "@storefy/assets": ["./packages/assets/src/index.ts"]
     }
   },
   "include": ["scripts/**/*.ts", "eslint.config.mjs"]
