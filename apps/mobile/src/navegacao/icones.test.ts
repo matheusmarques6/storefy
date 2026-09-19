@@ -2,6 +2,7 @@ import { createRequire } from 'node:module';
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { NOMES_DE_ICONE, ehNomeDeIcone } from '@storefy/config-schema';
 import { ICONES, ICONE_PADRAO, iconeDaAba } from './icones';
 
 /** O mapa de glifos que a fonte do Ionicons realmente tem. */
@@ -58,5 +59,24 @@ describe('iconeDaAba', () => {
     for (const nome of ['house', 'search', 'bag', 'cart', 'user', 'bell']) {
       expect(iconeDaAba(nome, true)).not.toBe(ICONE_PADRAO.cheio);
     }
+  });
+});
+
+describe('cobertura do contrato', () => {
+  it('TODO nome de ícone do contrato tem desenho no app', () => {
+    // O lojista escolhe pelo nome no painel. Um nome da lista sem tradução
+    // aqui vira três pontinhos no celular, e ninguém entende o que houve.
+    const semDesenho = NOMES_DE_ICONE.filter((nome) => !Object.hasOwn(ICONES, nome));
+    expect(semDesenho).toEqual([]);
+  });
+
+  it('o app não conhece nome que o painel não oferece', () => {
+    // O contrário também importa: um apelido só do app nunca seria escolhido
+    // por ninguém, e viraria código morto difícil de perceber.
+    const apelidos = ['home', 'bag', 'cart', 'account', 'notifications'];
+    const fora = Object.keys(ICONES).filter(
+      (nome) => !ehNomeDeIcone(nome) && !apelidos.includes(nome),
+    );
+    expect(fora).toEqual([]);
   });
 });

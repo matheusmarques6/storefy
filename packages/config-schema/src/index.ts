@@ -16,6 +16,22 @@
  */
 import { z } from 'zod';
 
+/**
+ * Cor em hexadecimal, como o React Native entende.
+ *
+ * Aceita `#rgb`, `#rrggbb` e `#rrggbbaa`. O campo era `z.string()` livre, e
+ * isso deixava o painel gravar `primary: 'azul'` — o app renderizaria com a cor
+ * padrão da plataforma e ninguém entenderia por quê. O aperto entra ANTES de
+ * existir qualquer config publicada, que é a única janela em que ele não
+ * quebra a regra de compatibilidade da seção 3.
+ */
+export const CorHex = z
+  .string()
+  .regex(
+    /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/,
+    'Use uma cor hexadecimal, como #1a1a1a.',
+  );
+
 /** Tipos de aba suportados pela tab bar nativa. */
 export const TabType = z.enum(['webview', 'cart', 'account', 'notifications', 'search']);
 
@@ -37,21 +53,32 @@ export const StoreSchema = z.object({
 });
 
 export const ThemeSchema = z.object({
-  primary: z.string(),
-  background: z.string(),
-  text: z.string(),
-  tabBarBg: z.string(),
-  tabBarActive: z.string(),
-  tabBarInactive: z.string(),
+  primary: CorHex,
+  background: CorHex,
+  text: CorHex,
+  tabBarBg: CorHex,
+  tabBarActive: CorHex,
+  tabBarInactive: CorHex,
   statusBar: StatusBarStyle,
 });
 
 export const TabSchema = z.object({
-  id: z.string(),
+  /**
+   * Identificador estável da aba.
+   *
+   * Vira chave de componente e de WebView no app: com id repetido, duas abas
+   * disputam a mesma instância e a rolagem de uma aparece na outra. Só
+   * minúsculas, números e hífen, para poder viajar em URL de deep link.
+   */
+  id: z
+    .string()
+    .min(1)
+    .max(40)
+    .regex(/^[a-z0-9][a-z0-9-]*$/, 'Use só letras minúsculas, números e hífen.'),
   /** Cabe na tab bar: limite de 12 caracteres. */
-  label: z.string().max(12),
+  label: z.string().min(1).max(12),
   /** Nome do ícone (lucide/phosphor). */
-  icon: z.string(),
+  icon: z.string().min(1),
   type: TabType,
   /** Caminho relativo ou URL absoluta. Só se aplica a abas do tipo `webview`. */
   url: z.string().optional(),
@@ -94,7 +121,13 @@ export const AppConfigSchema = z.object({
   store: StoreSchema,
   theme: ThemeSchema,
   /** A tab bar precisa de 2 a 5 abas para parecer nativa e caber na tela. */
-  tabs: z.array(TabSchema).min(2).max(5),
+  tabs: z
+    .array(TabSchema)
+    .min(2)
+    .max(5)
+    .refine((abas) => new Set(abas.map((aba) => aba.id)).size === abas.length, {
+      message: 'Duas abas não podem ter o mesmo identificador.',
+    }),
   webview: WebviewSchema,
   features: FeaturesSchema,
   announcement: AnnouncementSchema.optional(),
@@ -124,3 +157,5 @@ export function safeParseAppConfig(input: unknown) {
 
 export { configInicial, dominiosDaLoja, ABAS_PADRAO, TEMA_PADRAO } from './inicial';
 export type { DadosDaLoja } from './inicial';
+export { NOMES_DE_ICONE, ROTULO_DO_ICONE, ehNomeDeIcone } from './icones';
+export type { NomeDeIcone } from './icones';

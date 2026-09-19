@@ -2,12 +2,13 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { LayoutDashboard, Settings, Store } from 'lucide-react';
+import { LayoutDashboard, Settings, Smartphone, Store } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const ITENS = [
   { href: '/', rotulo: 'Início', icone: LayoutDashboard },
   { href: '/lojas', rotulo: 'Lojas', icone: Store },
+  { href: '/app', rotulo: 'App', icone: Smartphone },
   { href: '/configuracoes', rotulo: 'Configurações', icone: Settings },
 ] as const;
 

@@ -254,3 +254,89 @@ describe('AppConfig — compatibilidade retroativa', () => {
     expect(forma.announcement.safeParse(undefined).success).toBe(true);
   });
 });
+
+describe('apertos que o editor do painel depende', () => {
+  it('recusa cor que não é hexadecimal', () => {
+    // `primary: 'azul'` renderizaria com a cor padrão da plataforma e ninguém
+    // entenderia por quê.
+    for (const cor of ['azul', 'rgb(0,0,0)', '#12345', '#gggggg', '', '111827']) {
+      const analise = safeParseAppConfig(configComTema({ primary: cor }));
+      expect(analise.success, cor).toBe(false);
+    }
+  });
+
+  it('aceita as três formas de hexadecimal que o React Native entende', () => {
+    for (const cor of ['#000', '#1a1a1a', '#1a1a1aff', '#ABC']) {
+      expect(safeParseAppConfig(configComTema({ primary: cor })).success, cor).toBe(true);
+    }
+  });
+
+  it('recusa duas abas com o mesmo identificador', () => {
+    // Id repetido faz duas abas disputarem a mesma WebView, e a rolagem de uma
+    // aparece na outra.
+    const analise = safeParseAppConfig(
+      configComAbas([
+        { id: 'inicio', label: 'Início', icon: 'house', type: 'webview', url: '/' },
+        { id: 'inicio', label: 'Conta', icon: 'user', type: 'account' },
+      ]),
+    );
+    expect(analise.success).toBe(false);
+  });
+
+  it('recusa identificador de aba que não serve em deep link', () => {
+    for (const id of ['', 'Início', 'aba com espaço', '-comeca-com-hifen', 'ABA']) {
+      const analise = safeParseAppConfig(
+        configComAbas([
+          { id, label: 'A', icon: 'house', type: 'webview', url: '/' },
+          { id: 'conta', label: 'Conta', icon: 'user', type: 'account' },
+        ]),
+      );
+      expect(analise.success, id).toBe(false);
+    }
+  });
+
+  it('recusa rótulo vazio, que deixaria a aba sem nome na barra', () => {
+    const analise = safeParseAppConfig(
+      configComAbas([
+        { id: 'inicio', label: '', icon: 'house', type: 'webview', url: '/' },
+        { id: 'conta', label: 'Conta', icon: 'user', type: 'account' },
+      ]),
+    );
+    expect(analise.success).toBe(false);
+  });
+});
+
+function configBase() {
+  return {
+    version: 1,
+    store: { name: 'Loja', url: 'https://loja.com.br', domains: ['loja.com.br'] },
+    theme: {
+      primary: '#111827',
+      background: '#ffffff',
+      text: '#111827',
+      tabBarBg: '#ffffff',
+      tabBarActive: '#111827',
+      tabBarInactive: '#9ca3af',
+      statusBar: 'dark',
+    },
+    tabs: [
+      { id: 'inicio', label: 'Início', icon: 'house', type: 'webview', url: '/' },
+      { id: 'conta', label: 'Conta', icon: 'user', type: 'account' },
+    ],
+    webview: { hideSelectors: [] },
+    features: {
+      pushPromptTiming: 'onboarding',
+      onboardingSlides: [],
+      appBanner: { enabled: false, text: '' },
+    },
+  };
+}
+
+function configComTema(parcial: Record<string, string>) {
+  const base = configBase();
+  return { ...base, theme: { ...base.theme, ...parcial } };
+}
+
+function configComAbas(abas: unknown[]) {
+  return { ...configBase(), tabs: abas };
+}
