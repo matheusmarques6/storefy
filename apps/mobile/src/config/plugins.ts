@@ -14,6 +14,7 @@
 export type PluginExpo = string | [string, Record<string, unknown>];
 
 export const PLUGIN_ONESIGNAL = 'onesignal-expo-plugin';
+export const PLUGIN_CAMERA = 'expo-camera';
 
 export interface OpcoesDePlugins {
   /**
@@ -23,6 +24,15 @@ export interface OpcoesDePlugins {
   modoApns: 'development' | 'production';
   /** Splash da loja. A partir do SDK 51 ela é opção do plugin, não campo raiz. */
   splash?: { image: string; backgroundColor: string };
+  /**
+   * Build do app Storefy Preview.
+   *
+   * SÓ ELE GANHA A CÂMERA. O leitor de QR é do app de prévia, e `expo-camera`
+   * no array pede permissão de câmera no Info.plist — num app de loja isso
+   * aparece para o cliente final como "este app quer usar sua câmera", sem
+   * nenhuma função que justifique, e é pergunta certa na revisão da Apple.
+   */
+  previa?: boolean;
   /** Plugins além do OneSignal e dos que todo app nosso usa. */
   extras?: readonly PluginExpo[];
 }
@@ -56,6 +66,17 @@ export function montarPlugins(opcoes: OpcoesDePlugins): PluginExpo[] {
     'expo-local-authentication',
     'expo-updates',
   ];
+
+  if (opcoes.previa === true) {
+    base.push([
+      PLUGIN_CAMERA,
+      {
+        cameraPermission:
+          'O Storefy Preview usa a câmera para ler o código do painel e mostrar o rascunho do seu app.',
+        recordAudioAndroid: false,
+      },
+    ]);
+  }
 
   const jaIncluidos = new Set(base.map(nomeDoPlugin));
   const extras = (opcoes.extras ?? []).filter((plugin) => !jaIncluidos.has(nomeDoPlugin(plugin)));

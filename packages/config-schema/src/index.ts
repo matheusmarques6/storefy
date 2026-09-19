@@ -159,3 +159,10 @@ export { configInicial, dominiosDaLoja, ABAS_PADRAO, TEMA_PADRAO } from './inici
 export type { DadosDaLoja } from './inicial';
 export { NOMES_DE_ICONE, ROTULO_DO_ICONE, ehNomeDeIcone } from './icones';
 export type { NomeDeIcone } from './icones';
+export {
+  ESQUEMA_DA_PREVIA,
+  ehTokenDePrevia,
+  lerTokenDePrevia,
+  normalizarTokenDePrevia,
+  urlDaPrevia,
+} from './previa';

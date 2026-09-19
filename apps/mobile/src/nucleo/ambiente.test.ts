@@ -23,6 +23,7 @@ describe('lerAmbiente', () => {
       oneSignalAppId: 'os_abc',
       buildAtual: 7,
       appVersion: '1.2.0',
+      modoPrevia: false,
     });
   });
 
@@ -83,5 +84,18 @@ describe('recursosDoBuild', () => {
 
   it('eventos seguem desligados até a Fase 3', () => {
     expect(recursosDoBuild(lerAmbiente(COMPLETO)).eventos).toBe(false);
+  });
+});
+
+describe('modo de prévia', () => {
+  it('fica desligado em app de loja', () => {
+    // Nenhum app de cliente pode pedir código: ele abre a loja e pronto.
+    expect(lerAmbiente(COMPLETO).modoPrevia).toBe(false);
+    expect(lerAmbiente({ ...COMPLETO, extra: { previewMode: 'sim' } }).modoPrevia).toBe(false);
+    expect(lerAmbiente({ ...COMPLETO, extra: { previewMode: 1 } }).modoPrevia).toBe(false);
+  });
+
+  it('liga só com o booleano verdadeiro do build de prévia', () => {
+    expect(lerAmbiente({ ...COMPLETO, extra: { previewMode: true } }).modoPrevia).toBe(true);
   });
 });

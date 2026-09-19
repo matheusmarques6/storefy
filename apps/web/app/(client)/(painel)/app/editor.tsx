@@ -33,6 +33,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { publicarConfig, salvarConfig } from './acoes';
 import { Previa } from './previa';
+import { PreviaNoCelular } from './previa-no-celular';
 import { SecaoAbas } from './secao-abas';
 import { SecaoAparencia } from './secao-aparencia';
 import { SecaoLoja } from './secao-loja';
@@ -321,6 +322,8 @@ export function Editor({
               {selecionando ? 'Parar de escolher' : 'Escolher o que esconder'}
             </Button>
           )}
+
+          <PreviaNoCelular storeId={storeId} somenteLeitura={somenteLeitura} />
         </div>
       </div>
 

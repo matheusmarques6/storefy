@@ -40,13 +40,22 @@ function opcional(nome: string, padrao: string): string {
 const storeId = opcional('STORE_ID', 'oakvintage');
 
 /*
+ * Build do app Storefy Preview.
+ *
+ * Mesma base do app das lojas, com três diferenças: nome e esquema próprios,
+ * a câmera para ler o QR do painel, e `extra.previewMode`, que faz o app pedir
+ * um código em vez de abrir a loja. Nenhum app de cliente leva nada disso.
+ */
+const modoPrevia = opcional('PREVIEW_MODE', '') === '1';
+
+/*
  * Ícone e splash são arte da loja: o workflow de build por loja baixa os dois
  * para `brands/$STORE_ID/` antes de chamar o Expo. Num build de loja de
  * verdade — aquele que define `STORE_ID` — a falta de um deles é erro, e não
  * silêncio: o app iria para a App Store com o ícone padrão do Expo. No
  * `expo start` local, sem `STORE_ID`, o padrão do Expo serve.
  */
-const buildDeLoja = (ambiente['STORE_ID'] ?? '') !== '';
+const buildDeLoja = (ambiente['STORE_ID'] ?? '') !== '' && !modoPrevia;
 
 function arteDaLoja(arquivo: string): string | undefined {
   const relativo = `./brands/${storeId}/${arquivo}`;
@@ -62,8 +71,8 @@ function arteDaLoja(arquivo: string): string | undefined {
 
 const icone = arteDaLoja('icon.png');
 const splash = arteDaLoja('splash.png');
-const nomeDoApp = opcional('APP_NAME', 'Oak Vintage');
-const slug = opcional('APP_SLUG', 'storefy-oakvintage');
+const nomeDoApp = modoPrevia ? 'Storefy Preview' : opcional('APP_NAME', 'Oak Vintage');
+const slug = modoPrevia ? 'storefy-preview' : opcional('APP_SLUG', 'storefy-oakvintage');
 
 /*
  * `development` usa o sandbox de push da Apple. Um build de produção com
@@ -79,7 +88,7 @@ const config: ExpoConfig = {
   // Conta ou organização dona do projeto no Expo. Sem isso, o EAS pergunta na
   // hora — e num workflow sem ninguém para responder, ele para.
   owner: ambiente['EXPO_OWNER'] ?? undefined,
-  scheme: opcional('APP_SCHEME', 'storefy'),
+  scheme: modoPrevia ? 'storefy-preview' : opcional('APP_SCHEME', 'storefy'),
   version: opcional('APP_VERSION', '1.0.0'),
   orientation: 'portrait',
   userInterfaceStyle: 'light',
@@ -119,6 +128,7 @@ const config: ExpoConfig = {
   // A ordem importa: o OneSignal precisa ser o primeiro. Ver `src/config/plugins.ts`.
   plugins: montarPlugins({
     modoApns,
+    previa: modoPrevia,
     splash:
       splash === undefined
         ? undefined
@@ -128,6 +138,7 @@ const config: ExpoConfig = {
   experiments: { typedRoutes: true },
 
   extra: {
+    previewMode: modoPrevia,
     storeId,
     appId: ambiente['STOREFY_APP_ID'] ?? null,
     apiBase: opcional('API_BASE', 'https://storefy.convertfy.me'),

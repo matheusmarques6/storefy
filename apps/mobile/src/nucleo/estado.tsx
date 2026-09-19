@@ -17,6 +17,7 @@ import {
   useState,
   type ReactNode,
 } from 'react';
+import { lerTokenDePrevia, safeParseAppConfig, urlDaPrevia } from '@storefy/config-schema';
 import {
   decidirConfig,
   deveGravarNoCache,
@@ -24,10 +25,22 @@ import {
   type DecisaoDaConfig,
 } from '../config/decisao';
 import { configEmbutida } from '../config/embutida';
-import { buscarNaRede, gravarCache, lerCache } from '../config/fontes';
+import {
+  buscarNaRede,
+  buscarPrevia,
+  esquecerToken,
+  gravarCache,
+  guardarToken,
+  lerCache,
+  lerTokenGuardado,
+} from '../config/fontes';
 import { lerAmbiente, recursosDoBuild, type Ambiente } from './ambiente';
 
-export type EstadoDaConfig = DecisaoDaConfig | { estado: 'carregando' };
+export type EstadoDaConfig =
+  | DecisaoDaConfig
+  | { estado: 'carregando' }
+  /** Só no app de prévia: esperando o lojista informar um código. */
+  | { estado: 'sem-previa'; motivo?: string };
 
 interface ValorDoContexto {
   estado: EstadoDaConfig;
@@ -35,6 +48,10 @@ interface ValorDoContexto {
   recursos: { push: boolean; eventos: boolean };
   /** Recarrega tudo, inclusive a busca na rede. Usado no "Tentar de novo". */
   recarregar: () => void;
+  /** App de prévia: carrega o rascunho de um código lido ou digitado. */
+  abrirPrevia: (entrada: string) => Promise<void>;
+  /** App de prévia: esquece o código e volta à tela de leitura. */
+  sairDaPrevia: () => void;
 }
 
 const Contexto = createContext<ValorDoContexto | null>(null);
@@ -57,6 +74,65 @@ export function ProvedorDaConfig({ children }: { children: ReactNode }): ReactNo
   const [estado, setEstado] = useState<EstadoDaConfig>({ estado: 'carregando' });
   const [tentativa, setTentativa] = useState(0);
 
+  /**
+   * App de prévia: carrega o rascunho de um código.
+   *
+   * Separa "código morto" de "rede fora" porque as duas coisas pedem ações
+   * diferentes — gerar outro código no painel, ou tentar de novo aqui.
+   */
+  const abrirPrevia = useCallback(
+    async (entrada: string): Promise<void> => {
+      const token = lerTokenDePrevia(entrada);
+      if (token === null) {
+        setEstado({ estado: 'sem-previa', motivo: 'Este código não parece válido.' });
+        return;
+      }
+
+      const url = urlDaPrevia(ambiente.apiBase, token);
+      if (url === null) {
+        setEstado({
+          estado: 'sem-previa',
+          motivo: 'Este app de prévia está sem o endereço do servidor.',
+        });
+        return;
+      }
+
+      setEstado({ estado: 'carregando' });
+      const resultado = await buscarPrevia(url);
+
+      if (resultado.estado === 'expirado') {
+        await esquecerToken();
+        setEstado({ estado: 'sem-previa', motivo: 'Este código venceu. Gere outro no painel.' });
+        return;
+      }
+      if (resultado.estado === 'falhou') {
+        setEstado({
+          estado: 'sem-previa',
+          motivo: 'Não conseguimos falar com o servidor. Confira a internet e tente de novo.',
+        });
+        return;
+      }
+
+      const analise = safeParseAppConfig(resultado.config);
+      if (!analise.success) {
+        setEstado({
+          estado: 'sem-previa',
+          motivo: 'O rascunho desta loja tem um problema de configuração.',
+        });
+        return;
+      }
+
+      await guardarToken(token);
+      setEstado({ estado: 'pronta', config: analise.data, origem: 'rede' });
+    },
+    [ambiente.apiBase],
+  );
+
+  const sairDaPrevia = useCallback((): void => {
+    void esquecerToken();
+    setEstado({ estado: 'sem-previa' });
+  }, []);
+
   useEffect(() => {
     /*
      * A busca pode estar no ar quando o componente sai da árvore, ou quando o
@@ -74,6 +150,22 @@ export function ProvedorDaConfig({ children }: { children: ReactNode }): ReactNo
     const foiCancelado = (): boolean => cancelado;
 
     async function carregar(): Promise<void> {
+      /*
+       * No app de prévia não há loja embutida nem config remota: ele existe
+       * para mostrar o rascunho de um código. Reabre no último usado, se ainda
+       * valer, para o lojista não escanear de novo a cada abertura.
+       */
+      if (ambiente.modoPrevia) {
+        const guardado = await lerTokenGuardado();
+        if (foiCancelado()) return;
+        if (guardado === null) {
+          setEstado({ estado: 'sem-previa' });
+          return;
+        }
+        await abrirPrevia(guardado);
+        return;
+      }
+
       const embutida = configEmbutida(ambiente.storeId);
       const cache = await lerCache();
       if (foiCancelado()) return;
@@ -113,7 +205,7 @@ export function ProvedorDaConfig({ children }: { children: ReactNode }): ReactNo
     return () => {
       cancelado = true;
     };
-  }, [ambiente, tentativa]);
+  }, [abrirPrevia, ambiente, tentativa]);
 
   const recarregar = useCallback(() => {
     setEstado({ estado: 'carregando' });
@@ -121,8 +213,8 @@ export function ProvedorDaConfig({ children }: { children: ReactNode }): ReactNo
   }, []);
 
   const valor = useMemo<ValorDoContexto>(
-    () => ({ estado, ambiente, recursos, recarregar }),
-    [estado, ambiente, recursos, recarregar],
+    () => ({ estado, ambiente, recursos, recarregar, abrirPrevia, sairDaPrevia }),
+    [abrirPrevia, ambiente, estado, recarregar, recursos, sairDaPrevia],
   );
 
   return <Contexto.Provider value={valor}>{children}</Contexto.Provider>;

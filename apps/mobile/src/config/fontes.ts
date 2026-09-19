@@ -89,3 +89,60 @@ export async function buscarNaRede(url: string): Promise<unknown> {
     clearTimeout(alarme);
   }
 }
+
+/** Guarda o último código usado, para o app de prévia reabrir no mesmo.  */
+export const CHAVE_DA_PREVIA = 'storefy:previa:v1';
+
+export async function lerTokenGuardado(): Promise<string | null> {
+  try {
+    return await AsyncStorage.getItem(CHAVE_DA_PREVIA);
+  } catch {
+    return null;
+  }
+}
+
+export async function guardarToken(token: string): Promise<void> {
+  try {
+    await AsyncStorage.setItem(CHAVE_DA_PREVIA, token);
+  } catch {
+    // Sem disco, o lojista digita o código de novo na próxima abertura.
+  }
+}
+
+export async function esquecerToken(): Promise<void> {
+  try {
+    await AsyncStorage.removeItem(CHAVE_DA_PREVIA);
+  } catch {
+    // Sem código guardado é o mesmo resultado que apagar com sucesso.
+  }
+}
+
+/**
+ * Busca o rascunho de um código de prévia.
+ *
+ * Distingue "código morto" de "rede fora" porque as duas coisas pedem ações
+ * diferentes do lojista: gerar outro código, ou tentar de novo.
+ */
+export type ResultadoDaPrevia =
+  { estado: 'ok'; config: unknown } | { estado: 'expirado' } | { estado: 'falhou' };
+
+export async function buscarPrevia(url: string): Promise<ResultadoDaPrevia> {
+  const cancelador = new AbortController();
+  const alarme = setTimeout(() => {
+    cancelador.abort();
+  }, TEMPO_LIMITE_MS);
+
+  try {
+    const resposta = await fetch(url, {
+      signal: cancelador.signal,
+      headers: { Accept: 'application/json' },
+    });
+    if (resposta.status === 404 || resposta.status === 400) return { estado: 'expirado' };
+    if (!resposta.ok) return { estado: 'falhou' };
+    return { estado: 'ok', config: await resposta.json() };
+  } catch {
+    return { estado: 'falhou' };
+  } finally {
+    clearTimeout(alarme);
+  }
+}

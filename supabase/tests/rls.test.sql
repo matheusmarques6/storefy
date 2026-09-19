@@ -878,6 +878,100 @@ select tests.ok('config',
 
 reset role;
 
+-- ============================ grupo 9: sessões de prévia (app Preview)
+--
+-- O código de prévia dá acesso ao RASCUNHO de uma loja sem login nenhum. O
+-- que se prova aqui é que só quem publica consegue criar um, que o valor em
+-- claro nunca fica no banco, e que ele não atravessa a fronteira da
+-- organização.
+
+select tests.login('a-member@teste.local');
+set role authenticated;
+
+select tests.ok('prévia',
+  tests.bloqueado(format('select public.abrir_previa(%L, 30)', (select app_a from tests.lojas))),
+  'member NÃO abre prévia');
+
+reset role;
+
+select tests.login('a-owner@teste.local');
+set role authenticated;
+
+do $$
+declare
+  v_app uuid := (select app_a from tests.lojas);
+  v_token text;
+  v_expira timestamptz;
+begin
+  select token, expira_em into v_token, v_expira from public.abrir_previa(v_app, 30);
+
+  perform tests.ok('prévia', v_token ~ '^[0-9a-f]{32}$',
+    'o código tem 32 hexadecimais');
+  perform tests.ok('prévia', v_expira > now() and v_expira < now() + interval '31 minutes',
+    'o código vence em meia hora');
+
+  perform tests.ok('prévia',
+    not exists (select 1 from public.preview_sessions where token_hash = v_token),
+    'O CÓDIGO EM CLARO NÃO FICA NO BANCO');
+  perform tests.ok('prévia',
+    exists (
+      select 1 from public.preview_sessions
+       where app_id = v_app
+         and token_hash = encode(extensions.digest(v_token, 'sha256'), 'hex')
+    ),
+    'o que fica guardado é o hash dele');
+
+  -- prazo fora da faixa
+  declare
+    v_bloqueado boolean := false;
+  begin
+    begin
+      perform public.abrir_previa(v_app, 0);
+    exception when others then
+      v_bloqueado := true;
+    end;
+    perform tests.ok('prévia', v_bloqueado, 'prazo fora da faixa é recusado');
+  end;
+end
+$$;
+
+reset role;
+
+select tests.login('b-owner@teste.local');
+set role authenticated;
+
+select tests.ok('prévia',
+  tests.contar('select count(*) from public.preview_sessions') = 0,
+  'B não enxerga as prévias de A');
+
+do $$
+declare
+  v_bloqueado boolean := false;
+begin
+  begin
+    perform public.abrir_previa((select app_a from tests.lojas), 30);
+  exception when others then
+    v_bloqueado := true;
+  end;
+  perform tests.ok('prévia', v_bloqueado, 'B NÃO abre prévia do app de A');
+end
+$$;
+
+reset role;
+
+select tests.logout();
+set role anon;
+
+select tests.ok('prévia',
+  tests.bloqueado(format('select public.abrir_previa(%L, 30)', (select app_a from tests.lojas))),
+  'anon não abre prévia');
+
+select tests.ok('prévia',
+  tests.contar('select count(*) from public.preview_sessions') = 0,
+  'anon não lê prévia nenhuma');
+
+reset role;
+
 -- ======================================================== relatório
 
 \o

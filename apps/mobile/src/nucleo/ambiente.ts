@@ -20,6 +20,13 @@ export interface Ambiente {
   buildAtual: number;
   /** Versão que aparece para o usuário, entregue à página em `__STOREFY__`. */
   appVersion: string;
+  /**
+   * Este é o app Storefy Preview?
+   *
+   * Ele não abre loja nenhuma sozinho: pede um código do painel e mostra o
+   * RASCUNHO daquela loja. Nenhum app de cliente traz isto ligado.
+   */
+  modoPrevia: boolean;
 }
 
 function texto(valor: unknown): string {
@@ -62,6 +69,7 @@ export function lerAmbiente(entrada: {
     // versão que deveria ser bloqueada.
     buildAtual: Number.isInteger(numero) && numero > 0 ? numero : 1,
     appVersion: texto(entrada.versao) === '' ? '0.0.0' : texto(entrada.versao),
+    modoPrevia: extra.previewMode === true,
   };
 }
 

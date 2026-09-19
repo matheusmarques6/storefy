@@ -233,6 +233,40 @@ export type Database = {
         };
         Relationships: [];
       };
+      preview_sessions: {
+        Row: {
+          id: string;
+          app_id: string;
+          token_hash: string;
+          created_by: string | null;
+          expires_at: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          app_id: string;
+          token_hash: string;
+          created_by?: string | null;
+          expires_at: string;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          app_id?: string;
+          token_hash?: string;
+          created_by?: string | null;
+          expires_at?: string;
+          created_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "preview_sessions_app_id_fkey";
+            columns: ["app_id"];
+            referencedRelation: "apps";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       stores: {
         Row: {
           id: string;
@@ -285,6 +319,10 @@ export type Database = {
     };
     Views: Record<never, never>;
     Functions: {
+      abrir_previa: {
+        Args: { p_app_id: string; p_minutos: unknown };
+        Returns: { token: string | null; expira_em: string | null }[];
+      };
       admin_email_do_usuario: {
         Args: { p_user_id: string };
         Returns: string;

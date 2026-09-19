@@ -9,11 +9,16 @@
  * consegue apontar o app de uma loja para outro site nem pular uma versão.
  */
 import { revalidatePath } from 'next/cache';
-import { safeParseAppConfig, type AppConfig } from '@storefy/config-schema';
+import { toString as qrParaSvg } from 'qrcode';
+import {
+  ESQUEMA_DA_PREVIA,
+  dominiosDaLoja,
+  safeParseAppConfig,
+  type AppConfig,
+} from '@storefy/config-schema';
 import { criarClientServidor } from '@/lib/supabase/server';
 import { garantirRascunho, salvarRascunho } from '@/lib/configs-servidor';
 import { validarConfig, type Problema } from '@/lib/editor-de-config';
-import { dominiosDaLoja } from '@storefy/config-schema';
 
 export interface EstadoDoEditor {
   ok?: boolean;
@@ -134,5 +139,76 @@ export async function restaurarVersao(storeId: string, versao: number): Promise<
   return {
     ok: true,
     mensagem: `Versão ${String(versao)} carregada no rascunho. Revise e publique quando quiser.`,
+  };
+}
+
+// ---------------------------------------------------------------- prévia
+
+/*
+ * O QR carrega um deep link e não uma URL comum: assim a câmera nativa do
+ * celular oferece abrir no app, em vez de abrir o navegador numa página de
+ * JSON que não diz nada ao lojista. O esquema vem do contrato, e não daqui:
+ * um arquivo 'use server' só pode exportar função assíncrona.
+ */
+
+/** Quanto tempo o código vale. Curto: ele dá acesso ao rascunho sem login. */
+const MINUTOS_DA_PREVIA = 30;
+
+export interface EstadoDaPrevia {
+  ok?: boolean;
+  mensagem?: string;
+  /** Código em claro. Existe só nesta resposta; o banco guarda o hash. */
+  codigo?: string;
+  /** SVG do QR, pronto para a tela. */
+  qr?: string;
+  expiraEm?: string;
+}
+
+/**
+ * Abre uma prévia para ver o rascunho num aparelho antes de publicar.
+ *
+ * O código volta em claro uma única vez — é o que vai para o QR. Recarregar a
+ * página não recupera o mesmo: gera outro.
+ */
+export async function abrirPrevia(storeId: string): Promise<EstadoDaPrevia> {
+  const supabase = await criarClientServidor();
+
+  const atual = await garantirRascunho(supabase, storeId);
+  if (!atual.ok) return { mensagem: atual.motivo };
+
+  const { data, error } = await supabase.rpc('abrir_previa', {
+    p_app_id: atual.rascunho.appId,
+    p_minutos: MINUTOS_DA_PREVIA,
+  });
+
+  if (error != null) return { mensagem: traduzirErro(error.code, error.message) };
+
+  const sessao = Array.isArray(data) ? data[0] : null;
+  // As colunas de uma função que devolve tabela chegam anuláveis no tipo;
+  // sem código não há prévia, e seguir com `null` viraria um QR de "null".
+  if (sessao?.token == null || sessao.token === '') {
+    return { mensagem: 'Não foi possível abrir a prévia. Tente de novo.' };
+  }
+
+  const link = `${ESQUEMA_DA_PREVIA}://p/${sessao.token}`;
+  let qr: string;
+  try {
+    qr = await qrParaSvg(link, {
+      type: 'svg',
+      margin: 1,
+      // Nível médio de correção: o QR continua legível com o dedo cobrindo um
+      // canto da tela, sem ficar denso demais para a câmera de longe.
+      errorCorrectionLevel: 'M',
+    });
+  } catch {
+    // Sem o QR, o código digitado à mão ainda resolve.
+    qr = '';
+  }
+
+  return {
+    ok: true,
+    codigo: sessao.token,
+    qr,
+    expiraEm: sessao.expira_em ?? undefined,
   };
 }

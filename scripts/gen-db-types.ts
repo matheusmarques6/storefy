@@ -218,7 +218,7 @@ async function main(): Promise<void> {
   `);
 
   /** RPCs sem o prefixo `admin_` que o painel chama. */
-  const RPCS = ['publicar_config', 'restaurar_config'];
+  const RPCS = ['publicar_config', 'restaurar_config', 'abrir_previa'];
 
   const { rows: funcoes } = await client.query<FuncaoSql>(
     `

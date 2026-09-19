@@ -15,6 +15,7 @@ import { estadoDoOnboarding } from '../src/nucleo/onboarding';
 import { TelaDeAtualizacao, TelaDeCarregamento, TelaSemConfig } from '../src/telas/avisos';
 import { Loja } from '../src/telas/loja';
 import { Onboarding } from '../src/telas/onboarding';
+import { TelaDePrevia } from '../src/telas/previa';
 import type { ContextoDoApp } from '../src/webview/scripts';
 
 /**
@@ -27,7 +28,7 @@ import type { ContextoDoApp } from '../src/webview/scripts';
 const LIMITE_DA_SPLASH_MS = 4000;
 
 export default function Inicio(): React.ReactNode {
-  const { estado, ambiente, recursos, recarregar } = useConfig();
+  const { estado, ambiente, recursos, recarregar, abrirPrevia } = useConfig();
   const splashEscondida = useRef(false);
 
   const esconderSplash = useCallback((): void => {
@@ -80,6 +81,7 @@ export default function Inicio(): React.ReactNode {
     if (
       estado.estado === 'precisa-atualizar' ||
       estado.estado === 'sem-config' ||
+      estado.estado === 'sem-previa' ||
       onboarding === 'mostrar'
     ) {
       esconderSplash();
@@ -115,6 +117,16 @@ export default function Inicio(): React.ReactNode {
 
     case 'sem-config':
       return <TelaSemConfig motivo={estado.motivo} aoTentarDeNovo={recarregar} />;
+
+    case 'sem-previa':
+      return (
+        <TelaDePrevia
+          motivo={estado.motivo}
+          aoInformarCodigo={(entrada) => {
+            void abrirPrevia(entrada);
+          }}
+        />
+      );
 
     case 'pronta':
       if (onboarding === 'lendo') return <TelaDeCarregamento cores={estado.config.theme} />;

@@ -659,7 +659,7 @@ Um app interno, publicado uma única vez na conta da Storefy, que o lojista usa 
 | Seletor visual de elementos | ✅ 13 testes executando o script num DOM real |
 | Detecção automática de nome, cor e logo (C02–C04) | ✅ 24 testes |
 | Publicar, histórico e restaurar na tela | ✅ com confirmação |
-| App Storefy Preview (QR + config em rascunho) | ⬜ |
+| App Storefy Preview (QR + config em rascunho) | ✅ mesmo código, `PREVIEW_MODE=1` |
 | Verificação ponta a ponta num aparelho | ⬜ depende de aparelho físico |
 
 **Decisões desta fase**
@@ -692,6 +692,17 @@ Um app interno, publicado uma única vez na conta da Storefy, que o lojista usa 
   nenhum nome da lista fique sem desenho.
 - O schema apertou cor, id e rótulo de aba **antes de existir config publicada**,
   que é a única janela em que isso não quebra a regra de compatibilidade.
+- **Só o app de prévia leva a câmera.** `expo-camera` no array de plugins põe
+  "este app quer usar sua câmera" no Info.plist; num app de loja isso aparece
+  para o cliente final sem nenhuma função que justifique, e é pergunta certa na
+  revisão da Apple. O teste do `montarPlugins` cobra as duas situações.
+- **O código de prévia é guardado como hash.** Ele dá acesso ao rascunho de uma
+  loja sem login; em claro, um vazamento do banco viraria acesso aos rascunhos
+  de todos os clientes de uma vez. O valor em claro existe no instante em que é
+  sorteado — dentro do banco — e vai direto para o QR.
+- Código errado, vencido e app sem rascunho dão a MESMA resposta no endpoint da
+  prévia. Separar os casos contaria a quem estivesse adivinhando quais códigos
+  existem.
 - `features.biometricLogin` continua sem tela no editor: nada no app o consome
   ainda, e um botão que não faz nada é o que a regra 3 proíbe. Entra junto com a
   área de conta.

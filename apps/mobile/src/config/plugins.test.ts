@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { PLUGIN_ONESIGNAL, montarPlugins, nomeDoPlugin, type PluginExpo } from './plugins';
+import {
+  PLUGIN_CAMERA,
+  PLUGIN_ONESIGNAL,
+  montarPlugins,
+  nomeDoPlugin,
+  type PluginExpo,
+} from './plugins';
 
 /** O primeiro plugin, falhando alto se a lista vier vazia. */
 function primeiro(plugins: PluginExpo[]): PluginExpo {
@@ -76,5 +82,30 @@ describe('montarPlugins — regra 5 do CLAUDE.md', () => {
       extras: ['expo-router', 'expo-haptics'],
     }).map(nomeDoPlugin);
     expect(new Set(nomes).size).toBe(nomes.length);
+  });
+});
+
+describe('câmera só no app de prévia', () => {
+  it('app de loja NÃO pede permissão de câmera', () => {
+    // `expo-camera` no array põe "este app quer usar sua câmera" no Info.plist.
+    // Num app de loja isso aparece para o cliente final sem nenhuma função que
+    // justifique, e é pergunta certa na revisão da Apple.
+    const nomes = montarPlugins({ modoApns: 'production' }).map(nomeDoPlugin);
+    expect(nomes).not.toContain(PLUGIN_CAMERA);
+  });
+
+  it('o app de prévia ganha a câmera, com o motivo escrito', () => {
+    const plugins = montarPlugins({ modoApns: 'development', previa: true });
+    const camera = plugins.find((plugin) => nomeDoPlugin(plugin) === PLUGIN_CAMERA);
+    expect(camera).toBeDefined();
+    expect(Array.isArray(camera)).toBe(true);
+    if (Array.isArray(camera)) {
+      expect(String(camera[1].cameraPermission)).toContain('código do painel');
+    }
+  });
+
+  it('a câmera não empurra o OneSignal do primeiro lugar', () => {
+    const nomes = montarPlugins({ modoApns: 'production', previa: true }).map(nomeDoPlugin);
+    expect(nomes[0]).toBe(PLUGIN_ONESIGNAL);
   });
 });
