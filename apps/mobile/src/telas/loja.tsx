@@ -190,9 +190,9 @@ export function Loja({
         });
         return;
 
-      // Estes três dependem de recurso que este build ainda não tem, e
-      // `acaoParaMensagem` já devolveu `ignorar` quando é o caso. Chegar aqui
-      // significa que o recurso existe e a Fase correspondente liga o fio.
+      // Os três dependem do push e do backend de eventos, que chegam na
+      // Fase 3. Enquanto `IMPLEMENTADO.push` for falso, `acaoParaMensagem`
+      // devolve `ignorar` com motivo e a execução nem chega aqui.
       case 'pedir-push':
       case 'identificar-cliente':
       case 'checkout-iniciado':
@@ -219,7 +219,7 @@ export function Loja({
       <StatusBar style={config.theme.statusBar === 'light' ? 'light' : 'dark'} />
       <SafeAreaView edges={['top']} style={estilos.area}>
         {/*
-         * Toda aba vira uma WebView. A Fase 4 põe aqui a caixa de avisos
+         * Toda aba vira uma WebView. A Fase 3 põe aqui a caixa de avisos
          * nativa, e até lá `abasUsaveis` não deixa uma aba dessas chegar até
          * este ponto. Se chegasse — config só com abas nativas —, a loja abre
          * no lugar, porque tela vazia com barra de abas é pior.

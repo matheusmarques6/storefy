@@ -26,9 +26,9 @@ export type AcaoNativa =
   | { tipo: 'ignorar'; motivo: string };
 
 export interface ContextoDasAcoes {
-  /** OneSignal configurado neste build (Fase 4). */
+  /** OneSignal ligado neste build (Fase 3). */
   push: boolean;
-  /** Backend de `cart_events` e `orders` disponível (Fase 5). */
+  /** Backend de `cart_events` disponível (Fase 3). */
   eventos: boolean;
   /** `features.rateAppPrompt` da config da loja. */
   pedirAvaliacao: boolean;

@@ -65,7 +65,7 @@ describe('lerAmbiente', () => {
 
 describe('recursosDoBuild', () => {
   it('exige o app ID do OneSignal E o SDK ligado', () => {
-    // Ter a chave no build não basta: até a Fase 4 nada inicializa o SDK, e
+    // Ter a chave no build não basta: até a Fase 3 nada inicializa o SDK, e
     // pedir permissão de push queimaria a única chance que o iOS dá.
     expect(recursosDoBuild(lerAmbiente(COMPLETO)).push).toBe(IMPLEMENTADO.push);
 
@@ -81,7 +81,7 @@ describe('recursosDoBuild', () => {
     expect(recursosDoBuild(lerAmbiente(COMPLETO)).push).toBe(false);
   });
 
-  it('eventos seguem desligados até a Fase 5', () => {
+  it('eventos seguem desligados até a Fase 3', () => {
     expect(recursosDoBuild(lerAmbiente(COMPLETO)).eventos).toBe(false);
   });
 });

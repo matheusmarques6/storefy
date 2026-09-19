@@ -3,7 +3,7 @@ import { acaoParaMensagem, type ContextoDasAcoes } from './acoes';
 
 /** Build da Fase 1: sem OneSignal e sem backend de eventos. */
 const FASE_1: ContextoDasAcoes = { push: false, eventos: false, pedirAvaliacao: true };
-/** Build completo, como fica no fim da Fase 5. */
+/** Build completo, como fica no fim da Fase 3. */
 const COMPLETO: ContextoDasAcoes = { push: true, eventos: true, pedirAvaliacao: true };
 
 function comoPostMessage(objeto: unknown): string {

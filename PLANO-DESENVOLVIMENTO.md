@@ -548,13 +548,25 @@ Um app interno, publicado uma única vez na conta da Storefy, que o lojista usa 
 | Ordem dos plugins nativos (regra 5) | ✅ garantida por função, com 8 testes |
 | Carregamento da config com cache e fallback (seção 5.3) | ✅ 15 testes |
 | Config da loja demo (Oak Vintage) | ✅ valida no `AppConfigSchema` |
-| Resolução das abas a partir da config (seção 5.2) | ✅ 15 testes |
+| Resolução das abas a partir da config (seção 5.2) | ✅ 19 testes |
 | Observador de carrinho (script injetado, seção 5.4) | ✅ 29 testes, sete mutações detectadas |
-| Telas do app e abas nativas (expo-router) | ⬜ |
-| WebViews persistentes por aba | ⬜ |
-| Badge do carrinho ligado ao observador | ⬜ |
-| Telas offline, erro e atualização obrigatória | ⬜ |
-| Testar em 3 lojas reais | ⬜ depende de aparelho físico e de URLs de loja |
+| `window.Storefy` para o tema do lojista (seção 5.5) | ✅ 11 testes rodando o script |
+| Ações nativas do bridge (vibrar, compartilhar, abrir fora) | ✅ 11 testes |
+| Telas do app e abas nativas | ✅ barra escrita à mão, ver decisão abaixo |
+| WebViews persistentes por aba | ✅ `display: none`, instância viva |
+| Badge do carrinho ligado ao observador | ✅ com 99+ e leitura de tela |
+| Roteador de links (checkout na mesma WebView) | ✅ 7 testes |
+| Pull-to-refresh, voltar no Android, gestos no iOS | ✅ |
+| Barra de progresso | ✅ |
+| Telas offline, erro, atualização obrigatória e sem config | ✅ nativas |
+| Onboarding nativo (passo 3 da seção 5.3) | ✅ 4 testes na decisão |
+| Deep link por Universal Link | ✅ inclusive na abertura a frio |
+| Haptics, compartilhar e pedido de avaliação | ✅ |
+| Empacotamento (`expo export`) no `pnpm build` | ✅ Android e iOS |
+| Caixa de avisos nativa (M07) | ⬜ Fase 3, junto com o push |
+| Face ID opcional (`features.biometricLogin`) | ⬜ Fase 2, com a área de conta |
+| Presets de `hideSelectors` por tema | ⬜ exige renderizar lojas reais |
+| Testar em 3 lojas reais | ⬜ depende de aparelho físico e de rede até as lojas |
 | Builds de desenvolvimento via EAS | ⬜ depende de conta Expo |
 
 **Decisões desta fase**
@@ -589,6 +601,39 @@ Um app interno, publicado uma única vez na conta da Storefy, que o lojista usa 
   testes, e junto veio o risco de alguém importar `node:*` em código que roda no
   aparelho — compila e quebra na mão do cliente. O eslint do pacote barra
   `node:*` fora dos testes.
+- **A barra de abas é escrita à mão, e não o `Tabs` do expo-router.** As abas
+  vêm da config remota: de duas a cinco, com rótulo, ícone e ordem trocados sem
+  build novo. O roteador de arquivos precisa de uma rota por aba, escrita antes
+  de existir a loja, o que obrigaria a criar cinco rotas fantasma e esconder as
+  que sobrassem. Em troca, tudo que o `Tabs` daria de graça — papel de
+  acessibilidade, estado selecionado, área segura, alvo de toque de 44pt — está
+  escrito na mão em `src/navegacao/barra-de-abas.tsx`.
+- **Nada de tela "em breve".** O que este build não implementa não aparece: sem
+  o OneSignal ligado (`IMPLEMENTADO.push`), a aba de avisos some da barra e
+  `acaoParaMensagem` devolve `ignorar` com motivo escrito. Pedir permissão de
+  push sem ter onde registrar o aparelho queimaria a única chance que o iOS dá.
+- **Três injeções, e não uma.** Um `customJs` com erro de sintaxe derruba o
+  script inteiro em que estiver, porque o parse acontece antes de a primeira
+  linha rodar. Junto do nosso, um ponto e vírgula errado no painel apagaria o
+  badge e o compartilhar da loja toda, sem pista nenhuma. O JavaScript do
+  lojista vai numa chamada só dele, depois da carga.
+- **`pnpm build` empacota o app** para Android e iOS. Empacotar de verdade achou
+  três defeitos que teste de unidade nenhum pegaria: `src/app/` virava a raiz de
+  rotas do expo-router (que prefere `src/app` a `app/`) e o app sumia;
+  `app.config.ts` importava TypeScript sem extensão, que o carregador do Expo
+  resolve com o `require` do Node; e o `react-native` estava em 0.87.1, à frente
+  do 0.86.3 que o SDK 57 empacota — e o 0.87 removeu o `rn-get-polyfills` que o
+  Metro do Expo ainda procura.
+- **O roteador de links recebe a URL ATUAL, não a URL alvo.** `destinoDoLink`
+  usa o host da página corrente como domínio permitido, para não quebrar a
+  navegação num subdomínio que o lojista esqueceu de listar. Passar o alvo ali
+  — que é o que a WebView entrega de mão beijada — faz todo link virar "mesmo
+  domínio", e Instagram, WhatsApp e concorrente abrem dentro do app sem barra de
+  endereço. `src/webview/navegacao.ts` existe para essa troca não acontecer sem
+  querer.
+- Ícone e splash da loja são opcionais no `expo start` local e **obrigatórios**
+  no build por loja. Sem isso, um app de cliente chegaria à App Store com o
+  ícone padrão do Expo e ninguém perceberia antes da revisão.
 
 ### Fase 2 — Config remota + Editor do App (5–7 dias)
 **Tarefas**

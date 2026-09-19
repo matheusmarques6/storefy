@@ -45,6 +45,29 @@ export async function gravarCache(config: unknown): Promise<boolean> {
   }
 }
 
+/** Marca de que o cliente já passou pelo onboarding. */
+export const CHAVE_DO_ONBOARDING = 'storefy:onboarding-visto:v1';
+
+/** O cliente já viu o onboarding? Falha de leitura conta como "não viu". */
+export async function leuOnboarding(): Promise<boolean> {
+  try {
+    return (await AsyncStorage.getItem(CHAVE_DO_ONBOARDING)) !== null;
+  } catch {
+    // Mostrar os slides de novo incomoda; pular sem o cliente ter visto
+    // esconde a explicação do app para sempre. Na dúvida, mostra.
+    return false;
+  }
+}
+
+/** Guarda que o onboarding foi visto. */
+export async function marcarOnboardingVisto(): Promise<void> {
+  try {
+    await AsyncStorage.setItem(CHAVE_DO_ONBOARDING, new Date().toISOString());
+  } catch {
+    // Sem disco, o onboarding volta na próxima abertura. Chato, não quebra.
+  }
+}
+
 /** Busca a config publicada. Devolve `null` em qualquer falha. */
 export async function buscarNaRede(url: string): Promise<unknown> {
   const cancelador = new AbortController();

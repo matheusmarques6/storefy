@@ -7,11 +7,14 @@
  * desenha as abas é `Loja`, em `src/telas/loja.tsx`.
  */
 import { SplashScreen } from 'expo-router';
-import { useCallback, useEffect, useMemo, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Platform } from 'react-native';
+import { leuOnboarding, marcarOnboardingVisto } from '../src/config/fontes';
 import { useConfig } from '../src/nucleo/estado';
+import { estadoDoOnboarding } from '../src/nucleo/onboarding';
 import { TelaDeAtualizacao, TelaDeCarregamento, TelaSemConfig } from '../src/telas/avisos';
 import { Loja } from '../src/telas/loja';
+import { Onboarding } from '../src/telas/onboarding';
 import type { ContextoDoApp } from '../src/webview/scripts';
 
 /**
@@ -41,20 +44,57 @@ export default function Inicio(): React.ReactNode {
     };
   }, [esconderSplash]);
 
-  // Telas de aviso não esperam página nenhuma: aparecem assim que decididas.
+  /*
+   * Onboarding: os slides aparecem uma vez só, antes da loja. A leitura do
+   * disco começa aqui e, enquanto não volta, `estadoDoOnboarding` devolve
+   * `lendo` — sem isso a loja apareceria e os slides entrariam por cima dela.
+   */
+  const [jaViuOnboarding, setJaViuOnboarding] = useState<boolean | null>(null);
   useEffect(() => {
-    if (estado.estado === 'precisa-atualizar' || estado.estado === 'sem-config') esconderSplash();
-  }, [esconderSplash, estado.estado]);
+    let cancelado = false;
+    const foiCancelado = (): boolean => cancelado;
+    void leuOnboarding().then((visto) => {
+      if (!foiCancelado()) setJaViuOnboarding(visto);
+    });
+    return () => {
+      cancelado = true;
+    };
+  }, []);
+
+  const fecharOnboarding = useCallback((): void => {
+    setJaViuOnboarding(true);
+    void marcarOnboardingVisto();
+  }, []);
+
+  const onboarding =
+    estado.estado === 'pronta'
+      ? estadoDoOnboarding(estado.config.features.onboardingSlides, jaViuOnboarding)
+      : 'pular';
+
+  /*
+   * Telas que não esperam página nenhuma: aparecem assim que decididas. Os
+   * slides entram aqui porque são a primeira tela de verdade do app — segurar
+   * a splash até a loja carregar deixaria o cliente olhando para nada.
+   */
+  useEffect(() => {
+    if (
+      estado.estado === 'precisa-atualizar' ||
+      estado.estado === 'sem-config' ||
+      onboarding === 'mostrar'
+    ) {
+      esconderSplash();
+    }
+  }, [esconderSplash, estado.estado, onboarding]);
 
   const contextoDoApp = useMemo<ContextoDoApp>(
     () => ({
       platform: Platform.OS === 'ios' ? 'ios' : 'android',
       appVersion: ambiente.appVersion,
-      // Na Fase 1 ainda não há push; a página precisa saber disso para não
-      // oferecer um botão de avisos que não faria nada.
-      pushEnabled: false,
+      // O push chega na Fase 3. A página precisa saber disso para não oferecer
+      // um botão de avisos que não faria nada.
+      pushEnabled: recursos.push,
     }),
-    [ambiente.appVersion],
+    [ambiente.appVersion, recursos.push],
   );
 
   const contextoDasAcoes = useMemo(
@@ -77,6 +117,10 @@ export default function Inicio(): React.ReactNode {
       return <TelaSemConfig motivo={estado.motivo} aoTentarDeNovo={recarregar} />;
 
     case 'pronta':
+      if (onboarding === 'lendo') return <TelaDeCarregamento cores={estado.config.theme} />;
+      if (onboarding === 'mostrar') {
+        return <Onboarding config={estado.config} aoTerminar={fecharOnboarding} />;
+      }
       return (
         <Loja
           config={estado.config}
