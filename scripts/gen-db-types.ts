@@ -232,6 +232,7 @@ async function main(): Promise<void> {
     'abrir_previa',
     'registrar_aparelho',
     'registrar_evento_de_carrinho',
+    'caixa_de_avisos',
   ];
 
   const { rows: funcoes } = await client.query<FuncaoSql>(

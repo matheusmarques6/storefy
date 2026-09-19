@@ -16,6 +16,14 @@ export interface Ambiente {
   apiBase: string;
   /** App ID do OneSignal. Null enquanto o push não estiver configurado. */
   oneSignalAppId: string | null;
+  /**
+   * Segredo com que este build assina o que manda para a Storefy.
+   *
+   * Viaja dentro do binário, e isso é sabido: quem desmonta o app acha. O que
+   * ele garante não é sigilo, é que o acesso é por loja e revogável — o
+   * lojista gera outro e o vazado morre na hora.
+   */
+  deviceSecret: string | null;
   /** Número do build instalado, comparado com `minSupportedBuild`. */
   buildAtual: number;
   /** Versão que aparece para o usuário, entregue à página em `__STOREFY__`. */
@@ -64,6 +72,7 @@ export function lerAmbiente(entrada: {
     appId: textoOuNulo(extra.appId),
     apiBase: texto(extra.apiBase),
     oneSignalAppId: textoOuNulo(extra.oneSignalAppId),
+    deviceSecret: textoOuNulo(extra.deviceSecret),
     // Build desconhecido conta como 1, o mais baixo possível. Um `NaN` na
     // comparação com `minSupportedBuild` daria false e deixaria passar uma
     // versão que deveria ser bloqueada.
@@ -78,16 +87,16 @@ export interface RecursosImplementados {
   /**
    * O OneSignal está ligado no app?
    *
-   * Ter `ONESIGNAL_APP_ID` no build NÃO basta: até a Fase 3 nada inicializa o
-   * SDK, e uma `REQUEST_PUSH_PERMISSION` chegaria a um `case` que não faz
+   * Ter `ONESIGNAL_APP_ID` no build NÃO basta: alguém precisa inicializar o
+   * SDK, senão uma `REQUEST_PUSH_PERMISSION` chegaria a um `case` que não faz
    * nada. No iOS o sistema mostra o pedido UMA vez; gastar essa vez sem ter
    * onde registrar o aparelho é perder o cliente para sempre, em silêncio.
    */
   push: boolean;
 }
 
-/** A Fase 3 liga o push aqui, e a caixa de avisos aparece junto. */
-export const IMPLEMENTADO: RecursosImplementados = { push: false };
+/** Ligado na Fase 3: o SDK é inicializado e o aparelho é registrado. */
+export const IMPLEMENTADO: RecursosImplementados = { push: true };
 
 /** Os recursos nativos que este build realmente tem. */
 export function recursosDoBuild(ambiente: Ambiente): {
@@ -96,7 +105,12 @@ export function recursosDoBuild(ambiente: Ambiente): {
 } {
   return {
     push: IMPLEMENTADO.push && ambiente.oneSignalAppId !== null,
-    // `cart_events` e `/api/public/events` chegam na Fase 3, com o push.
-    eventos: false,
+    /*
+     * Evento de carrinho não depende do OneSignal: ele alimenta a análise e o
+     * agendamento no servidor, e vale mesmo para quem recusou a notificação.
+     * O que ele exige é a credencial da API — sem `appId` ou sem segredo não
+     * há para onde mandar, e o app funciona igual sem isso.
+     */
+    eventos: ambiente.appId !== null && ambiente.deviceSecret !== null && ambiente.apiBase !== '',
   };
 }

@@ -16,7 +16,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { Theme } from '@storefy/config-schema';
 import type { AbaResolvida } from '../config/abas';
-import { descricaoDoBadge, rotuloDoBadge } from './badge';
+import { descricaoDeAvisos, descricaoDoBadge, rotuloDoBadge } from './badge';
 import { iconeDaAba } from './icones';
 
 interface Props {
@@ -25,6 +25,8 @@ interface Props {
   ativa: string;
   /** Quantidade de itens no carrinho, para o badge. */
   itensNoCarrinho: number;
+  /** Avisos não lidos na caixa, para o badge da aba de notificações. */
+  avisosNaoLidos: number;
   tema: Theme;
   /** Tocar numa aba. Vem com `reabrir` quando já era a aba ativa. */
   aoTocar: (id: string, reabrir: boolean) => void;
@@ -34,6 +36,7 @@ export function BarraDeAbas({
   abas,
   ativa,
   itensNoCarrinho,
+  avisosNaoLidos,
   tema,
   aoTocar,
 }: Props): React.ReactNode {
@@ -55,9 +58,25 @@ export function BarraDeAbas({
       {abas.map((aba) => {
         const selecionada = aba.id === ativa;
         const cor = selecionada ? tema.tabBarActive : tema.tabBarInactive;
-        const mostraBadge = aba.badge === 'cart_count';
-        const rotulo = mostraBadge ? rotuloDoBadge(itensNoCarrinho) : null;
-        const descricao = mostraBadge ? descricaoDoBadge(itensNoCarrinho) : null;
+        /*
+         * Cada tipo de badge conta uma coisa diferente. Usar o número do
+         * carrinho na aba de avisos — ou o contrário — daria uma bolinha que
+         * mente, e é justamente a bolinha que o cliente usa para saber se
+         * algo aconteceu.
+         */
+        const quantidade =
+          aba.badge === 'cart_count'
+            ? itensNoCarrinho
+            : aba.badge === 'unread'
+              ? avisosNaoLidos
+              : 0;
+        const rotulo = aba.badge === 'none' ? null : rotuloDoBadge(quantidade);
+        const descricao =
+          aba.badge === 'cart_count'
+            ? descricaoDoBadge(quantidade)
+            : aba.badge === 'unread'
+              ? descricaoDeAvisos(quantidade)
+              : null;
 
         return (
           <Pressable

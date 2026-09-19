@@ -143,6 +143,15 @@ const config: ExpoConfig = {
     appId: ambiente['STOREFY_APP_ID'] ?? null,
     apiBase: opcional('API_BASE', 'https://storefy.convertfy.me'),
     oneSignalAppId: ambiente['ONESIGNAL_APP_ID'] ?? null,
+    /*
+     * Segredo com que este build assina o que manda para a Storefy. O painel
+     * o gera por app; o pipeline de build o entrega como variável.
+     *
+     * Ele acaba dentro do binário, como toda chave de cliente de app móvel, e
+     * o desenho conta com isso: é um segredo POR LOJA e revogável, não um
+     * segredo do produto. Nunca reaproveite o mesmo valor entre lojas.
+     */
+    deviceSecret: ambiente['STOREFY_DEVICE_SECRET'] ?? null,
     eas: { projectId: ambiente['EAS_PROJECT_ID'] ?? null },
   },
 

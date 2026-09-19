@@ -7,6 +7,7 @@ const COMPLETO = {
     appId: 'app_123',
     apiBase: 'https://storefy.convertfy.me',
     oneSignalAppId: 'os_abc',
+    deviceSecret: 'segredo-deste-build',
   },
   plataforma: 'ios' as const,
   versao: '1.2.0',
@@ -21,6 +22,7 @@ describe('lerAmbiente', () => {
       appId: 'app_123',
       apiBase: 'https://storefy.convertfy.me',
       oneSignalAppId: 'os_abc',
+      deviceSecret: 'segredo-deste-build',
       buildAtual: 7,
       appVersion: '1.2.0',
       modoPrevia: false,
@@ -45,6 +47,7 @@ describe('lerAmbiente', () => {
       expect(ambiente.storeId).toBe('');
       expect(ambiente.appId).toBeNull();
       expect(ambiente.oneSignalAppId).toBeNull();
+      expect(ambiente.deviceSecret).toBeNull();
       expect(ambiente.buildAtual).toBe(7);
     }
   });
@@ -66,8 +69,8 @@ describe('lerAmbiente', () => {
 
 describe('recursosDoBuild', () => {
   it('exige o app ID do OneSignal E o SDK ligado', () => {
-    // Ter a chave no build não basta: até a Fase 3 nada inicializa o SDK, e
-    // pedir permissão de push queimaria a única chance que o iOS dá.
+    // Ter a chave no build não basta: sem alguém inicializando o SDK, pedir
+    // permissão de push queimaria a única chance que o iOS dá.
     expect(recursosDoBuild(lerAmbiente(COMPLETO)).push).toBe(IMPLEMENTADO.push);
 
     const semChave = lerAmbiente({
@@ -77,13 +80,33 @@ describe('recursosDoBuild', () => {
     expect(recursosDoBuild(semChave).push).toBe(false);
   });
 
-  it('na Fase 1 o push está desligado', () => {
-    expect(IMPLEMENTADO.push).toBe(false);
-    expect(recursosDoBuild(lerAmbiente(COMPLETO)).push).toBe(false);
+  it('a Fase 3 liga o push', () => {
+    expect(IMPLEMENTADO.push).toBe(true);
+    expect(recursosDoBuild(lerAmbiente(COMPLETO)).push).toBe(true);
   });
 
-  it('eventos seguem desligados até a Fase 3', () => {
-    expect(recursosDoBuild(lerAmbiente(COMPLETO)).eventos).toBe(false);
+  /*
+   * Evento de carrinho NÃO depende do OneSignal. Ele alimenta a análise e o
+   * agendamento no servidor, e vale igual para quem recusou a notificação —
+   * amarrar os dois faria o lojista perder o dado de quem não aceitou push.
+   */
+  it('evento de carrinho vale mesmo sem push', () => {
+    const semPush = lerAmbiente({
+      ...COMPLETO,
+      extra: { ...COMPLETO.extra, oneSignalAppId: null },
+    });
+    expect(recursosDoBuild(semPush).push).toBe(false);
+    expect(recursosDoBuild(semPush).eventos).toBe(true);
+  });
+
+  it('evento de carrinho exige a credencial da API', () => {
+    for (const faltando of [{ appId: null }, { deviceSecret: null }, { apiBase: '' }]) {
+      const ambiente = lerAmbiente({
+        ...COMPLETO,
+        extra: { ...COMPLETO.extra, ...faltando },
+      });
+      expect(recursosDoBuild(ambiente).eventos).toBe(false);
+    }
   });
 });
 

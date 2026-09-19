@@ -136,6 +136,7 @@ export default function Inicio(): React.ReactNode {
       return (
         <Loja
           config={estado.config}
+          ambiente={ambiente}
           contextoDoApp={contextoDoApp}
           contextoDasAcoes={contextoDasAcoes}
           aoFicarPronto={esconderSplash}

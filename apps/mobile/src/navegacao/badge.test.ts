@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { MAXIMO_VISIVEL, descricaoDoBadge, rotuloDoBadge } from './badge';
+import { MAXIMO_VISIVEL, descricaoDeAvisos, descricaoDoBadge, rotuloDoBadge } from './badge';
 
 describe('rotuloDoBadge', () => {
   it('mostra a quantidade quando há itens', () => {
@@ -43,5 +43,21 @@ describe('descricaoDoBadge', () => {
     // Quem usa leitor de tela não deve ouvir "noventa e nove mais".
     expect(rotuloDoBadge(137)).toBe('99+');
     expect(descricaoDoBadge(137)).toBe('137 itens no carrinho');
+  });
+});
+
+describe('descricaoDeAvisos', () => {
+  it('anuncia os avisos não lidos, não os itens do carrinho', () => {
+    // A aba de avisos e a do carrinho contam coisas diferentes; trocar o
+    // texto faria o leitor de tela dizer "3 itens no carrinho" na caixa de
+    // notificações.
+    expect(descricaoDeAvisos(1)).toBe('1 aviso não lido');
+    expect(descricaoDeAvisos(3)).toBe('3 avisos não lidos');
+  });
+
+  it('cala quando não há nada a anunciar', () => {
+    for (const n of [0, -1, Number.NaN, Number.POSITIVE_INFINITY]) {
+      expect(descricaoDeAvisos(n)).toBeNull();
+    }
   });
 });

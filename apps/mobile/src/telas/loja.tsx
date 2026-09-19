@@ -20,9 +20,15 @@ import { BarraDeAbas } from '../navegacao/barra-de-abas';
 import { AbaWebView, type ControleDaAba } from '../webview/aba-webview';
 import type { ContextoDoApp } from '../webview/scripts';
 import type { AcaoNativa, ContextoDasAcoes } from '../bridge/acoes';
+import { usarPush } from '../push/usar-push';
+import type { DestinoDoPush } from '../push/deep-link';
+import type { Ambiente } from '../nucleo/ambiente';
+import { PrePromptDePush } from './pre-prompt';
+import { CaixaDeAvisos } from './caixa-de-avisos';
 
 interface Props {
   config: AppConfig;
+  ambiente: Ambiente;
   contextoDoApp: ContextoDoApp;
   contextoDasAcoes: ContextoDasAcoes;
   /** Chamado na primeira página carregada, para sumir com a splash. */
@@ -31,6 +37,7 @@ interface Props {
 
 export function Loja({
   config,
+  ambiente,
   contextoDoApp,
   contextoDasAcoes,
   aoFicarPronto,
@@ -124,6 +131,28 @@ export function Loja({
     [abas, config.store.url],
   );
 
+  /**
+   * Para onde levar o toque numa notificação.
+   *
+   * `abrirCaminho` já sabe escolher a aba e guardar o caminho até a WebView
+   * montar — o que muda aqui é só a origem. `abrir` não faz nada de propósito:
+   * o app já está abrindo, e mandar o cliente para a home apagaria a navegação
+   * em que ele estava.
+   */
+  const navegarPorPush = useCallback(
+    (destino: DestinoDoPush): void => {
+      if (destino.destino === 'caminho') abrirCaminho(destino.caminho);
+    },
+    [abrirCaminho],
+  );
+
+  const push = usarPush({
+    ambiente,
+    config,
+    ativo: contextoDasAcoes.push,
+    navegar: navegarPorPush,
+  });
+
   // A URL de abertura é lida UMA vez. O efeito roda de novo quando a config
   // muda, e reler levaria o cliente de volta ao link toda vez que isso
   // acontecesse — no meio da navegação dele.
@@ -154,54 +183,80 @@ export function Loja({
 
   /* -------------------------------------------- o que a página pediu */
 
-  const aoAgir = useCallback((acao: AcaoNativa): void => {
-    switch (acao.tipo) {
-      case 'carrinho':
-        setItensNoCarrinho(acao.count);
-        return;
+  const aoAgir = useCallback(
+    (acao: AcaoNativa): void => {
+      switch (acao.tipo) {
+        case 'carrinho':
+          setItensNoCarrinho(acao.count);
+          /*
+           * O badge é o efeito visível; o resto é o que faz o carrinho
+           * abandonado existir. As tags alimentam a segmentação do lojista e o
+           * evento agenda (ou cancela) o push no servidor.
+           */
+          push.aoMudarCarrinho({
+            count: acao.count,
+            totalCents: acao.totalCents,
+            quandoMs: Date.now(),
+            token: acao.token,
+            currency: acao.currency,
+          });
+          return;
 
-      case 'vibrar':
-        void (acao.estilo === 'success'
-          ? Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)
-          : Haptics.impactAsync(
-              acao.estilo === 'medium'
-                ? Haptics.ImpactFeedbackStyle.Medium
-                : Haptics.ImpactFeedbackStyle.Light,
-            ));
-        return;
+        case 'vibrar':
+          void (acao.estilo === 'success'
+            ? Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)
+            : Haptics.impactAsync(
+                acao.estilo === 'medium'
+                  ? Haptics.ImpactFeedbackStyle.Medium
+                  : Haptics.ImpactFeedbackStyle.Light,
+              ));
+          return;
 
-      case 'compartilhar':
-        void Share.share(
-          Platform.OS === 'ios'
-            ? { url: acao.url, message: acao.title ?? '' }
-            : // O Android não tem campo de URL: vai no texto, senão some.
-              { message: acao.title == null ? acao.url : `${acao.title}\n${acao.url}` },
-        );
-        return;
+        case 'compartilhar':
+          void Share.share(
+            Platform.OS === 'ios'
+              ? { url: acao.url, message: acao.title ?? '' }
+              : // O Android não tem campo de URL: vai no texto, senão some.
+                { message: acao.title == null ? acao.url : `${acao.title}\n${acao.url}` },
+          );
+          return;
 
-      case 'abrir-fora':
-        void Linking.openURL(acao.url);
-        return;
+        case 'abrir-fora':
+          void Linking.openURL(acao.url);
+          return;
 
-      case 'pedido-concluido':
-        if (!acao.pedirAvaliacao) return;
-        void StoreReview.isAvailableAsync().then(async (disponivel) => {
-          if (disponivel) await StoreReview.requestReview();
-        });
-        return;
+        case 'pedido-concluido':
+          /*
+           * ESTE é o evento que cancela o push de carrinho abandonado. Vem
+           * antes da avaliação de propósito: mandar "você esqueceu algo no
+           * carrinho" para quem acabou de pagar é o pior push que existe, e
+           * `requestReview` é o tipo de chamada que pode demorar.
+           */
+          push.aoConcluirPedido({ totalCents: acao.totalCents });
+          if (!acao.pedirAvaliacao) return;
+          void StoreReview.isAvailableAsync().then(async (disponivel) => {
+            if (disponivel) await StoreReview.requestReview();
+          });
+          return;
 
-      // Os três dependem do push e do backend de eventos, que chegam na
-      // Fase 3. Enquanto `IMPLEMENTADO.push` for falso, `acaoParaMensagem`
-      // devolve `ignorar` com motivo e a execução nem chega aqui.
-      case 'pedir-push':
-      case 'identificar-cliente':
-      case 'checkout-iniciado':
-        return;
+        case 'pedir-push':
+          push.pedirPermissao();
+          return;
 
-      case 'ignorar':
-        return;
-    }
-  }, []);
+        case 'identificar-cliente':
+          push.aoIdentificarCliente(acao.customerId);
+          return;
+
+        case 'checkout-iniciado':
+          push.aoIniciarCheckout(acao.token, itensNoCarrinho);
+          return;
+
+        case 'ignorar':
+          return;
+      }
+    },
+    [itensNoCarrinho, push],
+  );
 
   /* ------------------------------------------------------ primeira carga */
 
@@ -224,30 +279,65 @@ export function Loja({
          * este ponto. Se chegasse — config só com abas nativas —, a loja abre
          * no lugar, porque tela vazia com barra de abas é pior.
          */}
-        {abas.map((aba) => (
-          <AbaWebView
-            key={aba.id}
-            aba={aba}
-            config={config}
-            contextoDoApp={contextoDoApp}
-            contextoDasAcoes={contextoDasAcoes}
-            visivel={aba.id === ativa}
-            semConexao={semConexao}
-            aoAgir={aoAgir}
-            registrarControle={registrarControle}
-            aoCarregar={aba.id === primeira.id ? aoCarregar : undefined}
-          />
-        ))}
+        {abas.map((aba) =>
+          aba.webview ? (
+            <AbaWebView
+              key={aba.id}
+              aba={aba}
+              config={config}
+              contextoDoApp={contextoDoApp}
+              contextoDasAcoes={contextoDasAcoes}
+              visivel={aba.id === ativa}
+              semConexao={semConexao}
+              aoAgir={aoAgir}
+              registrarControle={registrarControle}
+              aoCarregar={aba.id === primeira.id ? aoCarregar : undefined}
+            />
+          ) : (
+            /*
+             * A caixa de avisos é nativa. Fica montada junto com as WebViews e
+             * escondida quando não é a ativa, pelo mesmo motivo delas: montar e
+             * desmontar a cada toque perderia a rolagem e piscaria a lista.
+             */
+            <View
+              key={aba.id}
+              style={[estilos.area, aba.id === ativa ? null : estilos.escondida]}
+              pointerEvents={aba.id === ativa ? 'auto' : 'none'}
+              accessibilityElementsHidden={aba.id !== ativa}
+              importantForAccessibility={aba.id === ativa ? 'auto' : 'no-hide-descendants'}
+            >
+              <CaixaDeAvisos
+                avisos={push.avisos}
+                carregando={push.caixaCarregando}
+                tema={config.theme}
+                aoRecarregar={push.recarregarCaixa}
+                aoMarcarTudoLido={push.marcarTudoLido}
+                aoTocar={(aviso) => {
+                  push.marcarAvisoLido(aviso.id);
+                  if (aviso.deepLink !== null) abrirCaminho(aviso.deepLink);
+                }}
+              />
+            </View>
+          ),
+        )}
       </SafeAreaView>
       {abas.length > 1 ? (
         <BarraDeAbas
           abas={abas}
           ativa={ativa}
           itensNoCarrinho={itensNoCarrinho}
+          avisosNaoLidos={push.avisosNaoLidos}
           tema={config.theme}
           aoTocar={aoTocarAba}
         />
       ) : null}
+      <PrePromptDePush
+        visivel={push.mostrarPrePrompt}
+        nomeDaLoja={config.store.name}
+        tema={config.theme}
+        aoAceitar={push.aceitarNoPrePrompt}
+        aoRecusar={push.recusarNoPrePrompt}
+      />
     </View>
   );
 }
@@ -255,4 +345,7 @@ export function Loja({
 const estilos = StyleSheet.create({
   tela: { flex: 1 },
   area: { flex: 1 },
+  // Fora da tela em vez de `display: none`: a lista guarda a posição de
+  // rolagem, e o `display` a reconstrói do zero a cada volta.
+  escondida: { position: 'absolute', left: -10_000, width: 1, height: 1, opacity: 0 },
 });

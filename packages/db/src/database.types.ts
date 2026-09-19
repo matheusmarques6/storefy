@@ -667,6 +667,10 @@ export type Database = {
         Args: { p_org_id: string };
         Returns: { user_id: string | null; email: string | null; role: Database["public"]["Enums"]["membership_role"] | null; created_at: string | null; ultimo_acesso: string | null }[];
       };
+      caixa_de_avisos: {
+        Args: { p_app_id: string; p_subscription: string; p_limite?: number };
+        Returns: { id: string | null; title: string | null; body: string | null; deep_link: string | null; image_path: string | null; sent_at: string | null }[];
+      };
       publicar_config: {
         Args: { p_app_id: string };
         Returns: number;

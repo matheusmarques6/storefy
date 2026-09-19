@@ -62,6 +62,11 @@ export const CorpoDoEvento = z.object({
   currency: z.string().trim().length(3).optional(),
 });
 
+export const CorpoDaCaixa = z.object({
+  appId: uuid,
+  subscriptionId: inscricao,
+});
+
 export type DadosDoAparelho = z.infer<typeof CorpoDoAparelho>;
 export type DadosDoEvento = z.infer<typeof CorpoDoEvento>;
 
@@ -222,6 +227,40 @@ const INDISPONIVEL: Resposta = {
   corpo: { erro: 'indisponivel' },
   motivo: 'a função do banco devolveu algo fora do formato',
 };
+
+/**
+ * Um aviso da caixa, como o app o recebe.
+ *
+ * Validado na saída porque o que sai daqui é desenhado na tela de um cliente
+ * final: um `title` nulo viraria um card vazio, e um aviso pela metade é pior
+ * do que aviso nenhum — a lista simplesmente não o inclui.
+ */
+const AvisoDaCaixa = z.object({
+  id: z.uuid(),
+  title: z.string().min(1),
+  body: z.string().min(1),
+  deep_link: z.string().nullable(),
+  image_path: z.string().nullable(),
+  sent_at: z.string(),
+});
+
+export function lerCaixaDeAvisos(dados: unknown): Resposta {
+  if (!Array.isArray(dados)) return INDISPONIVEL;
+
+  const avisos = dados
+    .map((linha) => AvisoDaCaixa.safeParse(linha))
+    .filter((analise) => analise.success)
+    .map((analise) => ({
+      id: analise.data.id,
+      title: analise.data.title,
+      body: analise.data.body,
+      deepLink: analise.data.deep_link,
+      imagePath: analise.data.image_path,
+      sentAt: analise.data.sent_at,
+    }));
+
+  return { status: 200, corpo: { avisos } };
+}
 
 /** A primeira linha do retorno, validada, ou a resposta de indisponível. */
 export function lerLinhaDoAparelho(dados: unknown): Resposta {

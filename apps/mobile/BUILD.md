@@ -68,3 +68,30 @@ app chegando à App Store com a marca errada, e por isso ali é erro.
 `autoIncrement` fica **desligado** no `production`: quem manda no número do build
 é o `builds` do banco, via `IOS_BUILD` e `ANDROID_VC`. Deixar o EAS contar por
 conta dele faria o número do banco e o da loja divergirem na primeira rejeição.
+
+## Push (Fase 3)
+
+Dois valores por loja entram no build, além do que já estava:
+
+| Variável                | De onde vem                              |
+| ----------------------- | ---------------------------------------- |
+| `ONESIGNAL_APP_ID`      | app criado na OneSignal para aquela loja |
+| `STOREFY_DEVICE_SECRET` | painel da Storefy, na tela do app        |
+
+`STOREFY_DEVICE_SECRET` é o segredo com que o app assina o que manda para
+`/api/public/devices`, `/api/public/events` e `/api/public/inbox`. Ele acaba
+dentro do binário, como toda chave de cliente de app móvel, e o desenho conta
+com isso: o que ele garante não é sigilo, é que o acesso é **por loja** e
+revogável. Gerar outro no painel invalida o anterior na hora.
+
+**Nunca reaproveite o mesmo segredo entre lojas.** Um segredo compartilhado
+transforma um vazamento em problema de todos os clientes de uma vez, que é
+exatamente o que a separação por loja existe para evitar.
+
+Sem `ONESIGNAL_APP_ID` o app abre igual, só sem push: `recursosDoBuild` devolve
+`push: false`, a aba de avisos não aparece e a página que pedir permissão
+recebe um `ignorar` com motivo, em vez de um botão que não faz nada.
+
+Sem `STOREFY_DEVICE_SECRET` o push ainda chega (quem envia é a OneSignal), mas
+o aparelho não é registrado na Storefy: a contagem de instalações, o carrinho
+abandonado e a caixa de avisos ficam de fora.

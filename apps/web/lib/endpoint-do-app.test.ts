@@ -4,6 +4,7 @@ import {
   CorpoDoEvento,
   TAMANHO_MAXIMO,
   autorizar,
+  lerCaixaDeAvisos,
   lerLinhaDoAparelho,
   lerLinhaDoEvento,
   respostaDoAparelho,
@@ -380,5 +381,55 @@ describe('o retorno do banco', () => {
     expect(
       lerLinhaDoEvento([{ event_id: null, limitado: false, agendou: false, cancelou: -1 }]).status,
     ).toBe(503);
+  });
+});
+
+describe('a caixa de avisos', () => {
+  const aviso = {
+    id: '88888888-8888-4888-8888-888888888888',
+    title: 'Promoção de inverno',
+    body: 'Até 40% OFF.',
+    deep_link: '/promocoes',
+    image_path: null,
+    sent_at: '2026-09-19T12:00:00.000Z',
+  };
+
+  it('traduz para os nomes que o app espera', () => {
+    const r = lerCaixaDeAvisos([aviso]);
+    expect(r.status).toBe(200);
+    expect(r.corpo).toEqual({
+      avisos: [
+        {
+          id: aviso.id,
+          title: 'Promoção de inverno',
+          body: 'Até 40% OFF.',
+          deepLink: '/promocoes',
+          imagePath: null,
+          sentAt: '2026-09-19T12:00:00.000Z',
+        },
+      ],
+    });
+  });
+
+  it('caixa vazia é uma lista vazia, não um erro', () => {
+    const r = lerCaixaDeAvisos([]);
+    expect(r.status).toBe(200);
+    expect(r.corpo).toEqual({ avisos: [] });
+  });
+
+  /*
+   * O que sai daqui é desenhado na tela de um cliente final. Um aviso sem
+   * título viraria um card em branco; deixar os outros passarem é melhor do
+   * que derrubar a caixa inteira por causa de um.
+   */
+  it('descarta o aviso quebrado e entrega o resto', () => {
+    const r = lerCaixaDeAvisos([aviso, { ...aviso, title: '' }, { ...aviso, id: 'x' }]);
+    expect(r.status).toBe(200);
+    expect((r.corpo as { avisos: unknown[] }).avisos).toHaveLength(1);
+  });
+
+  it('retorno que não é lista vira 503', () => {
+    expect(lerCaixaDeAvisos(null).status).toBe(503);
+    expect(lerCaixaDeAvisos({ avisos: [] }).status).toBe(503);
   });
 });

@@ -17,6 +17,13 @@ export function rotuloDoBadge(quantidade: number): string | null {
   return inteiro > MAXIMO_VISIVEL ? `${MAXIMO_VISIVEL}+` : String(inteiro);
 }
 
+/** Como o leitor de tela anuncia a aba de avisos. */
+export function descricaoDeAvisos(quantidade: number): string | null {
+  const inteiro = Math.floor(quantidade);
+  if (!Number.isFinite(quantidade) || inteiro <= 0) return null;
+  return inteiro === 1 ? '1 aviso não lido' : `${String(inteiro)} avisos não lidos`;
+}
+
 /** Como o leitor de tela anuncia a aba do carrinho. */
 export function descricaoDoBadge(quantidade: number): string | null {
   const inteiro = Math.floor(quantidade);

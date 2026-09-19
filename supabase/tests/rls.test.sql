@@ -1751,6 +1751,109 @@ select tests.ok('carrinho',
 
 reset role;
 
+-- ------------------------------------------------ caixa de avisos (M07)
+
+-- As campanhas saem AGORA, depois de o aparelho já existir. Uma enviada antes
+-- da instalação é o caso testado logo abaixo, e ele tem fixture própria.
+insert into public.push_campaigns (app_id, title, body, status, sent_at, segment)
+select app_a, 'Promoção de inverno', 'Até 40% OFF.', 'sent', now(), '{}'::jsonb
+from tests.lojas;
+
+insert into public.push_campaigns (app_id, title, body, status, sent_at, segment)
+select app_a, 'Antes do app', 'Isto é de antes.', 'sent', now() - interval '365 days', '{}'::jsonb
+from tests.lojas;
+
+insert into public.push_campaigns (app_id, title, body, status, sent_at, segment)
+select app_a, 'Só para VIPs', 'Preço especial.', 'sent', now(), '{"tag":"vip"}'::jsonb
+from tests.lojas;
+
+insert into public.push_campaigns (app_id, title, body, status, segment)
+select app_a, 'Rascunho', 'Ainda não saiu.', 'draft', '{}'::jsonb
+from tests.lojas;
+
+/*
+ * Uma campanha que FALHOU no envio tem `sent_at` preenchido — a tentativa
+ * aconteceu. É o único caso em que só o `status` separa o que o cliente viu do
+ * que ele não viu: sem a checagem, a caixa mostraria um aviso que nunca saiu
+ * do servidor, e o cliente cobraria o lojista por uma promoção inexistente.
+ */
+insert into public.push_campaigns (app_id, title, body, status, sent_at, segment)
+select app_a, 'Falhou no envio', 'Ninguém recebeu isto.', 'failed', now(), '{}'::jsonb
+from tests.lojas;
+
+insert into public.push_campaigns (app_id, title, body, status, sent_at, segment)
+select app_a, 'Cancelada', 'O lojista desistiu.', 'canceled', now(), '{}'::jsonb
+from tests.lojas;
+
+set role service_role;
+
+select tests.ok('avisos',
+  exists (
+    select 1 from public.caixa_de_avisos((select app_a from tests.lojas), 'sub-do-cliente')
+     where title = 'Promoção de inverno'
+  ),
+  'a caixa mostra a campanha enviada para todos');
+
+select tests.ok('avisos',
+  (select title from public.caixa_de_avisos(
+    (select app_a from tests.lojas), 'sub-do-cliente') limit 1) = 'Promoção de inverno',
+  'e a mais recente vem primeiro');
+
+/*
+ * Campanha com segmento foi para um recorte de clientes, e a segmentação
+ * acontece dentro do OneSignal — a Storefy não sabe quem estava nele. Mostrá-la
+ * a todos poria na caixa de um cliente uma oferta que não era para ele.
+ */
+select tests.ok('avisos',
+  not exists (
+    select 1 from public.caixa_de_avisos((select app_a from tests.lojas), 'sub-do-cliente')
+     where title = 'Só para VIPs'
+  ),
+  'campanha com segmento NÃO entra na caixa de ninguém');
+
+select tests.ok('avisos',
+  not exists (
+    select 1 from public.caixa_de_avisos((select app_a from tests.lojas), 'sub-do-cliente')
+     where title = 'Antes do app'
+  ),
+  'campanha anterior à instalação não entra: aquela promoção já acabou');
+
+select tests.ok('avisos',
+  not exists (
+    select 1 from public.caixa_de_avisos((select app_a from tests.lojas), 'sub-do-cliente')
+     where title = 'Rascunho'
+  ),
+  'rascunho não vaza pela caixa de avisos');
+
+select tests.ok('avisos',
+  not exists (
+    select 1 from public.caixa_de_avisos((select app_a from tests.lojas), 'sub-do-cliente')
+     where title in ('Falhou no envio', 'Cancelada')
+  ),
+  'campanha que falhou ou foi cancelada não aparece como se tivesse chegado');
+
+/*
+ * Aparelho desconhecido não recebe lista nenhuma. Devolver as campanhas aqui
+ * faria deste endpoint uma forma de ler o que qualquer loja anunciou sem nunca
+ * ter instalado o app dela.
+ */
+select tests.ok('avisos',
+  tests.contar($q$select count(*) from public.caixa_de_avisos(
+    (select app_a from tests.lojas), 'nunca-instalou')$q$) = 0,
+  'aparelho desconhecido não lê a caixa de ninguém');
+
+select tests.ok('avisos',
+  tests.contar($q$select count(*) from public.caixa_de_avisos(
+    (select app_b from tests.lojas), 'sub-do-cliente')$q$) = 0,
+  'a inscrição de uma loja não abre a caixa da outra');
+
+reset role;
+
+select tests.ok('permissões',
+  not has_function_privilege('authenticated', 'public.caixa_de_avisos(uuid, text, integer)', 'execute')
+    and not has_function_privilege('anon', 'public.caixa_de_avisos(uuid, text, integer)', 'execute'),
+  'a caixa de avisos é só da service role');
+
 -- --------------------------------------------- nada disso vaza para a org B
 
 select tests.login('b-owner@teste.local');
