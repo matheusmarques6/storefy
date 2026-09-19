@@ -28,9 +28,21 @@ interface Props {
   lojaId: string;
   /** Caminho da loja a exibir. Muda ao trocar a aba destacada. */
   caminho: string;
+  /** Modo "clicar para esconder" ligado. */
+  selecionando: boolean;
+  /** Chamado com o seletor do que o lojista clicou. */
+  aoEscolherSeletor: (seletor: string) => void;
 }
 
-export function Previa({ config, abaAtiva, aoTrocarAba, lojaId, caminho }: Props) {
+export function Previa({
+  config,
+  abaAtiva,
+  aoTrocarAba,
+  lojaId,
+  caminho,
+  selecionando,
+  aoEscolherSeletor,
+}: Props) {
   const { theme } = config;
   const ativa = config.tabs.find((aba) => aba.id === abaAtiva) ?? config.tabs[0];
   const iframe = useRef<HTMLIFrameElement>(null);
@@ -61,18 +73,19 @@ export function Previa({ config, abaAtiva, aoTrocarAba, lojaId, caminho }: Props
     [config.webview.customCss, config.webview.hideSelectors],
   );
 
-  const enviarCss = useCallback(() => {
+  const enviarEstado = useCallback(() => {
     const janela = iframe.current?.contentWindow;
     if (janela == null) return;
     janela.postMessage({ fonte: MARCA_DA_PREVIA, tipo: 'css', css }, '*');
-  }, [css]);
+    janela.postMessage({ fonte: MARCA_DA_PREVIA, tipo: 'modo', selecionando }, '*');
+  }, [css, selecionando]);
 
   // Toda mudança de cor ou de seletor escondido vai por mensagem, sem estado
   // intermediário: guardar "a prévia está pronta" só para reenviar depois
   // custaria um render a mais a cada tecla.
   useEffect(() => {
-    enviarCss();
-  }, [enviarCss]);
+    enviarEstado();
+  }, [enviarEstado]);
 
   useEffect(() => {
     function aoReceber(evento: MessageEvent<unknown>) {
@@ -83,14 +96,24 @@ export function Previa({ config, abaAtiva, aoTrocarAba, lojaId, caminho }: Props
         (dados as { fonte?: unknown }).fonte === MARCA_DA_PREVIA &&
         (dados as { tipo?: unknown }).tipo === 'pronto'
       ) {
-        enviarCss();
+        enviarEstado();
+        return;
+      }
+      if (
+        typeof dados === 'object' &&
+        dados !== null &&
+        (dados as { fonte?: unknown }).fonte === MARCA_DA_PREVIA &&
+        (dados as { tipo?: unknown }).tipo === 'escolhido'
+      ) {
+        const seletor = (dados as { seletor?: unknown }).seletor;
+        if (typeof seletor === 'string' && seletor.trim() !== '') aoEscolherSeletor(seletor);
       }
     }
     window.addEventListener('message', aoReceber);
     return () => {
       window.removeEventListener('message', aoReceber);
     };
-  }, [enviarCss]);
+  }, [aoEscolherSeletor, enviarEstado]);
 
   return (
     <div className="flex flex-col items-center gap-3">
@@ -108,14 +131,19 @@ export function Previa({ config, abaAtiva, aoTrocarAba, lojaId, caminho }: Props
           />
         </div>
 
-        <div className="h-[460px] w-full overflow-hidden bg-white">
+        <div className="relative h-[460px] w-full overflow-hidden bg-white">
+          {selecionando ? (
+            <p className="absolute inset-x-0 top-0 z-10 bg-blue-600 px-3 py-1.5 text-center text-[11px] font-medium text-white">
+              Toque no que você quer esconder
+            </p>
+          ) : null}
           <iframe
             ref={iframe}
             key={src}
             src={src}
             title="Prévia da loja dentro do app"
             sandbox="allow-scripts allow-forms allow-popups"
-            onLoad={enviarCss}
+            onLoad={enviarEstado}
             className="h-full w-full border-0"
           />
         </div>

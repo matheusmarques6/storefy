@@ -208,9 +208,26 @@ export function cssDaPrevia(seletores: readonly string[]): string {
  * Tudo aqui é defensivo: a página em volta não é nossa, e uma exceção nossa
  * apareceria como erro da loja.
  */
+/**
+ * Um seletor CSS para o elemento clicado, dentro do script da prévia.
+ *
+ * O que se quer é um seletor que o lojista reconheça e que continue valendo na
+ * próxima visita à loja: `header.site-header` é útil, `div > div > div:nth-child(7)`
+ * some na primeira mudança de tema. Por isso a ordem é id, depois classes
+ * significativas, e só no fim a posição entre os irmãos.
+ *
+ * Classes geradas por ferramenta — hash, utilitário do Tailwind, estado de
+ * JavaScript — são descartadas: `css-1x2y3z` muda a cada build do tema e o
+ * seletor deixaria de esconder o que o lojista escolheu, sem aviso.
+ */
 export function gerarScriptDaPrevia(): string {
   return `(function(){
 try{
+/* Cada navegação dentro da prévia injeta de novo; sem esta guarda, os
+   ouvintes de clique se empilham e um toque viraria vários. */
+if(window.__${MARCA_DA_PREVIA.replace(/-/g, '_')})return;
+window.__${MARCA_DA_PREVIA.replace(/-/g, '_')}=true;
+
 var ID='${MARCA_DA_PREVIA}-ao-vivo';
 
 function estilo(){
@@ -227,11 +244,113 @@ function aplicar(css){
 try{estilo().textContent=String(css||'');}catch(err){}
 }
 
+var selecionando=false;
+var DESTAQUE='${MARCA_DA_PREVIA}-destaque';
+
+function estiloDoDestaque(){
+var e=document.getElementById(DESTAQUE);
+if(!e){
+e=document.createElement('style');
+e.id=DESTAQUE;
+e.textContent='.'+DESTAQUE+'-alvo{outline:2px solid #2563eb !important;outline-offset:-2px !important;cursor:pointer !important;}';
+(document.head||document.documentElement).appendChild(e);
+}
+return e;
+}
+
+function limparDestaque(){
+try{
+var marcados=document.getElementsByClassName(DESTAQUE+'-alvo');
+while(marcados.length>0)marcados[0].classList.remove(DESTAQUE+'-alvo');
+}catch(err){}
+}
+
+/* Classe que veio de ferramenta muda a cada build e não serve de âncora. */
+function classeUtil(nome){
+if(!nome||nome.length<2||nome.length>40)return false;
+if(nome.indexOf('${MARCA_DA_PREVIA}')===0)return false;
+if(/^(is-|has-|js-|active$|open$|hidden$)/.test(nome))return false;
+if(/^[a-z]+-?\\d+$/.test(nome))return false;
+if(/[0-9a-f]{6,}/i.test(nome))return false;
+if(/^(sm|md|lg|xl|hover|focus|flex|grid|block|inline|w|h|p|m|px|py|mx|my|pt|pb|pl|pr|mt|mb|ml|mr|text|bg|border|rounded|gap|absolute|relative|fixed)([-:]|$)/.test(nome))return false;
+return /^[a-zA-Z][\\w-]*$/.test(nome);
+}
+
+function parteDoElemento(el){
+var tag=String(el.tagName||'').toLowerCase();
+if(!tag)return '';
+if(el.id&&classeUtil(el.id))return '#'+el.id;
+
+/* UMA classe só. A segunda quase sempre é modificador de estado
+   ('header--has-menu', 'nav--aberto'), que some quando o estado muda e
+   levaria o seletor junto. Quando uma classe não basta, quem resolve é a
+   subida até o ancestral, logo abaixo. */
+var classe='';
+try{
+var lista=el.classList?Array.prototype.slice.call(el.classList):[];
+for(var i=0;i<lista.length&&!classe;i++){
+if(classeUtil(lista[i]))classe=lista[i];
+}
+}catch(err){}
+
+return tag+(classe?'.'+classe:'');
+}
+
+function seletorDoElemento(el){
+try{
+var partes=[];
+var atual=el;
+for(var nivel=0;nivel<5&&atual&&atual.nodeType===1;nivel++){
+var parte=parteDoElemento(atual);
+if(!parte)break;
+partes.unshift(parte);
+
+var tentativa=partes.join(' ');
+if(parte.charAt(0)==='#')return tentativa;
+
+var encontrados=document.querySelectorAll(tentativa);
+if(encontrados.length>0&&encontrados.length<=3){
+var contem=false;
+for(var j=0;j<encontrados.length;j++){if(encontrados[j]===el)contem=true;}
+if(contem)return tentativa;
+}
+atual=atual.parentElement;
+if(atual&&(atual.tagName==='BODY'||atual.tagName==='HTML'))break;
+}
+return partes.length>0?partes.join(' '):'';
+}catch(err){return '';}
+}
+
+function aoPassar(evento){
+if(!selecionando)return;
+limparDestaque();
+try{evento.target.classList.add(DESTAQUE+'-alvo');}catch(err){}
+}
+
+function aoClicar(evento){
+if(!selecionando)return;
+evento.preventDefault();
+evento.stopPropagation();
+var seletor=seletorDoElemento(evento.target);
+if(!seletor)return;
+try{
+window.parent.postMessage({fonte:'${MARCA_DA_PREVIA}',tipo:'escolhido',seletor:seletor},'*');
+}catch(err){}
+}
+
+document.addEventListener('mouseover',aoPassar,true);
+document.addEventListener('click',aoClicar,true);
+
 window.addEventListener('message',function(evento){
 try{
 var dados=evento.data;
 if(!dados||dados.fonte!=='${MARCA_DA_PREVIA}')return;
 if(dados.tipo==='css')aplicar(dados.css);
+if(dados.tipo==='modo'){
+selecionando=dados.selecionando===true;
+estiloDoDestaque();
+if(!selecionando)limparDestaque();
+}
 }catch(err){}
 });
 

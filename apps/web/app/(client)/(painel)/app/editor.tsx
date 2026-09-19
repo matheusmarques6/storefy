@@ -11,11 +11,11 @@
  * ajustando cor e perder tudo num clique no menu.
  */
 import { useCallback, useEffect, useMemo, useState, useTransition } from 'react';
-import { AlertTriangle, Check, Eye, Rocket, Save } from 'lucide-react';
+import { AlertTriangle, Check, Eye, MousePointerClick, Rocket, Save } from 'lucide-react';
 import { toast } from 'sonner';
 import type { AppConfig } from '@storefy/config-schema';
 import type { VersaoDoHistorico, VersaoPublicada } from '@/lib/configs-servidor';
-import { validarConfig, type Problema } from '@/lib/editor-de-config';
+import { editarWebview, validarConfig, type Problema } from '@/lib/editor-de-config';
 import { cn } from '@/lib/utils';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
@@ -74,6 +74,7 @@ export function Editor({
   const [abaEscolhidaNaPrevia, setAbaDaPrevia] = useState<string | null>(null);
   const [problemasDoServidor, setProblemasDoServidor] = useState<Problema[]>([]);
   const [confirmandoPublicacao, setConfirmandoPublicacao] = useState(false);
+  const [selecionando, setSelecionando] = useState(false);
   const [salvando, iniciarSalvar] = useTransition();
   const [publicando, iniciarPublicar] = useTransition();
 
@@ -150,6 +151,24 @@ export function Editor({
     if (aba.type === 'search') return '/search';
     return '/';
   }, [abaDaPrevia, config.tabs]);
+
+  /**
+   * O lojista clicou em algo na prévia para esconder.
+   *
+   * Entra na lista sem repetir, e a seção pula para "Loja": ver o item
+   * aparecer na lista é o que confirma que o clique funcionou.
+   */
+  const aoEscolherSeletor = useCallback((seletor: string) => {
+    setConfig((atual) => {
+      const limpo = seletor.trim();
+      if (limpo === '' || atual.webview.hideSelectors.includes(limpo)) return atual;
+      return editarWebview(atual, {
+        hideSelectors: [...atual.webview.hideSelectors, limpo],
+      });
+    });
+    setSecao('loja');
+    toast.success(`Escondendo "${seletor}".`);
+  }, []);
 
   const secaoAtual = SECOES.find((item) => item.id === secao) ?? SECOES[0];
 
@@ -278,14 +297,30 @@ export function Editor({
           </Card>
         </div>
 
-        <div className="lg:sticky lg:top-6 lg:self-start">
+        <div className="space-y-3 lg:sticky lg:top-6 lg:self-start">
           <Previa
             config={config}
             abaAtiva={abaDaPrevia}
             aoTrocarAba={setAbaDaPrevia}
             lojaId={storeId}
             caminho={caminhoDaPrevia}
+            selecionando={selecionando}
+            aoEscolherSeletor={aoEscolherSeletor}
           />
+
+          {somenteLeitura ? null : (
+            <Button
+              type="button"
+              variant={selecionando ? 'default' : 'outline'}
+              className="w-full"
+              onClick={() => {
+                setSelecionando((antes) => !antes);
+              }}
+            >
+              <MousePointerClick className="size-4" aria-hidden />
+              {selecionando ? 'Parar de escolher' : 'Escolher o que esconder'}
+            </Button>
+          )}
         </div>
       </div>
 
