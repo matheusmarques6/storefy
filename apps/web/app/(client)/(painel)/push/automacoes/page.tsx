@@ -4,6 +4,8 @@ import Link from 'next/link';
 import { Smartphone } from 'lucide-react';
 import { exigirContextoCliente } from '@/lib/contexto';
 import { criarClientServidor } from '@/lib/supabase/server';
+import { criarClientServiceRole } from '@/lib/supabase/admin';
+import { estadoDasNotificacoes } from '@/lib/ativar-push';
 import { appDaLoja, listarAutomacoes } from '@/lib/push-servidor';
 import { TIPOS_DE_AUTOMACAO } from '@/lib/automacao';
 import { EstadoVazio } from '@/components/estado-vazio';
@@ -44,7 +46,10 @@ export default async function PaginaDeAutomacoes() {
     );
   }
 
-  const salvas = await listarAutomacoes(supabase, app.id);
+  const [salvas, notificacoes] = await Promise.all([
+    listarAutomacoes(supabase, app.id),
+    estadoDasNotificacoes(criarClientServiceRole(), lojaAtiva.id),
+  ]);
   const podeEscrever = papel === 'owner' || papel === 'admin';
 
   return (
@@ -56,7 +61,9 @@ export default async function PaginaDeAutomacoes() {
         </p>
       </div>
 
-      {app.oneSignalAppId === null ? <PushNaoConfigurado /> : null}
+      {notificacoes.ligado ? null : (
+        <PushNaoConfigurado pendencias={notificacoes.pendencias} podeEscrever={podeEscrever} />
+      )}
 
       <AbasDoPush atual="automacoes" />
 

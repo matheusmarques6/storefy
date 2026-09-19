@@ -1,35 +1,111 @@
+'use client';
+
 /**
- * O estado "push ainda não configurado".
+ * O estado "push ainda não configurado", com o que falta e de quem depende.
  *
- * Aparece quando o app da loja ainda não tem um OneSignal ligado. A regra 1 do
- * CLAUDE.md pede exatamente isto: em vez de uma tela que finge funcionar ou de
- * números inventados, um estado explícito dizendo o que falta e de quem
- * depende. O push depende de chave da Apple e conta do Google, que são ações
- * humanas — e o lojista precisa saber disso sem abrir um chamado.
+ * A regra 1 do CLAUDE.md pede exatamente isto: em vez de uma tela que finge
+ * funcionar, um estado explícito dizendo o que falta. E a regra 3 pede que,
+ * quando algo depende de uma ação humana, o ponto fique bloqueado com um
+ * estado claro — aqui, a lista separa o que é nosso do que é do lojista, para
+ * ele não ficar esperando por algo que só ele pode fazer, nem o contrário.
  */
-import Link from 'next/link';
-import { BellOff } from 'lucide-react';
+import { useTransition } from 'react';
+import { useRouter } from 'next/navigation';
+import { BellOff, Circle, Loader2, UserCog } from 'lucide-react';
+import { toast } from 'sonner';
+import type { Pendencia } from '@/lib/onesignal-org';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
+import { ligarNotificacoes } from './acoes';
 
-export function PushNaoConfigurado() {
+interface Props {
+  pendencias: readonly Pendencia[];
+  podeEscrever: boolean;
+}
+
+export function PushNaoConfigurado({ pendencias, podeEscrever }: Props) {
+  const router = useRouter();
+  const [ligando, iniciar] = useTransition();
+
+  const doLojista = pendencias.filter((pendencia) => pendencia.de === 'lojista');
+  const nossas = pendencias.filter((pendencia) => pendencia.de === 'storefy');
+  const prontoParaLigar = pendencias.length === 0;
+
+  function ligar() {
+    iniciar(async () => {
+      const resultado = await ligarNotificacoes();
+      if (resultado.ok === true) {
+        toast.success(resultado.mensagem ?? 'Notificações ligadas.');
+        router.refresh();
+      } else {
+        toast.error(resultado.mensagem ?? 'Não foi possível ligar as notificações.');
+      }
+    });
+  }
+
   return (
     <Alert>
       <BellOff className="size-4" aria-hidden />
-      <AlertTitle>As notificações ainda não estão ligadas</AlertTitle>
+      <AlertTitle>
+        {prontoParaLigar
+          ? 'Tudo pronto para ligar as notificações'
+          : 'As notificações ainda não estão ligadas'}
+      </AlertTitle>
       <AlertDescription className="space-y-3">
-        <p>
-          Para enviar notificações, o app da sua loja precisa das credenciais de push da Apple e do
-          Google. Elas são criadas nas contas de desenvolvedor da sua empresa — só você pode gerar,
-          e a gente configura o resto.
-        </p>
-        <p>
-          Enquanto isso, você já pode escrever campanhas e deixar as automações prontas: elas ficam
-          guardadas e começam a sair assim que a configuração terminar.
-        </p>
-        <Button asChild variant="outline" size="sm">
-          <Link href="/configuracoes">Ver o que falta</Link>
-        </Button>
+        {prontoParaLigar ? (
+          <p>
+            Suas contas Apple e Google já estão conectadas. Ligue as notificações para começar a
+            enviar campanhas.
+          </p>
+        ) : (
+          <>
+            {doLojista.length > 0 ? (
+              <div className="space-y-1.5">
+                <p className="text-foreground font-medium">O que depende de você</p>
+                <ul className="space-y-1.5">
+                  {doLojista.map((pendencia) => (
+                    <li key={pendencia.texto} className="flex items-start gap-2">
+                      <UserCog className="mt-0.5 size-3.5 shrink-0" aria-hidden />
+                      <span>{pendencia.texto}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+
+            {nossas.length > 0 ? (
+              <div className="space-y-1.5">
+                <p className="text-foreground font-medium">O que depende da Storefy</p>
+                <ul className="space-y-1.5">
+                  {nossas.map((pendencia) => (
+                    <li key={pendencia.texto} className="flex items-start gap-2">
+                      <Circle className="mt-1 size-2 shrink-0 fill-current" aria-hidden />
+                      <span>{pendencia.texto}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+          </>
+        )}
+
+        {/*
+          "Enquanto isso" só faz sentido enquanto falta alguma coisa. Com tudo
+          pronto, a frase manda esperar por algo que já aconteceu.
+        */}
+        {prontoParaLigar ? null : (
+          <p className="text-muted-foreground">
+            Enquanto isso, você já pode escrever campanhas e deixar as automações prontas: elas
+            ficam guardadas e começam a sair assim que a configuração terminar.
+          </p>
+        )}
+
+        {prontoParaLigar && podeEscrever ? (
+          <Button size="sm" disabled={ligando} onClick={ligar}>
+            {ligando ? <Loader2 className="size-4 animate-spin" aria-hidden /> : null}
+            Ligar notificações
+          </Button>
+        ) : null}
       </AlertDescription>
     </Alert>
   );

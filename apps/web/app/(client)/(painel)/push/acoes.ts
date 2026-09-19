@@ -13,6 +13,11 @@
  */
 import { revalidatePath } from 'next/cache';
 import { criarClientServidor } from '@/lib/supabase/server';
+import { criarClientServiceRole } from '@/lib/supabase/admin';
+import { descriptografar } from '@/lib/cripto';
+import { enviarNotificacao } from '@/lib/onesignal';
+import { faltaConfiguracao } from '@/lib/jobs';
+import { ativarNotificacoes } from '@/lib/ativar-push';
 import { exigirContextoCliente } from '@/lib/contexto';
 import { appDaLoja } from '@/lib/push-servidor';
 import { podeCancelar, podeEditar, podeExcluir, validarCampanha } from '@/lib/campanha';
@@ -255,6 +260,133 @@ export async function editarCampanha(
 
   revalidatePath('/push');
   return { ok: true, mensagem: 'Campanha atualizada.' };
+}
+
+/**
+ * Manda a notificação para UM aparelho, sem criar campanha.
+ *
+ * É a última conferência antes de um envio que não tem volta: o lojista vê no
+ * próprio celular o texto cortado, o link que abre no lugar errado e o emoji
+ * que não renderiza. Nada disso aparece num campo de formulário.
+ *
+ * Não grava `push_campaigns`: um teste no histórico de campanhas confundiria a
+ * contagem de envios e o resumo do topo da tela.
+ */
+export async function enviarTeste(entrada: {
+  title: string;
+  body: string;
+  deepLink: string;
+  deviceId: string;
+}): Promise<EstadoDoPush> {
+  const base = await contexto();
+  if (!base.ok) return { mensagem: base.motivo };
+
+  const validacao = validarCampanha(
+    { title: entrada.title, body: entrada.body, deepLink: entrada.deepLink },
+    { urlDaLoja: base.loja.primary_url, agoraMs: Date.now() },
+  );
+  if (!validacao.ok) return { problemas: validacao.problemas };
+
+  /*
+   * O aparelho é lido pelo client da SESSÃO, e filtrado por este app. É a RLS
+   * que decide se aquele usuário enxerga aquele aparelho — um id forjado de
+   * outra loja simplesmente não volta.
+   */
+  const { data: aparelho } = await base.supabase
+    .from('devices')
+    .select('onesignal_subscription_id')
+    .eq('id', entrada.deviceId)
+    .eq('app_id', base.app.id)
+    .maybeSingle();
+
+  if (aparelho == null) {
+    return { mensagem: 'Não encontramos esse aparelho. Recarregue a página e tente de novo.' };
+  }
+
+  const { data: credenciais } = await criarClientServiceRole()
+    .from('apps')
+    .select('onesignal_app_id, onesignal_api_key_enc')
+    .eq('id', base.app.id)
+    .maybeSingle();
+
+  const falta = faltaConfiguracao(
+    credenciais?.onesignal_app_id ?? null,
+    credenciais?.onesignal_api_key_enc ?? null,
+  );
+  if (falta !== null) return { mensagem: falta };
+
+  /*
+   * O limite usa a service role porque o contador é tabela de sistema, sem
+   * policy. A checagem de permissão já aconteceu acima, pela RLS: quem chegou
+   * aqui enxerga esta loja. Sem o limite, um clique repetido viraria dezenas
+   * de notificações no celular de quem está testando.
+   */
+  const { data: cabe } = await criarClientServiceRole().rpc('consumir_limite', {
+    p_chave: `teste:${base.app.id}`,
+    p_maximo: 10,
+    p_janela_segundos: 60,
+  });
+  if (cabe === false) {
+    return { mensagem: 'Muitos testes seguidos. Espere um minuto e tente de novo.' };
+  }
+
+  let chave: string;
+  try {
+    chave = descriptografar(credenciais?.onesignal_api_key_enc ?? '');
+  } catch {
+    return { mensagem: 'Não conseguimos ler a chave de envio desta loja. Fale com o suporte.' };
+  }
+
+  const resultado = await enviarNotificacao(
+    { appId: credenciais?.onesignal_app_id ?? '', chave },
+    {
+      title: validacao.valores.title,
+      body: validacao.valores.body,
+      deepLink: validacao.valores.deepLink,
+      inscricoes: [aparelho.onesignal_subscription_id],
+    },
+  );
+
+  if (!resultado.ok) {
+    return {
+      mensagem: resultado.permanente
+        ? `Não deu para enviar o teste: ${resultado.motivo}`
+        : 'Não conseguimos falar com o servidor de push agora. Tente de novo em instantes.',
+    };
+  }
+
+  return { ok: true, mensagem: 'Teste enviado. Confira o celular.' };
+}
+
+/**
+ * Liga as notificações desta loja: cria o app na OneSignal e guarda as chaves.
+ *
+ * A criação não é idempotente do lado da OneSignal — chamar duas vezes cria
+ * dois apps, e o segundo fica com os mesmos certificados e nenhum aparelho. O
+ * `ativarNotificacoes` relê `onesignal_app_id` antes de criar justamente
+ * porque outra pessoa da mesma organização pode ter clicado primeiro.
+ */
+export async function ligarNotificacoes(): Promise<EstadoDoPush> {
+  const { lojaAtiva, papel } = await exigirContextoCliente();
+  if (lojaAtiva == null) return { mensagem: 'Cadastre uma loja antes de usar o push.' };
+
+  /*
+   * Esta ação usa a service role para ler credenciais que o painel não
+   * enxerga, então a permissão é conferida AQUI, à mão — a RLS não vai
+   * conferir por ela. Só owner e admin ligam notificações da organização.
+   */
+  if (papel !== 'owner' && papel !== 'admin') {
+    return {
+      mensagem: 'Apenas proprietários e administradores ligam as notificações.',
+    };
+  }
+
+  const resultado = await ativarNotificacoes(criarClientServiceRole(), lojaAtiva.id);
+  if (!resultado.ok) return { mensagem: resultado.motivo };
+
+  revalidatePath('/push');
+  revalidatePath('/push/automacoes');
+  return { ok: true, mensagem: 'Notificações ligadas. Já dá para enviar campanhas.' };
 }
 
 export async function salvarAutomacao(entrada: {

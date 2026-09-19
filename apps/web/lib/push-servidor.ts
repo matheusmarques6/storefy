@@ -131,6 +131,46 @@ export async function listarAutomacoes(supabase: Client, appId: string): Promise
     }));
 }
 
+export interface AparelhoParaTeste {
+  id: string;
+  subscriptionId: string;
+  platform: 'ios' | 'android';
+  appVersion: string | null;
+  lastSeenAt: string;
+}
+
+/**
+ * Os aparelhos vistos mais recentemente, para o envio de teste.
+ *
+ * O lojista instala o próprio app, abre, e ele aparece no topo da lista. É
+ * assim que ele manda a notificação para o PRÓPRIO celular antes de mandar
+ * para dez mil pessoas — e é a última chance de ver o texto cortado, o link
+ * errado ou o emoji que não renderiza.
+ *
+ * Poucos de propósito: a lista existe para o lojista se achar nela, não para
+ * navegar pela base de clientes.
+ */
+export async function aparelhosRecentes(
+  supabase: Client,
+  appId: string,
+  limite = 10,
+): Promise<AparelhoParaTeste[]> {
+  const { data } = await supabase
+    .from('devices')
+    .select('id, onesignal_subscription_id, platform, app_version, last_seen_at')
+    .eq('app_id', appId)
+    .order('last_seen_at', { ascending: false })
+    .limit(limite);
+
+  return (data ?? []).map((linha) => ({
+    id: linha.id,
+    subscriptionId: linha.onesignal_subscription_id,
+    platform: linha.platform,
+    appVersion: linha.app_version,
+    lastSeenAt: linha.last_seen_at,
+  }));
+}
+
 /**
  * Quantos aparelhos deste app podem receber push.
  *

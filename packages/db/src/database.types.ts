@@ -686,6 +686,10 @@ export type Database = {
         Args: { p_id: string };
         Returns: unknown;
       };
+      consumir_limite: {
+        Args: { p_chave: string; p_maximo: number; p_janela_segundos?: number };
+        Returns: boolean;
+      };
       devolver_campanhas_presas: {
         Args: { p_minutos?: number };
         Returns: number;

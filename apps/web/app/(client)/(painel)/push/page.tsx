@@ -4,6 +4,8 @@ import Link from 'next/link';
 import { Bell, Plus, Smartphone } from 'lucide-react';
 import { exigirContextoCliente } from '@/lib/contexto';
 import { criarClientServidor } from '@/lib/supabase/server';
+import { criarClientServiceRole } from '@/lib/supabase/admin';
+import { estadoDasNotificacoes } from '@/lib/ativar-push';
 import { appDaLoja, contarAparelhos, listarCampanhas } from '@/lib/push-servidor';
 import { EstadoVazio } from '@/components/estado-vazio';
 import { Button } from '@/components/ui/button';
@@ -45,12 +47,15 @@ export default async function PaginaDeCampanhas() {
     );
   }
 
-  const [campanhas, aparelhos] = await Promise.all([
+  const [campanhas, aparelhos, notificacoes] = await Promise.all([
     listarCampanhas(supabase, app.id),
     contarAparelhos(supabase, app.id),
+    // Lido com a service role porque precisa saber se os SEGREDOS existem, e
+    // as colunas `_enc` são invisíveis para o painel de propósito. O que volta
+    // é só booleano e texto.
+    estadoDasNotificacoes(criarClientServiceRole(), lojaAtiva.id),
   ]);
 
-  const configurado = app.oneSignalAppId !== null;
   const podeEscrever = papel === 'owner' || papel === 'admin';
 
   return (
@@ -72,7 +77,9 @@ export default async function PaginaDeCampanhas() {
         ) : null}
       </div>
 
-      {configurado ? null : <PushNaoConfigurado />}
+      {notificacoes.ligado ? null : (
+        <PushNaoConfigurado pendencias={notificacoes.pendencias} podeEscrever={podeEscrever} />
+      )}
 
       <ResumoDoPush aparelhos={aparelhos} campanhas={campanhas} />
 

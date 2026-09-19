@@ -244,6 +244,8 @@ async function main(): Promise<void> {
     'devolver_envios_presos',
     'campanhas_para_estatistica',
     'gravar_estatistica',
+    // Usada pelo envio de teste do painel, pela service role.
+    'consumir_limite',
   ];
 
   const { rows: funcoes } = await client.query<FuncaoSql>(

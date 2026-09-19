@@ -18,6 +18,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { PreviaDaNotificacao } from './previa-da-notificacao';
+import { EnvioDeTeste } from './envio-de-teste';
+import type { AparelhoParaTeste } from '@/lib/push-servidor';
 import type { EstadoDoPush } from './acoes';
 
 export interface ValoresIniciais {
@@ -31,6 +33,8 @@ export interface ValoresIniciais {
 interface Props {
   nomeDoApp: string;
   urlDaLoja: string;
+  /** Aparelhos para o envio de teste. */
+  aparelhos: readonly AparelhoParaTeste[];
   iniciais: ValoresIniciais;
   /** Texto do botão principal. */
   rotuloDoEnvio: string;
@@ -44,6 +48,7 @@ interface Props {
 export function FormularioDaCampanha({
   nomeDoApp,
   urlDaLoja,
+  aparelhos,
   iniciais,
   rotuloDoEnvio,
   aoEnviar,
@@ -223,6 +228,11 @@ export function FormularioDaCampanha({
             <p className="text-destructive text-sm">{erroDe('agendarPara')}</p>
           )}
         </fieldset>
+
+        <EnvioDeTeste
+          aparelhos={aparelhos}
+          valores={{ title: valores.title, body: valores.body, deepLink: valores.deepLink }}
+        />
 
         <div className="flex flex-wrap gap-3 pt-2">
           <Button type="submit" disabled={enviando}>

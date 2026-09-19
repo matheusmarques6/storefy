@@ -5,7 +5,7 @@ import { notFound } from 'next/navigation';
 import { ChevronLeft } from 'lucide-react';
 import { exigirContextoCliente } from '@/lib/contexto';
 import { criarClientServidor } from '@/lib/supabase/server';
-import { appDaLoja, buscarCampanha } from '@/lib/push-servidor';
+import { aparelhosRecentes, appDaLoja, buscarCampanha } from '@/lib/push-servidor';
 import { podeEditar } from '@/lib/campanha';
 import { EstadoVazio } from '@/components/estado-vazio';
 import { Button } from '@/components/ui/button';
@@ -33,6 +33,8 @@ export default async function PaginaDeEdicao({ params }: { params: Promise<{ id:
 
   const campanha = await buscarCampanha(supabase, app.id, id);
   if (campanha == null) notFound();
+
+  const aparelhos = await aparelhosRecentes(supabase, app.id);
 
   if (papel !== 'owner' && papel !== 'admin') {
     return (
@@ -86,6 +88,7 @@ export default async function PaginaDeEdicao({ params }: { params: Promise<{ id:
         campanhaId={campanha.id}
         nomeDoApp={lojaAtiva.name}
         urlDaLoja={lojaAtiva.primary_url}
+        aparelhos={aparelhos}
         iniciais={{
           title: campanha.title,
           body: campanha.body,

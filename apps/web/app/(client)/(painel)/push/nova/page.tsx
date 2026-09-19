@@ -4,7 +4,9 @@ import Link from 'next/link';
 import { ChevronLeft, Smartphone } from 'lucide-react';
 import { exigirContextoCliente } from '@/lib/contexto';
 import { criarClientServidor } from '@/lib/supabase/server';
-import { appDaLoja } from '@/lib/push-servidor';
+import { criarClientServiceRole } from '@/lib/supabase/admin';
+import { estadoDasNotificacoes } from '@/lib/ativar-push';
+import { aparelhosRecentes, appDaLoja } from '@/lib/push-servidor';
 import { EstadoVazio } from '@/components/estado-vazio';
 import { Button } from '@/components/ui/button';
 import { PushNaoConfigurado } from '../nao-configurado';
@@ -47,6 +49,10 @@ export default async function PaginaDeNovaCampanha() {
 
   const supabase = await criarClientServidor();
   const app = await appDaLoja(supabase, lojaAtiva.id);
+  const [aparelhos, notificacoes] = await Promise.all([
+    app == null ? Promise.resolve([]) : aparelhosRecentes(supabase, app.id),
+    estadoDasNotificacoes(criarClientServiceRole(), lojaAtiva.id),
+  ]);
 
   return (
     <div className="space-y-6">
@@ -64,9 +70,15 @@ export default async function PaginaDeNovaCampanha() {
         </p>
       </div>
 
-      {app?.oneSignalAppId == null ? <PushNaoConfigurado /> : null}
+      {notificacoes.ligado ? null : (
+        <PushNaoConfigurado pendencias={notificacoes.pendencias} podeEscrever />
+      )}
 
-      <NovaCampanha nomeDoApp={lojaAtiva.name} urlDaLoja={lojaAtiva.primary_url} />
+      <NovaCampanha
+        nomeDoApp={lojaAtiva.name}
+        urlDaLoja={lojaAtiva.primary_url}
+        aparelhos={aparelhos}
+      />
     </div>
   );
 }
