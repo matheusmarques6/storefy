@@ -1854,6 +1854,305 @@ select tests.ok('permissões',
     and not has_function_privilege('anon', 'public.caixa_de_avisos(uuid, text, integer)', 'execute'),
   'a caixa de avisos é só da service role');
 
+-- ------------------------------------------------ o despacho (jobs)
+
+-- Limpa o que os testes anteriores deixaram agendado, para as contagens
+-- daqui falarem só do que esta seção cria.
+update public.automation_runs set status = 'canceled', canceled_reason = 'limpeza do teste'
+ where status = 'scheduled';
+delete from public.push_campaigns where app_id = (select app_a from tests.lojas);
+
+-- Um aparelho só desta seção: reaproveitar os de cima faria o teto de 24h
+-- cancelar os envios daqui e o teste medir a coisa errada.
+drop table if exists tests.aparelho_do_job;
+create table tests.aparelho_do_job as
+select * from public.registrar_aparelho(
+  (select app_a from tests.lojas), 'sub-do-despacho', 'ios'
+);
+grant select on tests.aparelho_do_job to service_role;
+
+insert into public.push_campaigns (app_id, title, body, status, scheduled_at)
+select app_a, 'Vencida', 'Deveria sair agora.', 'scheduled', now() - interval '1 minute'
+from tests.lojas;
+
+insert into public.push_campaigns (app_id, title, body, status, scheduled_at)
+select app_a, 'Ainda não', 'Sai amanhã.', 'scheduled', now() + interval '1 day'
+from tests.lojas;
+
+set role service_role;
+
+drop table if exists tests.reservadas;
+create table tests.reservadas as select * from public.reservar_campanhas(20);
+
+select tests.ok('despacho',
+  (select count(*) from tests.reservadas) = 1,
+  'o job pega a campanha vencida');
+
+select tests.ok('despacho',
+  (select title from tests.reservadas) = 'Vencida',
+  'e não pega a que ainda não venceu');
+
+/*
+ * A asserção mais importante desta suíte. Duas execuções do cron ao mesmo
+ * tempo mandando a mesma campanha significam a base inteira de uma loja
+ * recebendo o push duas vezes — e isso não tem desfazer.
+ */
+select tests.ok('despacho',
+  tests.contar('select count(*) from public.reservar_campanhas(20)') = 0,
+  'a segunda execução NÃO pega a mesma campanha de novo');
+
+reset role;
+
+select tests.ok('despacho',
+  (select status = 'sending' from public.push_campaigns where title = 'Vencida'),
+  'a campanha reservada fica marcada como enviando');
+
+set role service_role;
+
+select public.concluir_campanha(
+  (select id from tests.reservadas), 'notificacao-1', '{"enviados":10}'::jsonb
+);
+
+reset role;
+
+select tests.ok('despacho',
+  (select status = 'sent' and onesignal_notification_id = 'notificacao-1'
+     and sent_at is not null and stats->>'enviados' = '10'
+     from public.push_campaigns where title = 'Vencida'),
+  'concluir grava o envio, o id da notificação e o que a OneSignal respondeu');
+
+-- ------------------------------------ campanha presa pela queda do job
+
+/*
+ * `updated_at` tem trigger que o reescreve para `now()` a cada UPDATE, então a
+ * única forma de simular uma reserva antiga é desligando o gatilho. Vale a
+ * pena: sem este teste, `devolver_campanhas_presas` seria código que ninguém
+ * nunca viu rodar — e ele só entra em ação no dia em que o job cai.
+ */
+insert into public.push_campaigns (app_id, title, body, status, scheduled_at)
+select app_a, 'Presa', 'Ficou travada.', 'scheduled', now() - interval '1 minute'
+from tests.lojas;
+
+alter table public.push_campaigns disable trigger push_campaigns_set_updated_at;
+update public.push_campaigns
+   set status = 'sending', updated_at = now() - interval '30 minutes'
+ where title = 'Presa';
+alter table public.push_campaigns enable trigger push_campaigns_set_updated_at;
+
+-- E uma reservada agora mesmo, que NÃO pode ser arrancada do job que a processa.
+update public.push_campaigns set status = 'sending' where title = 'Ainda não';
+
+set role service_role;
+
+select tests.ok('despacho',
+  public.devolver_campanhas_presas(15) = 1,
+  'campanha presa em "enviando" volta para a fila — e só ela');
+
+reset role;
+
+select tests.ok('despacho',
+  (select status = 'scheduled' from public.push_campaigns where title = 'Presa'),
+  'ela volta como agendada, de onde o job a pega de novo');
+
+select tests.ok('despacho',
+  (select status = 'sending' from public.push_campaigns where title = 'Ainda não'),
+  'e a reservada há pouco continua com o job que a está processando');
+
+update public.push_campaigns set status = 'scheduled' where title = 'Ainda não';
+update public.push_campaigns set status = 'canceled' where title = 'Presa';
+
+-- ------------------------------------ envios de automação
+
+update public.push_automations set enabled = true, delay_minutes = 60
+ where app_id = (select app_a from tests.lojas) and type = 'abandoned_cart';
+update public.stores set timezone = (
+  select name from pg_timezone_names
+   where extract(hour from now() at time zone name) between 9 and 20
+     and name like 'America/%'
+   limit 1
+) where id = (select loja_a from tests.lojas);
+
+insert into public.automation_runs (automation_id, device_id, scheduled_for)
+select (select id from tests.automacao), (select device_id from tests.aparelho_do_job),
+       now() - interval '1 minute';
+
+set role service_role;
+
+drop table if exists tests.envios;
+create table tests.envios as select * from public.reservar_envios_de_automacao(100);
+
+select tests.ok('despacho',
+  (select count(*) from tests.envios) = 1,
+  'o job pega o envio de automação vencido');
+
+select tests.ok('despacho',
+  (select subscription_id = 'sub-do-despacho' and title is not null from tests.envios),
+  'com a inscrição do aparelho e o texto da automação');
+
+select tests.ok('despacho',
+  tests.contar('select count(*) from public.reservar_envios_de_automacao(100)') = 0,
+  'e a segunda execução não pega o mesmo envio');
+
+select public.concluir_envio((select id from tests.envios));
+
+reset role;
+
+select tests.ok('despacho',
+  (select status = 'sent' and sent_at is not null from public.automation_runs
+    where id = (select id from tests.envios)),
+  'concluir marca o envio como enviado');
+
+/*
+ * O teto de 24 horas é conferido de novo AQUI porque entre agendar e enviar
+ * passa pelo menos uma hora — e nesse meio-tempo outro envio pode ter saído.
+ * Sem esta reconferência o cliente receberia dois lembretes de carrinho no
+ * mesmo dia.
+ */
+insert into public.automation_runs (automation_id, device_id, scheduled_for)
+select (select id from tests.automacao), (select device_id from tests.aparelho_do_job),
+       now() - interval '1 minute';
+
+set role service_role;
+
+select tests.ok('despacho',
+  tests.contar('select count(*) from public.reservar_envios_de_automacao(100)') = 0,
+  'quem já recebeu um push de carrinho hoje não recebe o segundo');
+
+reset role;
+
+select tests.ok('despacho',
+  (select canceled_reason = 'já recebeu um push de carrinho hoje'
+     from public.automation_runs
+    where automation_id = (select id from tests.automacao) and status = 'canceled'
+    order by created_at desc limit 1),
+  'e o envio repetido é cancelado com o motivo escrito');
+
+-- ------------------------------------ automação desligada e madrugada
+
+-- Um aparelho novo, sem envio nenhum no histórico, para o teto de 24 horas
+-- não mascarar o que estas duas asserções medem.
+drop table if exists tests.aparelho_da_madrugada;
+create table tests.aparelho_da_madrugada as
+select * from public.registrar_aparelho(
+  (select app_a from tests.lojas), 'sub-da-madrugada-job', 'android'
+);
+grant select on tests.aparelho_da_madrugada to service_role;
+
+update public.push_automations set enabled = false
+ where id = (select id from tests.automacao);
+insert into public.automation_runs (automation_id, device_id, scheduled_for)
+select (select id from tests.automacao), (select device_id from tests.aparelho_da_madrugada),
+       now() - interval '1 minute';
+
+set role service_role;
+
+select tests.ok('despacho',
+  tests.contar('select count(*) from public.reservar_envios_de_automacao(100)') = 0,
+  'automação desligada não dispara o que já estava agendado');
+
+reset role;
+update public.push_automations set enabled = true
+ where id = (select id from tests.automacao);
+
+/*
+ * O job pode atrasar por queda ou deploy. Um envio que vence durante a
+ * madrugada é ADIADO para as 8h em vez de sair — acordar o cliente com uma
+ * mensagem de carrinho é o caminho mais curto para a desinstalação.
+ */
+update public.stores set timezone = (
+  select name from pg_timezone_names
+   where extract(hour from now() at time zone name) not between 8 and 21
+     and name like 'America/%'
+   limit 1
+) where id = (select loja_a from tests.lojas);
+
+set role service_role;
+
+select tests.ok('despacho',
+  tests.contar('select count(*) from public.reservar_envios_de_automacao(100)') = 0,
+  'envio vencido na madrugada NÃO sai');
+
+reset role;
+
+-- Filtra pela automação: `registrar_aparelho` também deixa um envio de
+-- boas-vindas agendado para este aparelho, e ele não é o que se mede aqui.
+select tests.ok('despacho',
+  (select extract(hour from r.scheduled_for at time zone s.timezone) = 8
+     from public.automation_runs r, public.stores s
+    where r.device_id = (select device_id from tests.aparelho_da_madrugada)
+      and r.automation_id = (select id from tests.automacao)
+      and r.status = 'scheduled'
+      and s.id = (select loja_a from tests.lojas)),
+  'ele é adiado para as 8h do fuso da loja');
+
+update public.stores set timezone = 'America/Sao_Paulo'
+ where id = (select loja_a from tests.lojas);
+
+-- Envio preso pela queda do job volta para a fila.
+update public.automation_runs set claimed_at = now() - interval '30 minutes'
+ where device_id = (select device_id from tests.aparelho_da_madrugada)
+   and automation_id = (select id from tests.automacao)
+   and status = 'scheduled';
+
+set role service_role;
+
+select tests.ok('despacho',
+  public.devolver_envios_presos(15) >= 1,
+  'envio preso pela queda do job volta para a fila');
+
+reset role;
+
+select tests.ok('despacho',
+  (select claimed_at is null from public.automation_runs
+    where device_id = (select device_id from tests.aparelho_da_madrugada)
+      and automation_id = (select id from tests.automacao)
+      and status = 'scheduled'),
+  'e volta sem reserva, de onde o job o pega de novo');
+
+-- ------------------------------------------------ estatísticas
+
+set role service_role;
+
+select tests.ok('despacho',
+  exists (
+    select 1 from public.campanhas_para_estatistica(50)
+     where onesignal_notification_id = 'notificacao-1'
+  ),
+  'a campanha enviada entra na fila de estatística');
+
+select public.gravar_estatistica(
+  (select id from tests.reservadas), '{"entregues":9,"abertos":3}'::jsonb
+);
+
+reset role;
+
+select tests.ok('despacho',
+  (select stats->>'entregues' = '9' and stats->>'abertos' = '3' and stats->>'enviados' = '10'
+     from public.push_campaigns where title = 'Vencida'),
+  'gravar estatística soma ao que já havia, em vez de substituir');
+
+-- Depois de 48h os números param de mexer; continuar consultando gastaria a
+-- cota da API da loja sem mudar nada na tela.
+update public.push_campaigns set sent_at = now() - interval '3 days' where title = 'Vencida';
+
+set role service_role;
+
+select tests.ok('despacho',
+  not exists (
+    select 1 from public.campanhas_para_estatistica(50)
+     where onesignal_notification_id = 'notificacao-1'
+  ),
+  'campanha de três dias atrás não gasta mais cota da API da loja');
+
+reset role;
+
+select tests.ok('permissões',
+  not has_function_privilege('authenticated', 'public.reservar_campanhas(integer)', 'execute')
+    and not has_function_privilege('anon', 'public.reservar_campanhas(integer)', 'execute')
+    and not has_function_privilege('authenticated', 'public.concluir_campanha(uuid, text, jsonb)', 'execute')
+    and not has_function_privilege('authenticated', 'public.reservar_envios_de_automacao(integer)', 'execute'),
+  'o despacho é só da service role: ninguém dispara push pelo PostgREST');
+
 -- --------------------------------------------- nada disso vaza para a org B
 
 select tests.login('b-owner@teste.local');

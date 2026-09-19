@@ -162,6 +162,7 @@ export type Database = {
           sent_at: string | null;
           canceled_reason: string | null;
           created_at: string;
+          claimed_at: string | null;
         };
         Insert: {
           id?: string;
@@ -173,6 +174,7 @@ export type Database = {
           sent_at?: string | null;
           canceled_reason?: string | null;
           created_at?: string;
+          claimed_at?: string | null;
         };
         Update: {
           id?: string;
@@ -184,6 +186,7 @@ export type Database = {
           sent_at?: string | null;
           canceled_reason?: string | null;
           created_at?: string;
+          claimed_at?: string | null;
         };
         Relationships: [
           {
@@ -671,6 +674,38 @@ export type Database = {
         Args: { p_app_id: string; p_subscription: string; p_limite?: number };
         Returns: { id: string | null; title: string | null; body: string | null; deep_link: string | null; image_path: string | null; sent_at: string | null }[];
       };
+      campanhas_para_estatistica: {
+        Args: { p_limite?: number };
+        Returns: { id: string | null; app_id: string | null; onesignal_notification_id: string | null; onesignal_app_id: string | null; onesignal_api_key_enc: string | null }[];
+      };
+      concluir_campanha: {
+        Args: { p_id: string; p_notification_id: string; p_stats?: Json };
+        Returns: unknown;
+      };
+      concluir_envio: {
+        Args: { p_id: string };
+        Returns: unknown;
+      };
+      devolver_campanhas_presas: {
+        Args: { p_minutos?: number };
+        Returns: number;
+      };
+      devolver_envios_presos: {
+        Args: { p_minutos?: number };
+        Returns: number;
+      };
+      falhar_campanha: {
+        Args: { p_id: string; p_motivo: string };
+        Returns: unknown;
+      };
+      falhar_envio: {
+        Args: { p_id: string; p_motivo: string };
+        Returns: unknown;
+      };
+      gravar_estatistica: {
+        Args: { p_id: string; p_stats: Json };
+        Returns: unknown;
+      };
       publicar_config: {
         Args: { p_app_id: string };
         Returns: number;
@@ -682,6 +717,14 @@ export type Database = {
       registrar_evento_de_carrinho: {
         Args: { p_app_id: string; p_subscription: string; p_event: Database["public"]["Enums"]["cart_event_type"]; p_item_count: number; p_cart_token?: string; p_value_cents?: number; p_currency?: string };
         Returns: { event_id: string | null; limitado: boolean | null; agendou: boolean | null; cancelou: number | null }[];
+      };
+      reservar_campanhas: {
+        Args: { p_limite?: number };
+        Returns: { id: string | null; app_id: string | null; title: string | null; body: string | null; deep_link: string | null; segment: Json | null; onesignal_app_id: string | null; onesignal_api_key_enc: string | null }[];
+      };
+      reservar_envios_de_automacao: {
+        Args: { p_limite?: number };
+        Returns: { id: string | null; automation_id: string | null; app_id: string | null; subscription_id: string | null; title: string | null; body: string | null; deep_link: string | null; onesignal_app_id: string | null; onesignal_api_key_enc: string | null }[];
       };
       restaurar_config: {
         Args: { p_app_id: string; p_version: number };

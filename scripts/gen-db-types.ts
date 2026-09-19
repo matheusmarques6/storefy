@@ -233,6 +233,17 @@ async function main(): Promise<void> {
     'registrar_aparelho',
     'registrar_evento_de_carrinho',
     'caixa_de_avisos',
+    // Os jobs do cron.
+    'reservar_campanhas',
+    'concluir_campanha',
+    'falhar_campanha',
+    'devolver_campanhas_presas',
+    'reservar_envios_de_automacao',
+    'concluir_envio',
+    'falhar_envio',
+    'devolver_envios_presos',
+    'campanhas_para_estatistica',
+    'gravar_estatistica',
   ];
 
   const { rows: funcoes } = await client.query<FuncaoSql>(
