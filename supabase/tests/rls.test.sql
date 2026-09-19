@@ -1443,6 +1443,87 @@ reset role;
 
 delete from public.rate_limits where chave like 'aparelhos:%' or chave like 'eventos:%';
 
+-- --------------------------------------------------- push de boas-vindas
+
+-- Com a automação desligada (nenhuma foi criada ainda), o aparelho novo acima
+-- não agendou nada. Agora ligada, o PRÓXIMO aparelho novo agenda.
+insert into public.push_automations (app_id, type, enabled, delay_minutes, title, body)
+select app_a, 'welcome', true, 10, 'Bem-vindo!', 'Que bom ter você por aqui.'
+from tests.lojas
+on conflict (app_id, type) do update
+  set enabled = true, delay_minutes = 10;
+
+drop table if exists tests.boas_vindas;
+create table tests.boas_vindas as
+select id from public.push_automations
+ where app_id = (select app_a from tests.lojas) and type = 'welcome';
+
+grant select on tests.boas_vindas to service_role;
+
+set role service_role;
+
+drop table if exists tests.recem_chegado;
+create table tests.recem_chegado as
+select * from public.registrar_aparelho(
+  (select app_a from tests.lojas), 'sub-recem-chegado', 'android'
+);
+
+select tests.ok('aparelho',
+  (select novo and boas_vindas from tests.recem_chegado),
+  'o aparelho novo agenda o push de boas-vindas');
+
+select tests.ok('aparelho',
+  tests.contar($q$select count(*) from public.automation_runs
+    where automation_id = (select id from tests.boas_vindas) and status = 'scheduled'$q$) = 1,
+  'e há exatamente um agendamento de boas-vindas');
+
+select tests.ok('aparelho',
+  (select not novo and not boas_vindas from public.registrar_aparelho(
+    (select app_a from tests.lojas), 'sub-recem-chegado', 'android', '1.2.0')),
+  'reabrir o app NÃO agenda outro: bem-vindo se dá uma vez');
+
+select tests.ok('aparelho',
+  tests.contar($q$select count(*) from public.automation_runs
+    where automation_id = (select id from tests.boas_vindas)$q$) = 1,
+  'e continua um só, mesmo depois de reabrir');
+
+select tests.ok('aparelho',
+  (select not boas_vindas from public.registrar_aparelho(
+    (select app_b from tests.lojas), 'sub-da-loja-b', 'ios')),
+  'a loja B não tem automação de boas-vindas, então nada é agendado lá');
+
+reset role;
+
+-- O horário também respeita o silêncio da loja.
+update public.stores set timezone = (
+  select name from pg_timezone_names
+   where extract(hour from (now() + interval '10 minutes') at time zone name) not between 8 and 21
+     and name like 'America/%'
+   limit 1
+) where id = (select loja_a from tests.lojas);
+
+set role service_role;
+
+select tests.ok('aparelho',
+  (select boas_vindas from public.registrar_aparelho(
+    (select app_a from tests.lojas), 'sub-da-madrugada', 'ios')),
+  'quem instala de madrugada também agenda');
+
+reset role;
+
+select tests.ok('aparelho',
+  (select extract(hour from r.scheduled_for at time zone s.timezone) = 8
+     from public.automation_runs r
+     join public.devices d on d.id = r.device_id,
+          public.stores s
+    where r.automation_id = (select id from tests.boas_vindas)
+      and d.onesignal_subscription_id = 'sub-da-madrugada'
+      and s.id = (select loja_a from tests.lojas)),
+  'mas recebe às 8h, não às três da manhã');
+
+update public.stores set timezone = 'America/Sao_Paulo'
+ where id = (select loja_a from tests.lojas);
+
 -- ------------------------------------------ registrar_evento_de_carrinho
 
 -- Sem automação ligada ainda: o evento entra, mas nada é agendado.

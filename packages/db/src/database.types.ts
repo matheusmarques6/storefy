@@ -656,7 +656,7 @@ export type Database = {
     Views: Record<never, never>;
     Functions: {
       abrir_previa: {
-        Args: { p_app_id: string; p_minutos: unknown };
+        Args: { p_app_id: string; p_minutos?: number };
         Returns: { token: string | null; expira_em: string | null }[];
       };
       admin_email_do_usuario: {
@@ -670,6 +670,14 @@ export type Database = {
       publicar_config: {
         Args: { p_app_id: string };
         Returns: number;
+      };
+      registrar_aparelho: {
+        Args: { p_app_id: string; p_subscription: string; p_platform: Database["public"]["Enums"]["device_platform"]; p_app_version?: string; p_external_id?: string; p_email_hash?: string };
+        Returns: { device_id: string | null; limitado: boolean | null; novo: boolean | null; boas_vindas: boolean | null }[];
+      };
+      registrar_evento_de_carrinho: {
+        Args: { p_app_id: string; p_subscription: string; p_event: Database["public"]["Enums"]["cart_event_type"]; p_item_count: number; p_cart_token?: string; p_value_cents?: number; p_currency?: string };
+        Returns: { event_id: string | null; limitado: boolean | null; agendou: boolean | null; cancelou: number | null }[];
       };
       restaurar_config: {
         Args: { p_app_id: string; p_version: number };

@@ -103,10 +103,18 @@ function argumentosTs(argumentos: string, enums: Map<string, string[]>): string 
   if (partes.length === 0) return 'Record<string, never>';
 
   const campos = partes.map((parte) => {
-    const pedacos = parte.split(/\s+/);
+    /*
+     * `pg_get_function_arguments` devolve "p_minutos integer DEFAULT 60". Sem
+     * cortar o DEFAULT, o tipo vira "integer DEFAULT 60", não casa com nada e
+     * sai `unknown` — que aceita qualquer coisa e some com a checagem justo
+     * nos argumentos opcionais. Argumento com default vira opcional aqui.
+     */
+    const temDefault = / default /i.test(parte);
+    const limpo = parte.replace(/ default .*$/i, '');
+    const pedacos = limpo.split(/\s+/);
     const nome = pedacos[0] ?? 'arg';
     const tipo = pedacos.slice(1).join(' ');
-    return `${nome}: ${tipoDeclaradoTs(tipo, enums)}`;
+    return `${nome}${temDefault ? '?' : ''}: ${tipoDeclaradoTs(tipo, enums)}`;
   });
 
   return `{ ${campos.join('; ')} }`;
@@ -218,7 +226,13 @@ async function main(): Promise<void> {
   `);
 
   /** RPCs sem o prefixo `admin_` que o painel chama. */
-  const RPCS = ['publicar_config', 'restaurar_config', 'abrir_previa'];
+  const RPCS = [
+    'publicar_config',
+    'restaurar_config',
+    'abrir_previa',
+    'registrar_aparelho',
+    'registrar_evento_de_carrinho',
+  ];
 
   const { rows: funcoes } = await client.query<FuncaoSql>(
     `
