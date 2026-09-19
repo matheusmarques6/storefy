@@ -34,7 +34,12 @@ export default async function PaginaNovaLoja() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <FormularioLoja acao={criarLoja} rotuloEnvio="Criar loja" carregando="Criando..." />
+          <FormularioLoja
+            acao={criarLoja}
+            rotuloEnvio="Criar loja"
+            carregando="Criando..."
+            comDeteccao
+          />
         </CardContent>
       </Card>
     </div>
