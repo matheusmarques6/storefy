@@ -7,6 +7,7 @@ import { exigirContextoCliente } from '@/lib/contexto';
 import { criarClientServidor } from '@/lib/supabase/server';
 import { garantirRascunho, historicoDeVersoes, versaoPublicada } from '@/lib/configs-servidor';
 import { EstadoVazio } from '@/components/estado-vazio';
+import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Editor } from './editor';
 
@@ -21,7 +22,11 @@ export default async function PaginaDoEditor() {
         icone={Smartphone}
         titulo="Cadastre uma loja primeiro"
         descricao="O editor do app trabalha em cima de uma loja. Cadastre a sua para começar."
-        acao={<Link href="/lojas/nova">Cadastrar loja</Link>}
+        acao={
+          <Button asChild>
+            <Link href="/lojas/nova">Cadastrar loja</Link>
+          </Button>
+        }
       />
     );
   }
