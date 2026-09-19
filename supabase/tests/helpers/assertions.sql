@@ -75,6 +75,25 @@ exception
 end;
 $$;
 
+-- True quando o comando REALMENTE lança erro.
+--
+-- Existe separado de `bloqueado` porque, para um SELECT, "nenhuma linha" e
+-- "permissão negada" são coisas muito diferentes e `bloqueado` as trata igual.
+-- Numa asserção de segredo isso é perigoso: a tabela ficar vazia faria o teste
+-- passar sem que nada estivesse protegido. Aqui só passa quem foi barrado.
+create or replace function tests.erro(p_sql text)
+returns boolean
+language plpgsql
+as $$
+begin
+  execute p_sql;
+  return false;
+exception
+  when others then
+    return true;
+end;
+$$;
+
 -- True quando o comando é PERMITIDO e afeta pelo menos uma linha.
 create or replace function tests.permitido(p_sql text)
 returns boolean
@@ -106,6 +125,10 @@ end;
 $$;
 
 grant usage on schema tests to anon, authenticated, service_role;
+-- A service role cria tabelas aqui para guardar o retorno das funções que
+-- só ela pode chamar; sem isto o teste teria de sair do papel para olhar o
+-- resultado, e aí não provaria o grant.
+grant create on schema tests to service_role;
 grant execute on all functions in schema tests to anon, authenticated, service_role;
 grant select, insert on tests.resultados to anon, authenticated, service_role;
 grant usage, select on all sequences in schema tests to anon, authenticated, service_role;

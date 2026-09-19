@@ -81,3 +81,12 @@ alter default privileges in schema public
   grant select, insert, update, delete on tables to anon, authenticated, service_role;
 alter default privileges in schema public
   grant usage, select on sequences to anon, authenticated, service_role;
+
+-- E para funções — este é o que engana. O padrão do Postgres já dá EXECUTE ao
+-- PUBLIC, então sem esta linha um `revoke ... from public` bastaria para fechar
+-- uma função aqui. No Supabase não basta: o grant para anon e authenticated é
+-- DIRETO, e sobrevive ao revoke do public. Sem reproduzir isso, uma função que
+-- deveria ser só da service role passaria no teste local e ficaria aberta em
+-- produção.
+alter default privileges in schema public
+  grant execute on functions to anon, authenticated, service_role;

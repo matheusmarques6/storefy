@@ -71,6 +71,7 @@ export type Database = {
           splash_path: string | null;
           created_at: string;
           updated_at: string;
+          device_secret_enc: string | null;
         };
         Insert: {
           id?: string;
@@ -88,6 +89,7 @@ export type Database = {
           splash_path?: string | null;
           created_at?: string;
           updated_at?: string;
+          device_secret_enc?: string | null;
         };
         Update: {
           id?: string;
@@ -105,6 +107,7 @@ export type Database = {
           splash_path?: string | null;
           created_at?: string;
           updated_at?: string;
+          device_secret_enc?: string | null;
         };
         Relationships: [
           {
@@ -579,6 +582,24 @@ export type Database = {
           },
         ];
       };
+      rate_limits: {
+        Row: {
+          chave: string;
+          janela: string;
+          contagem: number;
+        };
+        Insert: {
+          chave: string;
+          janela: string;
+          contagem?: number;
+        };
+        Update: {
+          chave?: string;
+          janela?: string;
+          contagem?: number;
+        };
+        Relationships: [];
+      };
       stores: {
         Row: {
           id: string;
@@ -592,6 +613,7 @@ export type Database = {
           status: Database["public"]["Enums"]["store_status"];
           created_at: string;
           updated_at: string;
+          timezone: string;
         };
         Insert: {
           id?: string;
@@ -605,6 +627,7 @@ export type Database = {
           status?: Database["public"]["Enums"]["store_status"];
           created_at?: string;
           updated_at?: string;
+          timezone?: string;
         };
         Update: {
           id?: string;
@@ -618,6 +641,7 @@ export type Database = {
           status?: Database["public"]["Enums"]["store_status"];
           created_at?: string;
           updated_at?: string;
+          timezone?: string;
         };
         Relationships: [
           {

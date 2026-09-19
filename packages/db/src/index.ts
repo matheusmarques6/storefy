@@ -53,7 +53,7 @@ export type ContaDeDesenvolvedorVisivel = SemSegredos<DeveloperAccount>;
 
 /** As colunas de `stores` que o painel pode pedir. */
 export const COLUNAS_DA_LOJA =
-  'id, org_id, name, shop_domain, primary_url, platform, shopify_scopes, status, created_at, updated_at' as const;
+  'id, org_id, name, shop_domain, primary_url, platform, shopify_scopes, status, timezone, created_at, updated_at' as const;
 
 /** As colunas de `apps` que o painel pode pedir. */
 export const COLUNAS_DO_APP =

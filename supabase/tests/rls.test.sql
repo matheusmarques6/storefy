@@ -982,15 +982,15 @@ select tests.login('a-owner@teste.local');
 set role authenticated;
 
 select tests.ok('segredo',
-  tests.bloqueado('select shopify_access_token_enc from public.stores limit 1'),
+  tests.erro('select shopify_access_token_enc from public.stores limit 1'),
   'owner NÃO lê o token da Shopify');
 
 select tests.ok('segredo',
-  tests.bloqueado('select onesignal_api_key_enc from public.apps limit 1'),
+  tests.erro('select onesignal_api_key_enc from public.apps limit 1'),
   'owner NÃO lê a chave do OneSignal');
 
 select tests.ok('segredo',
-  tests.bloqueado('select * from public.stores limit 1'),
+  tests.erro('select * from public.stores limit 1'),
   'um select * em stores FALHA em vez de vazar em silêncio');
 
 select tests.ok('segredo',
@@ -998,12 +998,58 @@ select tests.ok('segredo',
   'as colunas liberadas continuam legíveis');
 
 select tests.ok('segredo',
-  tests.bloqueado('select asc_key_enc from public.developer_accounts limit 1'),
+  tests.erro('select asc_key_enc from public.developer_accounts limit 1'),
   'owner NÃO lê a chave da App Store Connect');
 
 select tests.ok('segredo',
-  tests.bloqueado('select google_service_account_enc from public.developer_accounts limit 1'),
+  tests.erro('select google_service_account_enc from public.developer_accounts limit 1'),
   'owner NÃO lê a conta de serviço do Google');
+
+reset role;
+
+-- As duas asserções abaixo valem para o schema INTEIRO, inclusive para tabelas
+-- e colunas que ainda não existem. São elas que impedem o erro que se repete:
+-- alguém adiciona uma coluna a uma tabela com grant coluna a coluna e ela nasce
+-- invisível para o painel (sem erro, só some da resposta do PostgREST), ou
+-- alguém cria uma coluna `_enc` numa tabela sem grant restrito e o segredo
+-- nasce legível no navegador.
+select tests.ok('segredo',
+  not exists (
+    select 1
+      from pg_attribute a
+      join pg_class c on c.oid = a.attrelid
+      join pg_namespace n on n.oid = c.relnamespace
+     where n.nspname = 'public' and c.relkind = 'r'
+       and a.attnum > 0 and not a.attisdropped
+       and a.attname like '%\_enc'
+       and (has_column_privilege('authenticated', c.oid, a.attnum, 'select')
+         or has_column_privilege('anon', c.oid, a.attnum, 'select'))
+  ),
+  'NENHUMA coluna _enc do schema é legível por quem tem sessão');
+
+select tests.ok('segredo',
+  not exists (
+    select 1
+      from pg_attribute a
+      join pg_class c on c.oid = a.attrelid
+      join pg_namespace n on n.oid = c.relnamespace
+     where n.nspname = 'public' and c.relkind = 'r'
+       and c.relname in ('stores', 'apps', 'developer_accounts')
+       and a.attnum > 0 and not a.attisdropped
+       and a.attname not like '%\_enc'
+       and not has_column_privilege('authenticated', c.oid, a.attnum, 'select')
+  ),
+  'e toda coluna que NÃO é segredo continua legível: nenhuma nasce invisível');
+
+select tests.login('a-owner@teste.local');
+set role authenticated;
+
+-- `not tests.erro(...)` e não `tests.contar(...)`: se a coluna estiver fechada,
+-- `contar` relança e derruba a suíte inteira antes do relatório. Aqui a
+-- asserção falha e as outras continuam rodando, que é o que se quer de um teste.
+select tests.ok('segredo',
+  not tests.erro('select timezone from public.stores limit 1'),
+  'o painel lê o fuso da loja, que é o que ele precisa editar');
 
 reset role;
 
@@ -1172,10 +1218,469 @@ select tests.ok('push',
   'anon não lê campanha nenhuma');
 
 select tests.ok('segredo',
-  tests.bloqueado('select shopify_access_token_enc from public.stores limit 1'),
+  tests.erro('select shopify_access_token_enc from public.stores limit 1'),
   'anon muito menos lê o token da Shopify');
 
 reset role;
+
+-- ====================== grupo 11: o que o app escreve (fase 3, migration 7)
+--
+-- Estas funções são o único caminho por onde o app grava. Elas decidem se um
+-- push de carrinho abandonado sai, e é aí que mora o erro caro: mandar
+-- "você esqueceu algo" para quem acabou de comprar, ou mandar cinco pushes
+-- porque a pessoa mexeu cinco vezes no carrinho. As asserções abaixo existem
+-- para que esses casos quebrem o build, e não a confiança do cliente.
+
+-- ------------------------------------------- quem NÃO pode chamar
+
+-- A pergunta aqui é sobre o GRANT, não sobre a RLS. As duas barram, e é por
+-- isso que a asserção precisa ser sobre o privilégio: tentar chamar a função e
+-- ver dar erro passaria mesmo com a função aberta, porque a RLS de `devices`
+-- barraria o insert logo depois. `has_function_privilege` não tem essa dúvida.
+do $$
+declare
+  v_papel text;
+  v_funcao text;
+begin
+  foreach v_papel in array array['anon', 'authenticated'] loop
+    foreach v_funcao in array array[
+      'public.consumir_limite(text, integer, integer)',
+      'public.registrar_aparelho(uuid, text, public.device_platform, text, text, text)',
+      'public.registrar_evento_de_carrinho(uuid, text, public.cart_event_type, integer, text, integer, text)',
+      'public.fora_do_silencio(timestamptz, text)'
+    ] loop
+      perform tests.ok('permissões',
+        not has_function_privilege(v_papel, v_funcao, 'execute'),
+        format('%s NÃO executa %s', v_papel, split_part(v_funcao, '(', 1)));
+    end loop;
+  end loop;
+
+  perform tests.ok('permissões',
+    has_function_privilege('service_role',
+      'public.registrar_aparelho(uuid, text, public.device_platform, text, text, text)', 'execute'),
+    'a service role executa: é por ela que o endpoint público entra');
+end
+$$;
+
+select tests.ok('permissões',
+  not has_table_privilege('authenticated', 'public.rate_limits', 'select')
+    and not has_table_privilege('anon', 'public.rate_limits', 'select'),
+  'ninguém com sessão lê o contador de requisições');
+
+select tests.ok('permissões',
+  (select relrowsecurity from pg_class where oid = 'public.rate_limits'::regclass),
+  'e a tabela tem RLS ligada, porque no PostgREST toda tabela é uma rota');
+
+-- Fim a fim: mesmo que um grant escape, a tentativa tem de morrer.
+select tests.login('a-owner@teste.local');
+set role authenticated;
+
+select tests.ok('permissões',
+  tests.erro($q$select public.registrar_aparelho(
+    (select app_a from tests.lojas), 'sub-invasor', 'ios')$q$),
+  'na prática, authenticated não consegue registrar aparelho');
+
+select tests.ok('permissões',
+  tests.erro($q$select public.registrar_evento_de_carrinho(
+    (select app_a from tests.lojas), 'sub-invasor', 'add', 1)$q$),
+  'nem registrar evento de carrinho');
+
+reset role;
+select tests.logout();
+set role anon;
+
+select tests.ok('permissões',
+  tests.erro($q$select public.registrar_aparelho(
+    (select app_a from tests.lojas), 'sub-anon', 'ios')$q$),
+  'anon muito menos');
+
+reset role;
+
+-- ------------------------------------------------------- consumir_limite
+
+set role service_role;
+
+select tests.ok('limite',
+  public.consumir_limite('teste:limite', 3),
+  'a primeira chamada cabe no limite');
+
+select tests.ok('limite',
+  public.consumir_limite('teste:limite', 3) and public.consumir_limite('teste:limite', 3),
+  'a segunda e a terceira ainda cabem');
+
+select tests.ok('limite',
+  not public.consumir_limite('teste:limite', 3),
+  'a quarta estoura');
+
+select tests.ok('limite',
+  public.consumir_limite('teste:outra-chave', 3),
+  'o estouro de uma chave não afeta a outra');
+
+reset role;
+
+-- Empurrar a janela para trás simula a virada do minuto sem esperar por ela.
+update public.rate_limits set janela = janela - interval '1 hour'
+ where chave = 'teste:limite';
+
+set role service_role;
+
+select tests.ok('limite',
+  public.consumir_limite('teste:limite', 3),
+  'na janela seguinte a contagem recomeça');
+
+reset role;
+
+-- ------------------------------------------------------ fora_do_silencio
+
+select tests.ok('silêncio',
+  public.fora_do_silencio(
+    '2026-03-10 14:00-03'::timestamptz, 'America/Sao_Paulo'
+  ) = '2026-03-10 14:00-03'::timestamptz,
+  'duas da tarde sai na hora');
+
+select tests.ok('silêncio',
+  public.fora_do_silencio(
+    '2026-03-10 03:00-03'::timestamptz, 'America/Sao_Paulo'
+  ) = '2026-03-10 08:00-03'::timestamptz,
+  'três da manhã espera até as oito do mesmo dia');
+
+select tests.ok('silêncio',
+  public.fora_do_silencio(
+    '2026-03-10 23:30-03'::timestamptz, 'America/Sao_Paulo'
+  ) = '2026-03-11 08:00-03'::timestamptz,
+  'onze e meia da noite espera até as oito do dia seguinte');
+
+select tests.ok('silêncio',
+  public.fora_do_silencio(
+    '2026-03-10 22:00-03'::timestamptz, 'America/Sao_Paulo'
+  ) = '2026-03-11 08:00-03'::timestamptz,
+  'as 22h em ponto já são silêncio');
+
+select tests.ok('silêncio',
+  public.fora_do_silencio(
+    '2026-03-10 08:00-03'::timestamptz, 'America/Sao_Paulo'
+  ) = '2026-03-10 08:00-03'::timestamptz,
+  'as 8h em ponto já não são');
+
+-- O mesmo instante, dois fusos: 23h em São Paulo é 02h em Nova York — as duas
+-- adiam, mas para horas diferentes. É o que prova que a conta é no fuso da loja.
+select tests.ok('silêncio',
+  public.fora_do_silencio('2026-03-10 23:30-03'::timestamptz, 'America/Sao_Paulo')
+    <> public.fora_do_silencio('2026-03-10 23:30-03'::timestamptz, 'America/New_York'),
+  'o fuso da loja muda o resultado');
+
+select tests.ok('silêncio',
+  public.fora_do_silencio(
+    '2026-03-10 03:00-03'::timestamptz, 'Fuso/Inventado'
+  ) = '2026-03-10 03:00-03'::timestamptz,
+  'fuso inválido no cadastro não impede o push de existir');
+
+-- ----------------------------------------------------- registrar_aparelho
+
+set role service_role;
+
+drop table if exists tests.aparelho;
+create table tests.aparelho as
+select * from public.registrar_aparelho(
+  (select app_a from tests.lojas), 'sub-do-cliente', 'ios', '1.0.0', 'cliente-42', 'hash-do-email'
+);
+
+select tests.ok('aparelho',
+  (select novo and not limitado and device_id is not null from tests.aparelho),
+  'a primeira abertura cria o aparelho');
+
+drop table if exists tests.aparelho2;
+create table tests.aparelho2 as
+select * from public.registrar_aparelho(
+  (select app_a from tests.lojas), 'sub-do-cliente', 'ios', '1.1.0'
+);
+
+select tests.ok('aparelho',
+  (select not a2.novo and a2.device_id = a.device_id
+     from tests.aparelho a, tests.aparelho2 a2),
+  'reabrir o app NÃO cria outro aparelho');
+
+select tests.ok('aparelho',
+  tests.contar($q$select count(*) from public.devices
+    where onesignal_subscription_id = 'sub-do-cliente'$q$) = 1,
+  'e continua havendo uma linha só');
+
+select tests.ok('aparelho',
+  (select app_version = '1.1.0' from public.devices
+    where id = (select device_id from tests.aparelho)),
+  'a versão nova do app substitui a antiga');
+
+select tests.ok('aparelho',
+  (select external_id = 'cliente-42' and customer_email_hash = 'hash-do-email'
+     from public.devices where id = (select device_id from tests.aparelho)),
+  'sair da conta (external_id nulo) não apaga quem o aparelho era');
+
+-- A mesma inscrição em OUTRO app é outro aparelho: o índice único é por app.
+select tests.ok('aparelho',
+  (select novo from public.registrar_aparelho(
+    (select app_b from tests.lojas), 'sub-do-cliente', 'ios')),
+  'a mesma inscrição em outro app é outro aparelho');
+
+reset role;
+
+-- Estourar o limite de 600/min sem fazer 600 chamadas: a chave é conhecida.
+update public.rate_limits set contagem = 10000
+ where chave = 'aparelhos:' || (select app_a from tests.lojas)::text;
+
+set role service_role;
+
+select tests.ok('aparelho',
+  (select limitado and device_id is null from public.registrar_aparelho(
+    (select app_a from tests.lojas), 'sub-da-enxurrada', 'android')),
+  'passado o limite, o aparelho não entra');
+
+select tests.ok('aparelho',
+  tests.contar($q$select count(*) from public.devices
+    where onesignal_subscription_id = 'sub-da-enxurrada'$q$) = 0,
+  'e nada foi gravado');
+
+reset role;
+
+delete from public.rate_limits where chave like 'aparelhos:%' or chave like 'eventos:%';
+
+-- ------------------------------------------ registrar_evento_de_carrinho
+
+-- Sem automação ligada ainda: o evento entra, mas nada é agendado.
+set role service_role;
+
+drop table if exists tests.evento;
+create table tests.evento as
+select * from public.registrar_evento_de_carrinho(
+  (select app_a from tests.lojas), 'sub-do-cliente', 'add', 2, 'token-do-carrinho', 9900, 'BRL'
+);
+
+select tests.ok('carrinho',
+  (select event_id is not null and not agendou and not limitado from tests.evento),
+  'sem automação de abandono, o evento entra e nada é agendado');
+
+select tests.ok('carrinho',
+  (select item_count = 2 and value_cents = 9900 and currency = 'BRL'
+     from public.cart_events where id = (select event_id from tests.evento)),
+  'o evento grava o que o app mandou, sem completar nada');
+
+reset role;
+
+-- Agora com a automação ligada.
+-- O grupo 10 já criou esta automação pelo painel; aqui ela só é ligada com um
+-- atraso conhecido, porque `unique (app_id, type)` garante uma por app.
+insert into public.push_automations (app_id, type, enabled, delay_minutes, title, body)
+select app_a, 'abandoned_cart', true, 60,
+       'Esqueceu algo?', 'Seu carrinho continua aqui.'
+from tests.lojas
+on conflict (app_id, type) do update
+  set enabled = true, delay_minutes = 60;
+
+drop table if exists tests.automacao;
+create table tests.automacao as
+select id from public.push_automations
+ where app_id = (select app_a from tests.lojas) and type = 'abandoned_cart';
+
+grant select on tests.automacao to service_role;
+
+set role service_role;
+
+select tests.ok('carrinho',
+  (select agendou from public.registrar_evento_de_carrinho(
+    (select app_a from tests.lojas), 'sub-do-cliente', 'add', 2, 'token-do-carrinho')),
+  'com a automação ligada, o carrinho agenda o push');
+
+select tests.ok('carrinho',
+  tests.contar($q$select count(*) from public.automation_runs
+    where automation_id = (select id from tests.automacao) and status = 'scheduled'$q$) = 1,
+  'e há exatamente um agendamento');
+
+select tests.ok('carrinho',
+  (select agendou from public.registrar_evento_de_carrinho(
+    (select app_a from tests.lojas), 'sub-do-cliente', 'update', 3, 'token-do-carrinho')),
+  'mexer no carrinho de novo continua agendando');
+
+select tests.ok('carrinho',
+  tests.contar($q$select count(*) from public.automation_runs
+    where automation_id = (select id from tests.automacao) and status = 'scheduled'$q$) = 1,
+  'mas REAGENDA: continua um só, não cinco pushes por um carrinho');
+
+reset role;
+
+-- O horário agendado respeita a janela de silêncio DA LOJA. Em vez de esperar
+-- a madrugada chegar, o teste escolhe um fuso que já esteja nela agora — a
+-- Terra sempre tem um.
+update public.stores set timezone = (
+  select name from pg_timezone_names
+   where extract(hour from (now() + interval '60 minutes') at time zone name) not between 8 and 21
+     and name like 'America/%'
+   limit 1
+) where id = (select loja_a from tests.lojas);
+
+set role service_role;
+
+select tests.ok('carrinho',
+  (select agendou from public.registrar_evento_de_carrinho(
+    (select app_a from tests.lojas), 'sub-do-cliente', 'update', 4, 'token-do-carrinho')),
+  'o carrinho da madrugada também agenda');
+
+reset role;
+
+select tests.ok('carrinho',
+  (select extract(hour from r.scheduled_for at time zone s.timezone) = 8
+     from public.automation_runs r, public.stores s
+    where r.automation_id = (select id from tests.automacao)
+      and r.status = 'scheduled'
+      and s.id = (select loja_a from tests.lojas)),
+  'mas para as 8h da manhã do fuso da loja, não para a madrugada');
+
+-- De volta a um fuso em horário comercial: o push sai na hora.
+update public.stores set timezone = (
+  select name from pg_timezone_names
+   where extract(hour from (now() + interval '60 minutes') at time zone name) between 9 and 20
+     and name like 'America/%'
+   limit 1
+) where id = (select loja_a from tests.lojas);
+
+set role service_role;
+
+select tests.ok('carrinho',
+  (select agendou from public.registrar_evento_de_carrinho(
+    (select app_a from tests.lojas), 'sub-do-cliente', 'update', 5, 'token-do-carrinho')),
+  'em horário comercial o carrinho também agenda');
+
+reset role;
+
+select tests.ok('carrinho',
+  (select r.scheduled_for between now() + interval '55 minutes' and now() + interval '65 minutes'
+     from public.automation_runs r
+    where r.automation_id = (select id from tests.automacao) and r.status = 'scheduled'),
+  'e aí o horário é o do atraso configurado, sem adiamento');
+
+-- ------------------------------------------------------ o que cancela
+
+set role service_role;
+
+drop table if exists tests.compra;
+create table tests.compra as
+select * from public.registrar_evento_de_carrinho(
+  (select app_a from tests.lojas), 'sub-do-cliente', 'purchased', 5, 'token-outro-carrinho'
+);
+
+select tests.ok('carrinho',
+  (select cancelou = 1 and not agendou from tests.compra),
+  'a compra cancela o push de carrinho abandonado');
+
+select tests.ok('carrinho',
+  tests.contar($q$select count(*) from public.automation_runs
+    where automation_id = (select id from tests.automacao) and status = 'scheduled'$q$) = 0,
+  'e não sobra agendamento nenhum');
+
+select tests.ok('carrinho',
+  (select canceled_reason = 'compra concluída' from public.automation_runs
+    where automation_id = (select id from tests.automacao) and status = 'canceled'
+    order by created_at desc limit 1),
+  'com o motivo registrado, para o suporte entender depois');
+
+-- Carrinho esvaziado não é abandono.
+select tests.ok('carrinho',
+  (select agendou from public.registrar_evento_de_carrinho(
+    (select app_a from tests.lojas), 'sub-do-cliente', 'add', 1, 'token-terceiro')),
+  'um carrinho novo agenda de novo');
+
+select tests.ok('carrinho',
+  (select cancelou = 1 and not agendou from public.registrar_evento_de_carrinho(
+    (select app_a from tests.lojas), 'sub-do-cliente', 'update', 0, 'token-terceiro')),
+  'esvaziar o carrinho cancela: carrinho vazio não é carrinho esquecido');
+
+reset role;
+
+-- ----------------------------------------------- o teto de 24 horas
+
+-- Um push de carrinho já enviado há pouco impede o próximo.
+insert into public.automation_runs (automation_id, device_id, status, scheduled_for, sent_at)
+select (select id from tests.automacao), (select device_id from tests.aparelho),
+       'sent', now() - interval '2 hours', now() - interval '2 hours';
+
+set role service_role;
+
+select tests.ok('carrinho',
+  (select not agendou from public.registrar_evento_de_carrinho(
+    (select app_a from tests.lojas), 'sub-do-cliente', 'add', 2, 'token-quarto')),
+  'quem recebeu um push de carrinho hoje não recebe outro');
+
+reset role;
+
+update public.automation_runs set sent_at = now() - interval '30 hours'
+ where status = 'sent' and automation_id = (select id from tests.automacao);
+
+set role service_role;
+
+select tests.ok('carrinho',
+  (select agendou from public.registrar_evento_de_carrinho(
+    (select app_a from tests.lojas), 'sub-do-cliente', 'add', 2, 'token-quinto')),
+  'passadas as 24 horas, volta a agendar');
+
+reset role;
+
+-- --------------------------------------- automação desligada e aparelho novo
+
+update public.push_automations set enabled = false
+ where id = (select id from tests.automacao);
+
+set role service_role;
+
+select tests.ok('carrinho',
+  (select not agendou and event_id is not null from public.registrar_evento_de_carrinho(
+    (select app_a from tests.lojas), 'sub-do-cliente', 'add', 1, 'token-sexto')),
+  'automação desligada: o evento entra, o push não é agendado');
+
+-- Mesmo desligada, a compra ainda cancela o que ficou agendado de antes.
+select tests.ok('carrinho',
+  (select cancelou >= 1 from public.registrar_evento_de_carrinho(
+    (select app_a from tests.lojas), 'sub-do-cliente', 'purchased', 1, 'token-sexto')),
+  'desligar a automação no meio do caminho não deixa push órfão sair');
+
+select tests.ok('carrinho',
+  (select event_id is not null and not agendou from public.registrar_evento_de_carrinho(
+    (select app_a from tests.lojas), 'sub-desconhecido', 'add', 1, 'token-sem-dono')),
+  'evento de aparelho desconhecido entra para a análise, sem agendar push');
+
+select tests.ok('carrinho',
+  (select device_id is null from public.cart_events
+    where cart_token = 'token-sem-dono'),
+  'e fica sem aparelho, em vez de grudar no aparelho errado');
+
+reset role;
+
+-- O limite de eventos vale igual.
+update public.rate_limits set contagem = 100000
+ where chave = 'eventos:' || (select app_a from tests.lojas)::text;
+
+set role service_role;
+
+select tests.ok('carrinho',
+  (select limitado and event_id is null from public.registrar_evento_de_carrinho(
+    (select app_a from tests.lojas), 'sub-do-cliente', 'add', 1, 'token-da-enxurrada')),
+  'passado o limite de eventos, nada entra');
+
+select tests.ok('carrinho',
+  tests.contar($q$select count(*) from public.cart_events
+    where cart_token = 'token-da-enxurrada'$q$) = 0,
+  'e o evento realmente não foi gravado');
+
+reset role;
+
+-- --------------------------------------------- nada disso vaza para a org B
+
+select tests.login('b-owner@teste.local');
+set role authenticated;
+
+select tests.ok('isolamento',
+  tests.contar('select count(*) from public.automation_runs') = 0,
+  'B não enxerga os agendamentos de A');
+
+reset role;
+select tests.logout();
 
 -- ======================================================== relatório
 
