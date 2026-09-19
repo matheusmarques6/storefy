@@ -121,3 +121,6 @@ export function parseAppConfig(input: unknown): AppConfig {
 export function safeParseAppConfig(input: unknown) {
   return AppConfigSchema.safeParse(input);
 }
+
+export { configInicial, dominiosDaLoja, ABAS_PADRAO, TEMA_PADRAO } from './inicial';
+export type { DadosDaLoja } from './inicial';

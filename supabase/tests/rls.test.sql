@@ -60,9 +60,33 @@ drop table if exists tests.lojas;
 create table tests.lojas as
 select
   (select id from public.stores where name = 'Loja da A') as loja_a,
-  (select id from public.stores where name = 'Loja da B') as loja_b;
+  (select id from public.stores where name = 'Loja da B') as loja_b,
+  (select a.id from public.apps a join public.stores s on s.id = a.store_id
+    where s.name = 'Loja da A') as app_a,
+  (select a.id from public.apps a join public.stores s on s.id = a.store_id
+    where s.name = 'Loja da B') as app_b;
 
 grant select on tests.ids, tests.lojas to anon, authenticated, service_role;
+
+-- Um rascunho de config em cada app, para o grupo 8. O JSON é o mínimo que
+-- passa no AppConfigSchema; o que se testa aqui é quem pode mexer nele.
+insert into public.app_configs (app_id, version, config, status)
+select app_a, 1, jsonb_build_object(
+  'version', 1,
+  'store', jsonb_build_object('name','Loja da A','url','https://loja-a.com.br',
+                              'domains', jsonb_build_array('loja-a.com.br')),
+  'theme', jsonb_build_object('primary','#111827','background','#ffffff','text','#111827',
+                              'tabBarBg','#ffffff','tabBarActive','#111827',
+                              'tabBarInactive','#9ca3af','statusBar','dark'),
+  'tabs', jsonb_build_array(
+    jsonb_build_object('id','inicio','label','Início','icon','house','type','webview','url','/'),
+    jsonb_build_object('id','conta','label','Conta','icon','user','type','account')),
+  'webview', jsonb_build_object('hideSelectors', jsonb_build_array()),
+  'features', jsonb_build_object('pushPromptTiming','onboarding',
+                                 'onboardingSlides', jsonb_build_array(),
+                                 'appBanner', jsonb_build_object('enabled',false,'text',''))
+), 'draft'
+from tests.lojas;
 
 -- ============================================ grupo 1: isolamento entre orgs
 
@@ -637,6 +661,222 @@ begin
     'remover o último owner deliberadamente continua bloqueado');
 end
 $$;
+
+-- ============================== grupo 8: versões da config do app (fase 2)
+--
+-- Publicar são quatro escritas que só fazem sentido juntas. O que se prova
+-- aqui é que a função respeita a RLS — ela é `security invoker` e não ganha
+-- privilégio nenhum — e que uma falha de permissão não deixa o app sem
+-- config publicada.
+
+-- member: lê, mas não publica nem restaura.
+select tests.login('a-member@teste.local');
+set role authenticated;
+
+select tests.ok('config',
+  tests.contar('select count(*) from public.app_configs') = 1,
+  'member enxerga a config do app da própria organização');
+
+select tests.ok('config',
+  tests.bloqueado(format('select public.publicar_config(%L)', (select app_a from tests.lojas))),
+  'member NÃO publica a config');
+
+select tests.ok('config',
+  tests.bloqueado(format('select public.restaurar_config(%L, 1)', (select app_a from tests.lojas))),
+  'member NÃO restaura uma versão');
+
+select tests.ok('config',
+  tests.contar('select count(*) from public.app_configs where status = ''published''') = 0,
+  'a tentativa do member não deixou nada publicado pela metade');
+
+/*
+ * A MENSAGEM importa, e não só o fato de falhar.
+ *
+ * Sem a conferência de linhas afetadas dentro da função, a chamada do member
+ * ainda assim quebraria — mas lá na frente, no `insert` do próximo rascunho, e
+ * com o erro cru de policy do Postgres. O lojista veria "new row violates
+ * row-level security policy for table app_configs" em vez de saber que lhe
+ * falta permissão. Esta asserção é o que separa as duas coisas.
+ */
+do $$
+declare
+  v_mensagem text := '';
+begin
+  begin
+    perform public.publicar_config((select app_a from tests.lojas));
+  exception when others then
+    v_mensagem := sqlerrm;
+  end;
+  perform tests.ok('config', v_mensagem like '%Sem permissão para publicar%',
+    'a recusa ao member explica o motivo em vez de vazar erro de policy');
+
+  v_mensagem := '';
+  begin
+    perform public.restaurar_config((select app_a from tests.lojas), 1);
+  exception when others then
+    v_mensagem := sqlerrm;
+  end;
+  perform tests.ok('config', v_mensagem like '%Sem permissão para restaurar%',
+    'a recusa de restaurar ao member também explica o motivo');
+end
+$$;
+
+reset role;
+
+-- admin: publica.
+--
+-- O grupo 2 rebaixou a-admin a member de propósito, ao provar que o owner
+-- altera papel de outro membro. Este grupo declara a própria precondição em
+-- vez de depender da ordem dos anteriores.
+update public.memberships set role = 'admin'
+ where org_id = (select org_a from tests.ids)
+   and user_id = (select u_a_admin from tests.ids);
+
+select tests.login('a-admin@teste.local');
+set role authenticated;
+
+do $$
+declare
+  v_app uuid := (select app_a from tests.lojas);
+  v_versao integer;
+begin
+  v_versao := public.publicar_config(v_app);
+  perform tests.ok('config', v_versao = 1, 'admin publica e recebe a versão publicada');
+  perform tests.ok('config',
+    (select count(*) from public.app_configs where app_id = v_app and status = 'published') = 1,
+    'existe exatamente uma versão publicada');
+  perform tests.ok('config',
+    (select count(*) from public.app_configs where app_id = v_app and status = 'draft') = 1,
+    'publicar abre um rascunho novo para seguir editando');
+  perform tests.ok('config',
+    (select config->>'version' from public.app_configs
+      where app_id = v_app and status = 'published') = '1',
+    'o version de dentro do JSON casa com a versão da linha publicada');
+  perform tests.ok('config',
+    (select config->>'version' from public.app_configs
+      where app_id = v_app and status = 'draft') = '2',
+    'o rascunho novo já nasce na versão seguinte');
+  perform tests.ok('config',
+    (select current_config_version from public.apps where id = v_app) = 1,
+    'apps.current_config_version aponta para a versão publicada');
+  perform tests.ok('config',
+    (select published_by from public.app_configs
+      where app_id = v_app and status = 'published') = (select u_a_admin from tests.ids),
+    'quem publicou fica registrado');
+end
+$$;
+
+reset role;
+
+-- owner: publica de novo e a anterior vira histórico.
+select tests.login('a-owner@teste.local');
+set role authenticated;
+
+do $$
+declare
+  v_app uuid := (select app_a from tests.lojas);
+  v_versao integer;
+begin
+  update public.app_configs
+     set config = jsonb_set(config, '{theme,primary}', '"#ff0000"')
+   where app_id = v_app and status = 'draft';
+
+  v_versao := public.publicar_config(v_app);
+  perform tests.ok('config', v_versao = 2, 'a segunda publicação é a versão 2');
+  perform tests.ok('config',
+    (select count(*) from public.app_configs where app_id = v_app and status = 'published') = 1,
+    'continua existindo uma publicada só');
+  perform tests.ok('config',
+    (select count(*) from public.app_configs where app_id = v_app and status = 'archived') = 1,
+    'a versão anterior virou histórico em vez de sumir');
+  perform tests.ok('config',
+    (select config->'theme'->>'primary' from public.app_configs
+      where app_id = v_app and status = 'published') = '#ff0000',
+    'o que foi publicado é o que estava no rascunho');
+
+  -- restaurar carrega no rascunho e NÃO publica
+  v_versao := public.restaurar_config(v_app, 1);
+  perform tests.ok('config', v_versao = 3, 'restaurar devolve a versão do rascunho que recebeu');
+  perform tests.ok('config',
+    (select config->'theme'->>'primary' from public.app_configs
+      where app_id = v_app and status = 'draft') = '#111827',
+    'o rascunho recebeu a config da versão antiga');
+  perform tests.ok('config',
+    (select config->>'version' from public.app_configs
+      where app_id = v_app and status = 'draft') = '3',
+    'a config restaurada assume a versão do rascunho, e não a antiga');
+  perform tests.ok('config',
+    (select config->'theme'->>'primary' from public.app_configs
+      where app_id = v_app and status = 'published') = '#ff0000',
+    'RESTAURAR NÃO MEXE NO QUE ESTÁ NO AR');
+end
+$$;
+
+do $$
+declare
+  v_bloqueado boolean := false;
+begin
+  begin
+    perform public.restaurar_config((select app_a from tests.lojas), 99);
+  exception when others then
+    v_bloqueado := true;
+  end;
+  perform tests.ok('config', v_bloqueado, 'restaurar uma versão que não existe falha');
+end
+$$;
+
+reset role;
+
+-- outra organização não encosta.
+select tests.login('b-owner@teste.local');
+set role authenticated;
+
+select tests.ok('config',
+  tests.contar(format('select count(*) from public.app_configs where app_id = %L',
+    (select app_a from tests.lojas))) = 0,
+  'B não enxerga as configs do app de A');
+
+do $$
+declare
+  v_app uuid := (select app_a from tests.lojas);
+  v_bloqueado boolean := false;
+begin
+  begin
+    perform public.publicar_config(v_app);
+  exception when others then
+    v_bloqueado := true;
+  end;
+  perform tests.ok('config', v_bloqueado, 'B NÃO publica a config do app de A');
+
+  v_bloqueado := false;
+  begin
+    perform public.restaurar_config(v_app, 1);
+  exception when others then
+    v_bloqueado := true;
+  end;
+  perform tests.ok('config', v_bloqueado, 'B NÃO restaura versão do app de A');
+end
+$$;
+
+reset role;
+
+-- sem sessão, nem executar.
+select tests.logout();
+set role anon;
+
+select tests.ok('config',
+  tests.bloqueado(format('select public.publicar_config(%L)', (select app_a from tests.lojas))),
+  'anon não executa publicar_config');
+
+select tests.ok('config',
+  tests.bloqueado(format('select public.restaurar_config(%L, 1)', (select app_a from tests.lojas))),
+  'anon não executa restaurar_config');
+
+select tests.ok('config',
+  tests.contar('select count(*) from public.app_configs') = 0,
+  'anon não lê config nenhuma');
+
+reset role;
 
 -- ======================================================== relatório
 

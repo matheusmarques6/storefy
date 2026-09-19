@@ -13,6 +13,7 @@ import { cookies } from 'next/headers';
 import { extrairErros, lojaSchema, type ErrosDeCampo } from '@/lib/validacao';
 import { criarClientServidor } from '@/lib/supabase/server';
 import { COOKIE_LOJA, exigirContextoCliente } from '@/lib/contexto';
+import { garantirRascunho } from '@/lib/configs-servidor';
 
 export interface EstadoLoja {
   erros?: ErrosDeCampo;
@@ -51,6 +52,17 @@ export async function criarLoja(_anterior: EstadoLoja, dados: FormData): Promise
   if (error != null) {
     return { mensagem: traduzirErroBanco(error.code, error.message) };
   }
+
+  /*
+   * A loja nasce com um app que já funciona: abre a loja, tem carrinho, busca e
+   * conta. Sem isto, o editor abriria vazio e o app do cliente não teria o que
+   * publicar.
+   *
+   * Uma falha aqui NÃO impede a loja de ser criada — ela já existe, e voltar
+   * atrás seria pior. O editor chama `garantirRascunho` de novo ao abrir, então
+   * o caso se resolve sozinho na primeira visita.
+   */
+  await garantirRascunho(supabase, criada.id);
 
   // A loja recém-criada vira a ativa: é o que o usuário espera depois de criar.
   const armazem = await cookies();

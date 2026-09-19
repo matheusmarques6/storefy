@@ -217,7 +217,11 @@ async function main(): Promise<void> {
     order by kcu.table_name, kcu.column_name
   `);
 
-  const { rows: funcoes } = await client.query<FuncaoSql>(`
+  /** RPCs sem o prefixo `admin_` que o painel chama. */
+  const RPCS = ['publicar_config', 'restaurar_config'];
+
+  const { rows: funcoes } = await client.query<FuncaoSql>(
+    `
     select
       p.proname                        as nome,
       pg_get_function_arguments(p.oid) as argumentos,
@@ -226,10 +230,15 @@ async function main(): Promise<void> {
     join pg_namespace n on n.oid = p.pronamespace
     where n.nspname = 'public'
       and p.prokind = 'f'
-      -- Só as funções chamadas por .rpc(); gatilhos e helpers de policy ficam de fora.
-      and p.proname like 'admin\\_%'
+      -- Só as funções chamadas por .rpc(); gatilhos e helpers de policy ficam
+      -- de fora. Esquecer de somar uma RPC nova aqui não passa despercebido:
+      -- chamar supabase.rpc() com um nome fora deste mapa é erro de tipo no
+      -- typecheck do painel.
+      and (p.proname like 'admin\\_%' or p.proname = any ($1::text[]))
     order by p.proname
-  `);
+  `,
+    [RPCS],
+  );
 
   await client.end();
 

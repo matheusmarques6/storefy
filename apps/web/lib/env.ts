@@ -30,6 +30,16 @@ const analise = publicSchema.safeParse(brutas);
 /** Falso quando faltam URL ou chave do Supabase. A interface avisa em vez de quebrar. */
 export const supabaseConfigurado = analise.success;
 
+/**
+ * A chave de service role existe?
+ *
+ * Booleano, nunca o valor. Serve para as rotas que precisam dela responderem um
+ * erro limpo em vez de estourar: sem isto, o endpoint público da config
+ * devolveria a página de erro do Next para o app de todos os clientes.
+ */
+export const serviceRoleConfigurada =
+  process.env.SUPABASE_SERVICE_ROLE_KEY != null && process.env.SUPABASE_SERVICE_ROLE_KEY !== '';
+
 /** O que exatamente está faltando, para a tela de configuração pendente. */
 export const faltandoNoSupabase: string[] = analise.success
   ? []

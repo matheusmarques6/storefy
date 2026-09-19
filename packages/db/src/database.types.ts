@@ -293,9 +293,17 @@ export type Database = {
         Args: { p_org_id: string };
         Returns: { user_id: string | null; email: string | null; role: Database["public"]["Enums"]["membership_role"] | null; created_at: string | null; ultimo_acesso: string | null }[];
       };
+      publicar_config: {
+        Args: { p_app_id: string };
+        Returns: number;
+      };
+      restaurar_config: {
+        Args: { p_app_id: string; p_version: number };
+        Returns: number;
+      };
     };
     Enums: {
-      app_config_status: "draft" | "published";
+      app_config_status: "draft" | "published" | "archived";
       audit_action: "create" | "update" | "delete";
       membership_role: "owner" | "admin" | "member";
       org_status: "trialing" | "active" | "past_due" | "canceled";
