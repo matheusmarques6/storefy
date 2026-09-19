@@ -111,3 +111,24 @@ export function abaParaCaminho(
   const escolhida = candidatas[0]?.aba ?? comWebview[0] ?? primeira;
   return { aba: escolhida, caminho: alvo };
 }
+
+/**
+ * As abas que ESTE build consegue servir.
+ *
+ * A caixa de avisos é tela nativa alimentada pelo push. Num build sem OneSignal
+ * ela seria uma aba que abre em nada — e uma tela "em breve" é o que a regra 3
+ * do CLAUDE.md proíbe. Melhor a aba não existir: o lojista vê o motivo no
+ * painel, e o cliente nunca toca num lugar vazio.
+ *
+ * Se a filtragem não deixar nada de pé, a lista original volta: barra de abas
+ * vazia é pior que uma aba que não funciona.
+ */
+export function abasUsaveis(
+  abas: readonly AbaResolvida[],
+  recursos: { push: boolean },
+): AbaResolvida[] {
+  const servem = abas.filter(
+    (aba) => aba.webview || (aba.tipo === 'notifications' && recursos.push),
+  );
+  return servem.length === 0 ? [...abas] : servem;
+}

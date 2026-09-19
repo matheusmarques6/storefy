@@ -9,8 +9,13 @@
  * Todo o resto — cores, abas, CSS, banners — vem da config remota em tempo de
  * execução, e muda sem passar pela loja de aplicativos.
  */
+import { existsSync } from 'node:fs';
+import { join } from 'node:path';
 import type { ExpoConfig } from 'expo/config';
-import { montarPlugins } from './src/config/plugins';
+// A extensão é obrigatória: o carregador de config do Expo transpila SÓ este
+// arquivo e resolve os imports dele com o `require` do Node, que não conhece
+// `.ts`. Sem o `.ts` aqui, todo build morre em "Cannot find module".
+import { montarPlugins } from './src/config/plugins.ts';
 
 const ambiente = process.env;
 
@@ -33,6 +38,30 @@ function opcional(nome: string, padrao: string): string {
 }
 
 const storeId = opcional('STORE_ID', 'oakvintage');
+
+/*
+ * Ícone e splash são arte da loja: o workflow de build por loja baixa os dois
+ * para `brands/$STORE_ID/` antes de chamar o Expo. Num build de loja de
+ * verdade — aquele que define `STORE_ID` — a falta de um deles é erro, e não
+ * silêncio: o app iria para a App Store com o ícone padrão do Expo. No
+ * `expo start` local, sem `STORE_ID`, o padrão do Expo serve.
+ */
+const buildDeLoja = (ambiente['STORE_ID'] ?? '') !== '';
+
+function arteDaLoja(arquivo: string): string | undefined {
+  const relativo = `./brands/${storeId}/${arquivo}`;
+  if (existsSync(join(__dirname, 'brands', storeId, arquivo))) return relativo;
+  if (buildDeLoja) {
+    throw new Error(
+      `app.config.ts: falta ${relativo}. ` +
+        'O build por loja precisa do ícone e da splash da loja (seção 7 do plano).',
+    );
+  }
+  return undefined;
+}
+
+const icone = arteDaLoja('icon.png');
+const splash = arteDaLoja('splash.png');
 const nomeDoApp = opcional('APP_NAME', 'Oak Vintage');
 const slug = opcional('APP_SLUG', 'storefy-oakvintage');
 
@@ -53,7 +82,7 @@ const config: ExpoConfig = {
   userInterfaceStyle: 'light',
   // A nova arquitetura é padrão a partir do SDK 57; o campo deixou de existir.
 
-  icon: `./brands/${storeId}/icon.png`,
+  icon: icone,
 
   ios: {
     bundleIdentifier: opcional('IOS_BUNDLE_ID', 'me.convertfy.storefy.oakvintage'),
@@ -70,10 +99,10 @@ const config: ExpoConfig = {
   android: {
     package: opcional('ANDROID_PACKAGE', 'me.convertfy.storefy.oakvintage'),
     versionCode: Number.parseInt(opcional('ANDROID_VC', '1'), 10),
-    adaptiveIcon: {
-      foregroundImage: `./brands/${storeId}/icon.png`,
-      backgroundColor: opcional('SPLASH_BG', '#ffffff'),
-    },
+    adaptiveIcon:
+      icone === undefined
+        ? undefined
+        : { foregroundImage: icone, backgroundColor: opcional('SPLASH_BG', '#ffffff') },
     intentFilters: [
       {
         action: 'VIEW',
@@ -87,10 +116,10 @@ const config: ExpoConfig = {
   // A ordem importa: o OneSignal precisa ser o primeiro. Ver `src/config/plugins.ts`.
   plugins: montarPlugins({
     modoApns,
-    splash: {
-      image: `./brands/${storeId}/splash.png`,
-      backgroundColor: opcional('SPLASH_BG', '#ffffff'),
-    },
+    splash:
+      splash === undefined
+        ? undefined
+        : { image: splash, backgroundColor: opcional('SPLASH_BG', '#ffffff') },
   }),
 
   experiments: { typedRoutes: true },

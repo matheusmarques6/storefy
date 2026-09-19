@@ -15,3 +15,7 @@ packages/db/src/database.types.ts
 # não reformatar.
 CLAUDE.md
 PLANO-DESENVOLVIMENTO.md
+
+# Gerado pelo Next a cada build e marcado como "should not be edited":
+# formatar aqui faz o arquivo alternar de aspas a cada `pnpm build`.
+apps/web/next-env.d.ts

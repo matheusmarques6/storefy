@@ -6,3 +6,4 @@
 export * from './mensagens';
 export * from './links';
 export * from './injecao';
+export * from './pagina';

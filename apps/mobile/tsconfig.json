@@ -4,6 +4,9 @@
     "lib": ["ES2022", "DOM"],
     "jsx": "react-jsx",
     "moduleResolution": "bundler",
+    // `app.config.ts` precisa importar `./src/config/plugins.ts` com extensão:
+    // o carregador do Expo resolve os imports dele com o `require` do Node.
+    "allowImportingTsExtensions": true,
     // `node` entra por causa dos arquivos de build — `app.config.ts` lê
     // `process.env` e os testes usam `node:vm`. O código que roda no aparelho
     // não pode importar `node:*`, e isso é barrado no eslint.config.mjs.

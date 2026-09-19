@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { AppConfigInput } from '@storefy/config-schema';
-import { decidirConfig, deveGravarNoCache } from './decisao';
+import { decidirConfig, deveGravarNoCache, urlDaConfig } from './decisao';
 
 /** Config real mínima, como a que o painel publica. */
 function config(overrides: Partial<AppConfigInput> = {}): AppConfigInput {
@@ -146,5 +146,38 @@ describe('deveGravarNoCache', () => {
   it('NÃO grava resposta inválida', () => {
     expect(deveGravarNoCache({ quebrada: true }, config())).toBe(false);
     expect(deveGravarNoCache(null, config())).toBe(false);
+  });
+});
+
+describe('urlDaConfig', () => {
+  it('monta o endereço da config publicada', () => {
+    expect(urlDaConfig('https://storefy.convertfy.me', 'app_123')).toBe(
+      'https://storefy.convertfy.me/api/public/app-config/app_123',
+    );
+  });
+
+  it('tolera barra sobrando no fim da base', () => {
+    expect(urlDaConfig('https://storefy.convertfy.me///', 'app_123')).toBe(
+      'https://storefy.convertfy.me/api/public/app-config/app_123',
+    );
+  });
+
+  it('escapa o appId, que vem de fora do app', () => {
+    expect(urlDaConfig('https://storefy.convertfy.me', '../../admin')).toBe(
+      'https://storefy.convertfy.me/api/public/app-config/..%2F..%2Fadmin',
+    );
+  });
+
+  it('devolve null quando a config remota não está configurada', () => {
+    // Não é erro: é o build sem `appId`, que abre com a config embutida.
+    expect(urlDaConfig('https://storefy.convertfy.me', null)).toBeNull();
+    expect(urlDaConfig('https://storefy.convertfy.me', '   ')).toBeNull();
+    expect(urlDaConfig('', 'app_123')).toBeNull();
+  });
+
+  it('recusa base que não é http(s)', () => {
+    expect(urlDaConfig('javascript:alert(1)', 'app_123')).toBeNull();
+    expect(urlDaConfig('file:///etc', 'app_123')).toBeNull();
+    expect(urlDaConfig('nao é url', 'app_123')).toBeNull();
   });
 });

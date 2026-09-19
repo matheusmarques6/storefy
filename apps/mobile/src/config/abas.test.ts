@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { parseAppConfig, type AppConfigInput } from '@storefy/config-schema';
-import { abaDoCarrinho, abaParaCaminho, resolverAbas, urlDaAba } from './abas';
+import { abaDoCarrinho, abaParaCaminho, abasUsaveis, resolverAbas, urlDaAba } from './abas';
 
 function config(tabs: AppConfigInput['tabs']) {
   return parseAppConfig({
@@ -159,5 +159,42 @@ describe('abaParaCaminho — destino do deep link de push', () => {
 
   it('devolve null sem nenhuma aba', () => {
     expect(abaParaCaminho([], '/x')).toBeNull();
+  });
+});
+
+describe('abasUsaveis', () => {
+  const COM_AVISOS: AppConfigInput['tabs'] = [
+    { id: 'home', label: 'Início', icon: 'house', type: 'webview', url: '/' },
+    { id: 'avisos', label: 'Avisos', icon: 'bell', type: 'notifications', badge: 'unread' },
+    { id: 'conta', label: 'Conta', icon: 'user', type: 'account' },
+  ];
+
+  it('esconde a caixa de avisos num build sem push', () => {
+    // Sem OneSignal ela abriria em nada, e tela "em breve" é proibida.
+    const abas = resolverAbas(config(COM_AVISOS));
+    expect(abasUsaveis(abas, { push: false }).map((aba) => aba.id)).toEqual(['home', 'conta']);
+  });
+
+  it('mostra a caixa de avisos quando o push está configurado', () => {
+    const abas = resolverAbas(config(COM_AVISOS));
+    expect(abasUsaveis(abas, { push: true }).map((aba) => aba.id)).toEqual([
+      'home',
+      'avisos',
+      'conta',
+    ]);
+  });
+
+  it('não mexe em abas que já são de WebView', () => {
+    const abas = resolverAbas(config(QUATRO_ABAS));
+    expect(abasUsaveis(abas, { push: false })).toEqual(abas);
+  });
+
+  it('devolve a lista original em vez de uma barra vazia', () => {
+    const soAvisos: AppConfigInput['tabs'] = [
+      { id: 'a1', label: 'Avisos', icon: 'bell', type: 'notifications', badge: 'unread' },
+      { id: 'a2', label: 'Outros', icon: 'bell', type: 'notifications', badge: 'unread' },
+    ];
+    const abas = resolverAbas(config(soAvisos));
+    expect(abasUsaveis(abas, { push: false })).toHaveLength(2);
   });
 });

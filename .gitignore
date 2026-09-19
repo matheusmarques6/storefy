@@ -18,6 +18,11 @@ blob-report/
 .env.*
 !.env.example
 
+# Expo (cache e bundles exportados)
+apps/mobile/.expo/
+apps/mobile/android/
+apps/mobile/ios/
+
 # Supabase CLI (estado local)
 supabase/.branches/
 supabase/.temp/

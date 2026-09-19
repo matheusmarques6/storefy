@@ -99,3 +99,25 @@ export function deveGravarNoCache(daRede: unknown, doCache: unknown): boolean {
 
   return nova.version >= atual.version;
 }
+
+/**
+ * Endereço da config publicada deste app.
+ *
+ * Devolve `null` quando o build não tem `appId` ou `apiBase`: é o estado de
+ * "config remota não configurada", e não um erro. O app segue com a embutida.
+ */
+export function urlDaConfig(apiBase: string, appId: string | null): string | null {
+  const base = apiBase.trim().replace(/\/+$/, '');
+  const id = (appId ?? '').trim();
+  if (base === '' || id === '') return null;
+
+  let raiz: URL;
+  try {
+    raiz = new URL(base);
+  } catch {
+    return null;
+  }
+  if (raiz.protocol !== 'http:' && raiz.protocol !== 'https:') return null;
+
+  return `${base}/api/public/app-config/${encodeURIComponent(id)}`;
+}
