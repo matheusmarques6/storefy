@@ -7,6 +7,7 @@ import {
   urlDeColecoes,
   urlDeProdutos,
 } from '@/lib/catalogo';
+import { VERSAO_DA_API } from '@/lib/shopify';
 
 const LOJA = 'oak-vintage.myshopify.com';
 
@@ -20,7 +21,7 @@ describe('urlDeProdutos', () => {
     const url = new URL(urlDeProdutos(LOJA, ' jaqueta '));
 
     expect(url.host).toBe(LOJA);
-    expect(url.pathname).toBe('/admin/api/2025-07/products.json');
+    expect(url.pathname).toBe(`/admin/api/${VERSAO_DA_API}/products.json`);
     expect(url.searchParams.get('title')).toBe('jaqueta');
     expect(url.searchParams.get('status')).toBe('active');
     expect(url.searchParams.get('limit')).toBe(String(LIMITE_DA_BUSCA));
@@ -49,10 +50,10 @@ describe('urlDeColecoes', () => {
   /* A Shopify separa coleção manual de automática em recursos diferentes. */
   it('aponta para o recurso certo de cada tipo', () => {
     expect(new URL(urlDeColecoes(LOJA, false, '')).pathname).toBe(
-      '/admin/api/2025-07/custom_collections.json',
+      `/admin/api/${VERSAO_DA_API}/custom_collections.json`,
     );
     expect(new URL(urlDeColecoes(LOJA, true, '')).pathname).toBe(
-      '/admin/api/2025-07/smart_collections.json',
+      `/admin/api/${VERSAO_DA_API}/smart_collections.json`,
     );
   });
 });

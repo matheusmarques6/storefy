@@ -14,7 +14,7 @@ import {
   shopifyConfigurado,
   trocarCodePorToken,
 } from '@/lib/shopify-servidor';
-import { TOPICOS } from '@/lib/shopify';
+import { TOPICOS, VERSAO_DA_API } from '@/lib/shopify';
 
 const LOJA = 'minha-loja.myshopify.com';
 const URL_DO_WEBHOOK = 'https://app.storefy.com.br/api/webhooks/shopify';
@@ -266,8 +266,8 @@ describe('apagarWebhooks', () => {
 
     expect(quantos).toBe(2);
     expect(apagados).toEqual([
-      `https://${LOJA}/admin/api/2025-07/webhooks/10.json`,
-      `https://${LOJA}/admin/api/2025-07/webhooks/12.json`,
+      `https://${LOJA}/admin/api/${VERSAO_DA_API}/webhooks/10.json`,
+      `https://${LOJA}/admin/api/${VERSAO_DA_API}/webhooks/12.json`,
     ]);
   });
 

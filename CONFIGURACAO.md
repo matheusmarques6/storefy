@@ -156,24 +156,50 @@ estoque".
 1. Crie a conta em <https://partners.shopify.com> (grátis).
 2. **Apps › Create app › Create app manually.** Nome: `Storefy`.
 3. Em **Configuration**, preencha:
-   - _App URL_: `https://app.storefy.com.br`
-   - _Allowed redirection URL(s)_:
-     `https://app.storefy.com.br/api/shopify/callback`
-     — precisa ser **exatamente** isso, com `https` e sem barra no fim.
-4. Em **API access / Protected customer data**, peça acesso a dados de cliente
+   - _App URL_: exatamente o mesmo endereço de `NEXT_PUBLIC_SITE_URL`
+   - _Allowed redirection URL(s)_: esse endereço + `/api/shopify/callback`
+
+   Com o painel em `https://storefy-eight.vercel.app`, o retorno é
+   `https://storefy-eight.vercel.app/api/shopify/callback` — com `https` e sem
+   barra no fim. Um domínio aqui e outro na variável faz a Shopify recusar com
+   `redirect_uri is not whitelisted`, e o erro aparece com o lojista já na tela
+   dela. Quando você trocar para domínio próprio, os dois mudam juntos.
+
+4. Em **Escopos**, apague o que vier sugerido e deixe **exatamente** estes
+   quatro, separados por vírgula:
+
+   ```
+   read_products,read_orders,read_customers,read_fulfillments
+   ```
+
+   Deixe **Escopos opcionais em branco**.
+
+   Pedir tudo o que a lista oferece não é "garantir que vai funcionar": a
+   Shopify recusa na revisão o app que pede escopo que não usa, e um token com
+   escopo de escrita transforma um vazamento nosso em poder de apagar o
+   catálogo do cliente. A Storefy precisa ler produto, pedido, cliente e envio
+   — nada além disso, e nada de escrita.
+
+5. Em **Versão da API de webhooks**, escolha **2026-07**. É a que o código
+   fala, em `VERSAO_DA_API` (`apps/web/lib/shopify.ts`) e no
+   `shopify.extension.toml`; um teste amarra os dois, e os três precisam dizer
+   o mesmo número.
+
+6. Em **API access / Protected customer data**, peça acesso a dados de cliente
    (a Shopify pergunta o porquê: "notificações push transacionais e atribuição
    de pedidos ao aplicativo próprio da loja").
-5. Em **Compliance webhooks**, aponte os três para o **mesmo endereço**:
+7. Em **Compliance webhooks**, aponte os três para o **mesmo endereço** —
+   `<seu domínio>/api/webhooks/shopify`:
 
-   | Webhook               | URL                                               |
-   | --------------------- | ------------------------------------------------- |
-   | Customer data request | `https://app.storefy.com.br/api/webhooks/shopify` |
-   | Customer data erasure | `https://app.storefy.com.br/api/webhooks/shopify` |
-   | Shop data erasure     | `https://app.storefy.com.br/api/webhooks/shopify` |
+   | Webhook               | URL                                                     |
+   | --------------------- | ------------------------------------------------------- |
+   | Customer data request | `https://storefy-eight.vercel.app/api/webhooks/shopify` |
+   | Customer data erasure | `https://storefy-eight.vercel.app/api/webhooks/shopify` |
+   | Shop data erasure     | `https://storefy-eight.vercel.app/api/webhooks/shopify` |
 
    Os três são **obrigatórios**: sem eles a Shopify recusa o app na revisão.
 
-6. Copie **Client ID** e **Client secret**.
+8. Copie **Client ID** e **Client secret**.
 
 **Me mande:**
 

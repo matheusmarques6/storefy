@@ -1,7 +1,11 @@
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   TOPICOS,
   TOPICOS_OBRIGATORIOS,
+  VERSAO_DA_API,
   ehDominioDeLoja,
   ehTopicoConhecido,
   faltamEscopos,
@@ -143,8 +147,36 @@ describe('tópicos', () => {
 describe('urlDoAdmin', () => {
   it('monta o endpoint na versão fixada', () => {
     expect(urlDoAdmin('x.myshopify.com', 'webhooks.json')).toBe(
-      'https://x.myshopify.com/admin/api/2025-07/webhooks.json',
+      `https://x.myshopify.com/admin/api/${VERSAO_DA_API}/webhooks.json`,
     );
-    expect(urlDoAdmin('x.myshopify.com', '/graphql.json')).toContain('/2025-07/graphql.json');
+    expect(urlDoAdmin('x.myshopify.com', '/graphql.json')).toContain(
+      `/${VERSAO_DA_API}/graphql.json`,
+    );
+  });
+});
+
+describe('VERSAO_DA_API', () => {
+  /*
+   * A Shopify mantém cada versão por doze meses e depois "cai para a frente"
+   * sozinha: a chamada não quebra, passa a ser atendida por uma versão que não
+   * é a testada, e a diferença aparece como campo faltando no payload de um
+   * cliente. Três lugares declaram a versão — esta constante, o manifesto da
+   * extensão de tema e o Partner Dashboard — e os dois primeiros dá para
+   * amarrar aqui. Sem este teste, subir um e esquecer o outro não faz barulho
+   * nenhum até a loja de alguém.
+   */
+  it('é a mesma que o manifesto da extensão de tema declara', () => {
+    const raiz = join(dirname(fileURLToPath(import.meta.url)), '../../..');
+    const manifesto = readFileSync(
+      join(raiz, 'extensions/storefy-tema/shopify.extension.toml'),
+      'utf8',
+    );
+
+    expect(manifesto).toContain(`api_version = "${VERSAO_DA_API}"`);
+  });
+
+  /* Formato `AAAA-MM`, e só os meses em que a Shopify lança. */
+  it('tem a cara de uma versão da Shopify', () => {
+    expect(VERSAO_DA_API).toMatch(/^20\d{2}-(01|04|07|10)$/);
   });
 });

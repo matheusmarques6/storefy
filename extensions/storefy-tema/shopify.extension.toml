@@ -4,7 +4,9 @@
 # sem nós editarmos o tema dele. Um app que altera arquivo de tema quebra na
 # primeira atualização do tema e some quando o lojista troca de tema; um app
 # embed sobrevive aos dois.
-api_version = "2025-07"
+# Precisa ser a MESMA de `VERSAO_DA_API`, em `apps/web/lib/shopify.ts`, e a
+# mesma escolhida em "Versão da API de webhooks" no Partner Dashboard.
+api_version = "2026-07"
 
 [[extensions]]
 type = "theme"

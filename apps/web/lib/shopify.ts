@@ -111,8 +111,18 @@ export function faltamEscopos(pedidos: string, concedidos: string): string[] {
     .filter((escopo) => escopo !== '' && !tem.has(escopo));
 }
 
-/** A versão da API que o produto fala. Fixa, e trocada de propósito. */
-export const VERSAO_DA_API = '2025-07';
+/**
+ * A versão da API que o produto fala. Fixa, e trocada de propósito.
+ *
+ * A Shopify lança uma versão por trimestre e mantém cada uma por 12 meses.
+ * Passado esse prazo, ela "cai para a frente" sozinha: a chamada não quebra,
+ * mas passa a ser atendida por uma versão que não é a que testamos, e a
+ * diferença aparece como campo faltando num payload — em produção, na loja de
+ * um cliente. Por isso a versão é uma constante única, conferida nos testes
+ * contra o que o `shopify.extension.toml` e o Partner Dashboard declaram: os
+ * três precisam dizer o mesmo número.
+ */
+export const VERSAO_DA_API = '2026-07';
 
 /** A URL de um endpoint do Admin API de uma loja. */
 export function urlDoAdmin(shop: string, caminho: string): string {
