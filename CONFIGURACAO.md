@@ -147,11 +147,42 @@ Manda o e-mail de confirmação de cadastro e o aviso de "seu app foi aprovado".
 
 ---
 
-## Bloco 5 — Shopify Partner (40 min, grátis) ⭐
+## Bloco 5 — Shopify (grátis)
 
 **É o que destrava a Fase 5 inteira:** conectar a loja, receber os pedidos,
 separar receita do app e do site, e os avisos de "pedido enviado" e "voltou ao
 estoque".
+
+Existem **dois caminhos**, e o painel oferece os dois:
+
+| Caminho                    | Quem cria o app          | Espera             | Serve para                 |
+| -------------------------- | ------------------------ | ------------------ | -------------------------- |
+| **App da própria loja**    | o lojista, na conta dele | nenhuma            | funciona hoje, loja a loja |
+| **App público da Storefy** | você, no Partner         | semanas de revisão | um clique para o lojista   |
+
+**Comece pelo primeiro.** Ele já está implementado e não depende de ninguém:
+o lojista cria um app na conta Shopify dele, cola Client ID e Client Secret no
+painel, e a Storefy troca isso por um token. O passo a passo está dentro da
+tela de Integrações, escrito para o lojista.
+
+O segundo (5.3 em diante) é o que vale a pena ter depois, porque tira esse
+trabalho do cliente. Enquanto a revisão não sai, o botão dele nem aparece na
+tela — oferecer um caminho que responde erro é pior do que não oferecer.
+
+### 5.0 O que o lojista faz (nada seu)
+
+1. Entra em <https://dev.shopify.com/dashboard> e cria um app.
+2. Marca só quatro permissões de leitura: `read_products`, `read_orders`,
+   `read_customers`, `read_fulfillments`.
+3. Clica em **Instalar app** e escolhe a loja dele.
+4. Copia **Client ID** e **Client Secret** e cola no painel da Storefy.
+
+O token que a Storefy gera a partir disso **vale 24 horas**, e é renovado
+sozinho na hora em que for usado. O Client Secret fica criptografado, e é
+também ele que confere a assinatura dos webhooks daquela loja — cada loja
+passa a ter o seu segredo, em vez de um só para todas.
+
+### 5.3 App público da Storefy (quando quiser tirar esse trabalho do cliente)
 
 1. Crie a conta em <https://partners.shopify.com> (grátis).
 2. **Apps › Create app › Create app manually.** Nome: `Storefy`.
@@ -352,14 +383,14 @@ build, preciso que você:
 
 ## Ordem que eu recomendo
 
-| Ordem | Bloco   | Por quê                                                         |
-| ----- | ------- | --------------------------------------------------------------- |
-| 1º    | 1, 2, 3 | domínio e chaves destravam todo o resto                         |
-| 2º    | 4       | e-mail funcionando = dá para convidar gente                     |
-| 3º    | **5**   | é a fase inteira que acabei de entregar, parada por duas chaves |
-| 4º    | 6, 7, 8 | juntos, fazem o primeiro build sair                             |
-| 5º    | 9, 10   | exigem espera de aprovação; comece cedo                         |
-| 6º    | 11      | quando houver o primeiro build                                  |
+| Ordem | Bloco   | Por quê                                                                       |
+| ----- | ------- | ----------------------------------------------------------------------------- |
+| 1º    | 1, 2, 3 | domínio e chaves destravam todo o resto                                       |
+| 2º    | 4       | e-mail funcionando = dá para convidar gente                                   |
+| 3º    | **5**   | o app da própria loja já funciona sem chave nenhuma; o app público é opcional |
+| 4º    | 6, 7, 8 | juntos, fazem o primeiro build sair                                           |
+| 5º    | 9, 10   | exigem espera de aprovação; comece cedo                                       |
+| 6º    | 11      | quando houver o primeiro build                                                |
 
 ---
 
@@ -409,11 +440,11 @@ conta de serviço do Google.
 
 Nada quebra em silêncio — cada ponto bloqueado tem um estado explícito:
 
-| Sem                      | O que acontece                                                                                              |
-| ------------------------ | ----------------------------------------------------------------------------------------------------------- |
-| `SHOPIFY_API_KEY/SECRET` | a tela de Integrações diz "em preparação"; o webhook responde 503, para a Shopify reentregar quando existir |
-| `CRON_SECRET`            | as rotas de job respondem 503 e não enviam nada                                                             |
-| `EAS_WEBHOOK_SECRET`     | o webhook do EAS responde 503 em vez de aceitar qualquer POST                                               |
-| `RESEND_API_KEY`         | o aviso volta para a fila e sai depois, sem se perder                                                       |
-| `ENCRYPTION_KEY`         | a conexão com a Shopify e os assistentes Apple/Google recusam gravar, em vez de salvar em claro             |
-| contas Apple/Google      | o checklist de publicação mostra o que falta e o botão de publicar fica travado, com o motivo escrito       |
+| Sem                      | O que acontece                                                                                        |
+| ------------------------ | ----------------------------------------------------------------------------------------------------- |
+| `SHOPIFY_API_KEY/SECRET` | o botão do app público não aparece; o caminho do app da própria loja continua funcionando normalmente |
+| `CRON_SECRET`            | as rotas de job respondem 503 e não enviam nada                                                       |
+| `EAS_WEBHOOK_SECRET`     | o webhook do EAS responde 503 em vez de aceitar qualquer POST                                         |
+| `RESEND_API_KEY`         | o aviso volta para a fila e sai depois, sem se perder                                                 |
+| `ENCRYPTION_KEY`         | a conexão com a Shopify e os assistentes Apple/Google recusam gravar, em vez de salvar em claro       |
+| contas Apple/Google      | o checklist de publicação mostra o que falta e o botão de publicar fica travado, com o motivo escrito |

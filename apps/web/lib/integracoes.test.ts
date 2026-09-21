@@ -16,6 +16,8 @@ function dados(ajustes: Partial<Parameters<typeof situacaoDaShopify>[0]> = {}) {
     shopDomain: 'minha-loja.myshopify.com',
     escopos: PEDIDOS.split(','),
     escoposPedidos: PEDIDOS,
+    caminho: 'oauth' as const,
+    clientId: null,
     ...ajustes,
   };
 }
@@ -30,16 +32,29 @@ describe('situacaoDaShopify', () => {
   });
 
   /*
-   * O app da Storefy não está no Partner Dashboard ainda. A tela precisa dizer
-   * isso em vez de mostrar um botão que leva a um erro — é a regra 3 do
-   * CLAUDE.md: ponto bloqueado com estado claro.
+   * O app público da Storefy deixou de ser condição para a tela funcionar: o
+   * caminho do app da própria loja não depende dele. Sem OAuth, a loja não
+   * fica "em preparação" — ela fica conectável por um caminho só, e o estado
+   * continua dizendo a verdade sobre a conexão.
    */
-  it('a falta de configuração da Storefy vem antes de tudo', () => {
-    expect(situacaoDaShopify(dados({ configurado: false })).estado).toBe('nao_configurado');
-    // Mesmo sem loja e sem escopo: quem está bloqueado é a Storefy.
-    expect(
-      situacaoDaShopify(dados({ configurado: false, temLoja: false, escopos: null })).estado,
-    ).toBe('nao_configurado');
+  it('sem o app público, a loja ainda conecta pelo caminho manual', () => {
+    const situacao = situacaoDaShopify(dados({ configurado: false }));
+
+    expect(situacao.estado).toBe('conectada');
+    expect(situacao.oauthDisponivel).toBe(false);
+  });
+
+  it('sem loja continua sendo o que falta, mesmo sem o app público', () => {
+    expect(situacaoDaShopify(dados({ configurado: false, temLoja: false })).estado).toBe(
+      'sem_loja',
+    );
+  });
+
+  it('conta por qual caminho a loja conectou', () => {
+    const manual = situacaoDaShopify(dados({ caminho: 'manual', clientId: 'abc123' }));
+
+    expect(manual.caminho).toBe('manual');
+    expect(manual.clientId).toBe('abc123');
   });
 
   it('sem loja não há o que conectar', () => {

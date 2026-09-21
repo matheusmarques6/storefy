@@ -10,9 +10,20 @@
 import { createHmac } from 'node:crypto';
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest';
 import { NextRequest } from 'next/server';
+import { criptografar } from '@/lib/cripto';
 
 const SEGREDO = 'segredo-do-app-shopify';
 const LOJA = 'minha-loja.myshopify.com';
+/** Segredo do app personalizado de um lojista, diferente do da Storefy. */
+const SEGREDO_DA_LOJA = 'segredo-do-app-do-lojista';
+const CHAVE = Buffer.alloc(32, 11).toString('base64');
+
+/** A linha de `stores` que a busca por domínio devolve. */
+interface LinhaDaLoja {
+  shopify_conexao: 'oauth' | 'manual' | null;
+  shopify_client_secret_enc: string | null;
+}
+let linhaDaLoja: LinhaDaLoja | null = null;
 
 /** O que `aplicarWebhook` recebeu e o que ele vai responder. */
 interface Recebido {
@@ -31,7 +42,15 @@ vi.mock('@/lib/env', () => ({
 }));
 
 vi.mock('@/lib/supabase/admin', () => ({
-  criarClientServiceRole: () => ({}),
+  criarClientServiceRole: () => ({
+    from: () => ({
+      select: () => ({
+        eq: () => ({
+          maybeSingle: () => Promise.resolve({ data: linhaDaLoja, error: null }),
+        }),
+      }),
+    }),
+  }),
 }));
 
 vi.mock('@/lib/shopify-webhook', () => ({
@@ -45,12 +64,18 @@ vi.mock('@/lib/shopify-webhook', () => ({
 const { POST } = await import('@/app/api/webhooks/shopify/route');
 
 let segredoOriginal: string | undefined;
+let chaveOriginal: string | undefined;
 let avisos: MockInstance<typeof console.warn>;
 let erros: MockInstance<typeof console.error>;
 
 beforeEach(() => {
   segredoOriginal = process.env.SHOPIFY_API_SECRET;
+  chaveOriginal = process.env.ENCRYPTION_KEY;
   process.env.SHOPIFY_API_SECRET = SEGREDO;
+  process.env.ENCRYPTION_KEY = CHAVE;
+  // O padrão é a loja conectada pelo app público: ela assina com o segredo
+  // da Storefy, que é o caso que a maior parte destes testes exercita.
+  linhaDaLoja = { shopify_conexao: 'oauth', shopify_client_secret_enc: null };
   recebido = null;
   explodir = false;
   avisos = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
@@ -60,6 +85,8 @@ beforeEach(() => {
 afterEach(() => {
   if (segredoOriginal === undefined) delete process.env.SHOPIFY_API_SECRET;
   else process.env.SHOPIFY_API_SECRET = segredoOriginal;
+  if (chaveOriginal === undefined) delete process.env.ENCRYPTION_KEY;
+  else process.env.ENCRYPTION_KEY = chaveOriginal;
   avisos.mockRestore();
   erros.mockRestore();
 });
@@ -186,5 +213,96 @@ describe('POST /api/webhooks/shopify', () => {
       expect(resposta.status, topico).toBe(200);
       expect(recebido, topico).toMatchObject({ topico });
     }
+  });
+
+  /*
+   * Desde o app personalizado, cada loja assina com o segredo DELA. O que
+   * estes casos protegem é a escolha do segredo: a rota lê o domínio do
+   * cabeçalho — que vem de fora — antes de conferir a assinatura, e isso só é
+   * seguro porque o domínio escolhe a fechadura e a assinatura continua sendo
+   * a chave.
+   */
+  describe('cada loja tem o seu segredo', () => {
+    function comoLojaManual(): void {
+      linhaDaLoja = {
+        shopify_conexao: 'manual',
+        shopify_client_secret_enc: criptografar(SEGREDO_DA_LOJA),
+      };
+    }
+
+    function assinarCom(segredo: string, corpo: string): string {
+      return createHmac('sha256', segredo).update(corpo, 'utf8').digest('base64');
+    }
+
+    it('aceita o webhook assinado com o segredo do app do lojista', async () => {
+      comoLojaManual();
+
+      const resposta = await POST(
+        requisicao(PEDIDO, { assinatura: assinarCom(SEGREDO_DA_LOJA, PEDIDO) }),
+      );
+
+      expect(resposta.status).toBe(200);
+      expect(recebido).toMatchObject({ shop: LOJA });
+    });
+
+    /*
+     * ESTE É O CASO QUE IMPORTA. Quem tem o `SHOPIFY_API_SECRET` da Storefy —
+     * um vazamento nosso, ou qualquer outro app público — não pode falar em
+     * nome de uma loja que assina com o próprio segredo. Se este teste
+     * passasse a devolver 200, um segredo só voltaria a abrir todas as lojas.
+     */
+    it('recusa o segredo da Storefy numa loja que tem o seu', async () => {
+      comoLojaManual();
+
+      const resposta = await POST(requisicao(PEDIDO, { assinatura: assinarCom(SEGREDO, PEDIDO) }));
+
+      expect(resposta.status).toBe(401);
+      expect(recebido).toBeNull();
+    });
+
+    /* E o contrário: o segredo de um lojista não abre a loja de outro. */
+    it('recusa o segredo de uma loja numa loja conectada pelo app público', async () => {
+      const resposta = await POST(
+        requisicao(PEDIDO, { assinatura: assinarCom(SEGREDO_DA_LOJA, PEDIDO) }),
+      );
+
+      expect(resposta.status).toBe(401);
+      expect(recebido).toBeNull();
+    });
+
+    /*
+     * Loja que a Storefy não conhece cai no segredo dela, e não em 503: é a
+     * loja que ACABOU de instalar o app público e ainda não tem linha, e é a
+     * que desinstalou — cujo `app/uninstalled` é justamente este webhook.
+     * Negar os dois quebraria a instalação e a desinstalação.
+     */
+    it('loja desconhecida ainda é atendida com o segredo da Storefy', async () => {
+      linhaDaLoja = null;
+
+      const resposta = await POST(requisicao('{}', { topico: 'app/uninstalled' }));
+
+      expect(resposta.status).toBe(200);
+      expect(recebido).toMatchObject({ topico: 'app/uninstalled' });
+    });
+
+    /*
+     * A conexão manual sem segredo guardado não pode cair no da Storefy: seria
+     * aceitar como boa uma assinatura que aquela loja não produz. O banco
+     * recusa essa linha por constraint; aqui se prova o que a rota faz se ela
+     * existir mesmo assim.
+     */
+    it('conexão manual sem segredo não aceita o segredo da Storefy', async () => {
+      for (const enc of ['lixo-que-nao-abre', null, '']) {
+        linhaDaLoja = { shopify_conexao: 'manual', shopify_client_secret_enc: enc };
+        recebido = null;
+
+        const resposta = await POST(
+          requisicao(PEDIDO, { assinatura: assinarCom(SEGREDO, PEDIDO) }),
+        );
+
+        expect(resposta.status, String(enc)).toBe(503);
+        expect(recebido, String(enc)).toBeNull();
+      }
+    });
   });
 });

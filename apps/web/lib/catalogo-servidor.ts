@@ -9,8 +9,8 @@ import 'server-only';
  */
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '@storefy/db';
-import { descriptografar } from '@/lib/cripto';
 import { ehDominioDeLoja } from '@/lib/shopify';
+import { tokenDaLoja } from '@/lib/shopify-conexao';
 import {
   lerItens,
   montarResultados,
@@ -41,30 +41,23 @@ export async function buscarNoCatalogo(
   termo: string,
   buscador: typeof fetch = fetch,
 ): Promise<ResultadoDaBusca> {
-  const { data: loja } = await servico
-    .from('stores')
-    .select('shop_domain, shopify_access_token_enc')
-    .eq('id', storeId)
-    .maybeSingle();
+  /*
+   * `tokenDaLoja` RENOVA o token se ele estiver perto de vencer. É por isso
+   * que a leitura não é feita aqui: a conexão pelo app do próprio lojista dá
+   * um token de 24 horas, e ler a coluna direto significaria a busca falhar
+   * um dia depois de conectar, com o lojista digitando na tela.
+   */
+  const conexao = await tokenDaLoja(servico, storeId, buscador);
+  if (!conexao.ok) {
+    return { ok: false, motivo: conexao.motivo, desconectada: conexao.reconectar };
+  }
 
-  const dominio = loja?.shop_domain ?? '';
-  const cifrado = loja?.shopify_access_token_enc ?? null;
+  const { token, dominio } = conexao;
 
-  if (cifrado == null || cifrado === '' || !ehDominioDeLoja(dominio)) {
+  if (!ehDominioDeLoja(dominio)) {
     return {
       ok: false,
       motivo: 'Conecte a Shopify para escolher um produto ou uma coleção.',
-      desconectada: true,
-    };
-  }
-
-  let token: string;
-  try {
-    token = descriptografar(cifrado);
-  } catch {
-    return {
-      ok: false,
-      motivo: 'Não conseguimos ler a conexão com a Shopify. Reconecte a loja.',
       desconectada: true,
     };
   }

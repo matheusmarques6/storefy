@@ -3,7 +3,17 @@
 /**
  * O cartão da Shopify na tela de Integrações (C14).
  *
- * O formulário é um POST de verdade para `/api/shopify/install`: sem
+ * DOIS CAMINHOS PARA A MESMA COISA, e a ordem em que aparecem não é estética:
+ *
+ *   o app da própria loja funciona HOJE, em qualquer loja, sem depender de
+ *   ninguém. Vem primeiro por isso;
+ *
+ *   o app público da Storefy é um clique só para o lojista, mas depende de
+ *   uma revisão da Shopify que leva semanas. Enquanto ela não sai, o botão
+ *   nem aparece — oferecer um caminho que não funciona é pior do que não
+ *   oferecer, porque manda a pessoa tentar e falhar.
+ *
+ * O formulário do OAuth é um POST de verdade para `/api/shopify/install`: sem
  * JavaScript ele continua funcionando, e o servidor confere o domínio de novo.
  * A conferência daqui existe só para o lojista corrigir na hora, em vez de
  * descobrir o erro depois de uma ida e volta à Shopify.
@@ -14,6 +24,7 @@ import { CheckCircle2, Link2Off, Loader2, Store, TriangleAlert } from 'lucide-re
 import { toast } from 'sonner';
 import { conferirDominioDigitado, rotuloDoEscopo, type SituacaoDaShopify } from '@/lib/integracoes';
 import { desconectarShopify } from './acoes';
+import { ConectarManual } from './conectar-manual';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Campo, propsDoCampo } from '@/components/campo';
@@ -56,12 +67,7 @@ export function CartaoShopify({
       </CardHeader>
 
       <CardContent className="space-y-4">
-        {situacao.estado === 'nao_configurado' ? (
-          <p className="text-muted-foreground text-sm">
-            A Storefy ainda está terminando de configurar o app da Shopify. Assim que ficar pronto,
-            o botão de conectar aparece aqui — nada do que você já fez se perde.
-          </p>
-        ) : situacao.estado === 'sem_loja' ? (
+        {situacao.estado === 'sem_loja' ? (
           <p className="text-muted-foreground text-sm">
             A conexão é por loja. Cadastre uma loja para conectá-la à Shopify.
           </p>
@@ -73,7 +79,15 @@ export function CartaoShopify({
             ) : null}
 
             {podeEscrever ? (
-              <Formulario situacao={situacao} conectada={conectada} />
+              <>
+                <ConectarManual situacao={situacao} conectada={conectada} />
+
+                {situacao.oauthDisponivel ? (
+                  <Formulario situacao={situacao} conectada={conectada} />
+                ) : null}
+
+                {conectada ? <Desconectar /> : null}
+              </>
             ) : (
               <p className="text-muted-foreground text-xs">
                 Só o proprietário e os administradores mexem nesta conexão.
@@ -89,11 +103,9 @@ export function CartaoShopify({
 function Selo({ situacao }: { situacao: SituacaoDaShopify }) {
   /*
    * Sem loja não há selo: "não conectada" diria que falta um passo que não
-   * existe. E quando quem ainda não terminou é a Storefy, o selo diz isso —
-   * "não conectada" jogaria no lojista uma pendência que não é dele.
+   * existe.
    */
   if (situacao.estado === 'sem_loja') return null;
-  if (situacao.estado === 'nao_configurado') return <Badge variant="outline">Em preparação</Badge>;
 
   if (situacao.estado === 'conectada') {
     return (
@@ -120,6 +132,23 @@ function Conectada({ situacao }: { situacao: SituacaoDaShopify }) {
       <div>
         <dt className="text-muted-foreground">Loja</dt>
         <dd className="mt-1 font-mono text-xs break-words">{situacao.dominio}</dd>
+      </div>
+      <div>
+        <dt className="text-muted-foreground">Conectada por</dt>
+        <dd className="mt-1">
+          {situacao.caminho === 'manual' ? (
+            <>
+              App da sua loja
+              {situacao.clientId == null ? null : (
+                <span className="text-muted-foreground mt-0.5 block font-mono text-xs break-all">
+                  {situacao.clientId}
+                </span>
+              )}
+            </>
+          ) : (
+            'App da Storefy'
+          )}
+        </dd>
       </div>
       <div>
         <dt className="text-muted-foreground">Permissões concedidas</dt>
@@ -150,10 +179,72 @@ function Faltando({ escopos }: { escopos: string[] }) {
   );
 }
 
+/**
+ * O caminho do app público da Storefy (OAuth).
+ *
+ * Só aparece quando o app está aprovado: sem isso, o botão mandaria o lojista
+ * a uma tela da Shopify que responde com erro, e ele leria isso como "a
+ * Storefy está quebrada" em vez de "este caminho ainda não existe".
+ */
 function Formulario({ situacao, conectada }: { situacao: SituacaoDaShopify; conectada: boolean }) {
-  const router = useRouter();
   const [dominio, setDominio] = useState(situacao.dominio);
   const [erro, setErro] = useState<string | undefined>(undefined);
+
+  return (
+    <form
+      method="post"
+      action="/api/shopify/install"
+      className="space-y-4 border-t pt-4"
+      noValidate
+      onSubmit={(evento) => {
+        const conferido = conferirDominioDigitado(dominio);
+        if (!conferido.ok) {
+          evento.preventDefault();
+          setErro(conferido.erro);
+          return;
+        }
+        setErro(undefined);
+      }}
+    >
+      <p className="text-muted-foreground text-sm">
+        Ou conecte pelo app da Storefy, sem precisar criar nada na Shopify.
+      </p>
+
+      <Campo
+        id="shop"
+        rotulo="Endereço da sua loja na Shopify"
+        erro={erro}
+        dica="É o endereço que termina em .myshopify.com, o mesmo que aparece quando você entra no admin da Shopify."
+      >
+        <Input
+          {...propsDoCampo('shop', erro, true)}
+          value={dominio}
+          onChange={(evento) => {
+            setDominio(evento.target.value);
+            setErro(undefined);
+          }}
+          placeholder="minha-loja.myshopify.com"
+          autoComplete="off"
+          spellCheck={false}
+        />
+      </Campo>
+
+      <Button type="submit" variant="outline">
+        {conectada ? 'Reconectar pelo app da Storefy' : 'Conectar com a Shopify'}
+      </Button>
+    </form>
+  );
+}
+
+/**
+ * Desconectar, fora dos dois formulários.
+ *
+ * Ficava dentro do formulário do OAuth, e ali ele sumiria junto com ele
+ * enquanto o app público não existe — deixando quem conectou pelo app próprio
+ * sem como desconectar.
+ */
+function Desconectar() {
+  const router = useRouter();
   const [confirmando, setConfirmando] = useState(false);
   const [desconectando, iniciar] = useTransition();
 
@@ -172,61 +263,22 @@ function Formulario({ situacao, conectada }: { situacao: SituacaoDaShopify; cone
   }
 
   return (
-    <>
-      <form
-        method="post"
-        action="/api/shopify/install"
-        className="space-y-4"
-        noValidate
-        onSubmit={(evento) => {
-          const conferido = conferirDominioDigitado(dominio);
-          if (!conferido.ok) {
-            evento.preventDefault();
-            setErro(conferido.erro);
-            return;
-          }
-          setErro(undefined);
+    <div className="border-t pt-4">
+      <Button
+        type="button"
+        variant="outline"
+        disabled={desconectando}
+        onClick={() => {
+          setConfirmando(true);
         }}
       >
-        <Campo
-          id="shop"
-          rotulo="Endereço da sua loja na Shopify"
-          erro={erro}
-          dica="É o endereço que termina em .myshopify.com, o mesmo que aparece quando você entra no admin da Shopify."
-        >
-          <Input
-            {...propsDoCampo('shop', erro)}
-            value={dominio}
-            onChange={(evento) => {
-              setDominio(evento.target.value);
-            }}
-            placeholder="minha-loja.myshopify.com"
-            autoComplete="off"
-            spellCheck={false}
-          />
-        </Campo>
-
-        <div className="flex flex-wrap gap-2">
-          <Button type="submit">{conectada ? 'Reconectar' : 'Conectar com a Shopify'}</Button>
-          {conectada ? (
-            <Button
-              type="button"
-              variant="outline"
-              disabled={desconectando}
-              onClick={() => {
-                setConfirmando(true);
-              }}
-            >
-              {desconectando ? (
-                <Loader2 className="size-4 animate-spin" aria-hidden />
-              ) : (
-                <Link2Off className="size-4" aria-hidden />
-              )}
-              Desconectar
-            </Button>
-          ) : null}
-        </div>
-      </form>
+        {desconectando ? (
+          <Loader2 className="size-4 animate-spin" aria-hidden />
+        ) : (
+          <Link2Off className="size-4" aria-hidden />
+        )}
+        Desconectar
+      </Button>
 
       <AlertDialog open={confirmando} onOpenChange={setConfirmando}>
         <AlertDialogContent>
@@ -253,6 +305,6 @@ function Formulario({ situacao, conectada }: { situacao: SituacaoDaShopify; cone
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </>
+    </div>
   );
 }

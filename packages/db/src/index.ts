@@ -51,9 +51,16 @@ export type AppVisivel = SemSegredos<App>;
 /** Conta de desenvolvedor sem as chaves Apple e Google. */
 export type ContaDeDesenvolvedorVisivel = SemSegredos<DeveloperAccount>;
 
-/** As colunas de `stores` que o painel pode pedir. */
+/**
+ * As colunas de `stores` que o painel pode pedir.
+ *
+ * COLUNA NOVA PRECISA ENTRAR AQUI, senão `LojaVisivel` passa a exigir um campo
+ * que a query não traz e o TypeScript reclama na hora — que é exatamente o
+ * aviso que se quer. A exceção são as `_enc`: `SemSegredos` as tira do tipo, e
+ * o banco as tira do `grant`.
+ */
 export const COLUNAS_DA_LOJA =
-  'id, org_id, name, shop_domain, primary_url, platform, shopify_scopes, status, timezone, support_email, created_at, updated_at' as const;
+  'id, org_id, name, shop_domain, primary_url, platform, shopify_scopes, shopify_conexao, shopify_client_id, shopify_token_expires_at, status, timezone, support_email, created_at, updated_at' as const;
 
 /** As colunas de `apps` que o painel pode pedir. */
 export const COLUNAS_DO_APP =

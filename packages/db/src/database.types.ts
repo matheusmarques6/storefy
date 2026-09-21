@@ -929,6 +929,10 @@ export type Database = {
           updated_at: string;
           timezone: string;
           support_email: string | null;
+          shopify_conexao: Database["public"]["Enums"]["shopify_conexao"] | null;
+          shopify_client_id: string | null;
+          shopify_client_secret_enc: string | null;
+          shopify_token_expires_at: string | null;
         };
         Insert: {
           id?: string;
@@ -944,6 +948,10 @@ export type Database = {
           updated_at?: string;
           timezone?: string;
           support_email?: string | null;
+          shopify_conexao?: Database["public"]["Enums"]["shopify_conexao"] | null;
+          shopify_client_id?: string | null;
+          shopify_client_secret_enc?: string | null;
+          shopify_token_expires_at?: string | null;
         };
         Update: {
           id?: string;
@@ -959,6 +967,10 @@ export type Database = {
           updated_at?: string;
           timezone?: string;
           support_email?: string | null;
+          shopify_conexao?: Database["public"]["Enums"]["shopify_conexao"] | null;
+          shopify_client_id?: string | null;
+          shopify_client_secret_enc?: string | null;
+          shopify_token_expires_at?: string | null;
         };
         Relationships: [
           {
@@ -1142,6 +1154,7 @@ export type Database = {
       platform_admin_role: "superadmin" | "support";
       push_automation_type: "welcome" | "abandoned_cart" | "back_in_stock" | "order_shipped" | "inactive_7d" | "custom_webhook";
       push_campaign_status: "draft" | "scheduled" | "sending" | "sent" | "failed" | "canceled";
+      shopify_conexao: "oauth" | "manual";
       store_platform: "shopify" | "other";
       store_status: "draft" | "building" | "in_review" | "live" | "paused";
     };

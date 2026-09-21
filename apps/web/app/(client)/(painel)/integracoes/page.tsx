@@ -23,6 +23,8 @@ export default async function PaginaDeIntegracoes({
     shopDomain: lojaAtiva?.shop_domain ?? null,
     escopos: lojaAtiva?.shopify_scopes ?? null,
     escoposPedidos: escoposPedidos(),
+    caminho: lojaAtiva?.shopify_conexao ?? null,
+    clientId: lojaAtiva?.shopify_client_id ?? null,
   });
 
   const aviso = avisoDaShopify(shopify);

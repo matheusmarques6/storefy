@@ -1067,6 +1067,17 @@ select tests.ok('segredo',
 -- O espelho da asserção de leitura: uma coluna nova nas três tabelas de grant
 -- coluna a coluna nasce sem INSERT e sem UPDATE, e o sintoma é o painel parar
 -- de salvar aquele campo sem erro nenhum na tela.
+--
+-- A LISTA DE EXCEÇÕES É NOMINAL de propósito. Existe uma terceira categoria
+-- de coluna, além de "do painel" e "segredo": a que não é segredo mas só o
+-- SERVIDOR escreve, depois de ter falado com a Shopify. Dar insert/update
+-- delas ao painel deixaria o dono da organização declarar-se conectado a uma
+-- loja que nunca autorizou nada.
+--
+-- Nominal, e não por prefixo, porque o risco de uma lista larga é justamente
+-- o que esta asserção existe para pegar: alguém acrescenta uma coluna do
+-- painel, ela cai na exceção por acidente e o campo para de salvar em
+-- silêncio. Uma coluna nova aqui é uma decisão, e não um padrão de nome.
 select tests.ok('segredo',
   not exists (
     select 1
@@ -1077,10 +1088,29 @@ select tests.ok('segredo',
        and c.relname in ('stores', 'apps', 'developer_accounts')
        and a.attnum > 0 and not a.attisdropped
        and a.attname not like '%\_enc'
+       -- Só o servidor grava: quem conecta é a rota, com a resposta da Shopify.
+       and (c.relname, a.attname) not in (
+         ('stores', 'shopify_conexao'),
+         ('stores', 'shopify_client_id'),
+         ('stores', 'shopify_token_expires_at')
+       )
        and not (has_column_privilege('authenticated', c.oid, a.attnum, 'insert')
             and has_column_privilege('authenticated', c.oid, a.attnum, 'update'))
   ),
   'e toda coluna que NÃO é segredo continua gravável pelo painel');
+
+-- E as três da exceção precisam ser LEGÍVEIS: a tela mostra por qual caminho a
+-- loja conectou e qual app é. Sem o select, a página quebraria inteira — o
+-- `COLUNAS_DA_LOJA` as pede por nome.
+select tests.ok('segredo',
+  tests.contar('select count(*) from public.stores where shopify_conexao is null') >= 1,
+  'o painel lê o estado da conexão, mesmo sem poder gravá-lo');
+
+-- E NÃO podem ser graváveis por ele. O espelho da exceção acima: sem isto, a
+-- lista nominal viraria um buraco em vez de uma decisão.
+select tests.ok('segredo',
+  tests.erro($q$update public.stores set shopify_conexao = 'manual'$q$),
+  'e não consegue declarar-se conectado por fora da rota');
 
 select tests.login('a-owner@teste.local');
 set role authenticated;
@@ -3724,6 +3754,73 @@ select tests.ok('isolamento',
   tests.contar($q$select count(*) from public.back_in_stock_subs
     where app_id = (select app_b from tests.lojas)$q$) = 1,
   'e o shop/redact de uma loja não apaga os pedidos da outra');
+
+
+-- ================== grupo 12: conectar pelo app do próprio lojista
+--
+-- O caminho manual guarda, por loja, o Client Secret do app que o LOJISTA
+-- criou. Isso muda duas coisas que o banco precisa garantir sozinho, porque
+-- errar qualquer uma delas é silencioso.
+
+reset role;
+
+-- Uma conexão `manual` sem credencial é uma loja que não renova o token nem
+-- confere assinatura de webhook: ela pararia de funcionar em 24 horas, e o
+-- sintoma chegaria como "os pedidos sumiram" dias depois.
+select tests.ok('conexao',
+  tests.erro($q$update public.stores
+    set shopify_conexao = 'manual', shopify_client_id = null,
+        shopify_client_secret_enc = null
+  where id = (select loja_a from tests.lojas)$q$),
+  'o banco recusa conexão manual sem as credenciais do app');
+
+select tests.ok('conexao',
+  tests.permitido($q$update public.stores
+    set shopify_conexao = 'manual', shopify_client_id = 'id-do-app',
+        shopify_client_secret_enc = 'cifrado',
+        shopify_access_token_enc = 'cifrado',
+        shopify_token_expires_at = now() + interval '24 hours'
+  where id = (select loja_a from tests.lojas)$q$),
+  'e aceita quando as duas estão lá');
+
+-- Duas lojas CONECTADAS ao mesmo domínio deixam o webhook sem dono: a rota não
+-- saberia com qual segredo conferir a assinatura, e os pedidos cairiam num dos
+-- dois apps por sorteio do plano de execução.
+do $$
+begin
+  update public.stores set shop_domain = 'mesma-loja.myshopify.com'
+   where id = (select loja_a from tests.lojas);
+end
+$$;
+
+select tests.ok('conexao',
+  tests.erro($q$update public.stores
+    set shop_domain = 'mesma-loja.myshopify.com', shopify_access_token_enc = 'cifrado'
+  where id = (select loja_b from tests.lojas)$q$),
+  'duas lojas conectadas não podem dividir o mesmo domínio Shopify');
+
+-- Mas DESCONECTADA pode repetir: é o que preenche o campo na reconexão, e
+-- duas lojas que já usaram o mesmo domínio não incomodam ninguém.
+select tests.ok('conexao',
+  tests.permitido($q$update public.stores
+    set shop_domain = 'mesma-loja.myshopify.com', shopify_access_token_enc = null
+  where id = (select loja_b from tests.lojas)$q$),
+  'e uma loja desconectada pode repetir o domínio de outra');
+
+-- A desconexão leva TUDO junto. Deixar o Client Secret para trás guardaria o
+-- segredo do app de um cliente que pediu para desconectar.
+select public.desconectar_shopify('mesma-loja.myshopify.com');
+
+select tests.ok('conexao',
+  tests.contar($q$select count(*) from public.stores
+    where id = (select loja_a from tests.lojas)
+      and shopify_conexao is null
+      and shopify_client_id is null
+      and shopify_client_secret_enc is null
+      and shopify_token_expires_at is null
+      and shopify_access_token_enc is null
+      and shopify_scopes is null$q$) = 1,
+  'desconectar apaga token, escopos, credenciais e prazo de uma vez');
 
 
 \echo ''

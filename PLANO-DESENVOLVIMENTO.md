@@ -846,6 +846,7 @@ a pedido de alguém.
 ### Fase 5 — Shopify app + analytics (5–7 dias)
 **Tarefas**
 - OAuth Shopify, webhooks (incluindo os de GDPR), Theme App Extension (banner do app + snippet do bridge).
+- **Conexão pelo app do próprio lojista** (`grant_type=client_credentials`), ao lado do OAuth: o lojista cria um app na conta Shopify dele e cola Client ID + Client Secret. Não passa por revisão da Shopify, então é o caminho que funciona ANTES da aprovação do app público — e continua valendo depois, para quem preferir. Muda três coisas: o token vence em 24h e é renovado no ponto de uso (sem job — token só serve para chamada nossa, e renovar o de uma loja parada seria gasto à toa); o webhook passa a ser assinado pelo segredo DAQUELA loja, e não por um segredo único da Storefy; e um domínio Shopify só pode estar conectado a uma loja do painel por vez, por índice único parcial — duas deixariam o webhook sem dono.
 - Seletor de produto/coleção no composer de push (pela Admin API, e não pela Storefront: o token do Admin já está guardado desde o OAuth e o escopo `read_products` já cobre a busca — a Storefront exigiria um token a mais, outra tela de configuração e outra coisa para o lojista errar).
 - Atribuição de pedidos: `ORDER_COMPLETED` do bridge e webhook `orders/create` com a marca `source=app` (via atributo de carrinho `_storefy=1` injetado pelo bridge com `/cart/update.js`).
 - `analytics_daily` + tela C11 + cards do dashboard C05.

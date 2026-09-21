@@ -8,14 +8,15 @@
 import { normalizarDominio } from '@/lib/shopify';
 
 export type EstadoDaShopify =
-  /** A Storefy ainda não terminou de configurar o app no Partner Dashboard. */
-  | 'nao_configurado'
   /** A organização ainda não tem loja: não há o que conectar. */
   | 'sem_loja'
   | 'desconectada'
   | 'conectada'
   /** Conectada, mas o lojista concedeu menos do que pedimos. */
   | 'escopos_faltando';
+
+/** Por qual caminho a loja conectou. */
+export type CaminhoDaConexao = 'oauth' | 'manual';
 
 export interface SituacaoDaShopify {
   estado: EstadoDaShopify;
@@ -25,6 +26,18 @@ export interface SituacaoDaShopify {
   faltando: string[];
   /** Escopos concedidos, na ordem em que a Shopify devolveu. */
   concedidos: string[];
+  /** Como conectou. `null` quando não está conectada. */
+  caminho: CaminhoDaConexao | null;
+  /** Client ID do app do lojista, quando o caminho é o manual. */
+  clientId: string | null;
+  /**
+   * O app público da Storefy está pronto?
+   *
+   * Separado de `estado` de propósito: mesmo sem ele, a tela continua
+   * oferecendo o caminho manual, que é o que funciona hoje. Antes, um app
+   * público não configurado desligava a tela inteira.
+   */
+  oauthDisponivel: boolean;
 }
 
 export interface DadosDaShopify {
@@ -34,6 +47,8 @@ export interface DadosDaShopify {
   /** `null` quando a loja nunca conectou; a coluna anda junto com o token. */
   escopos: string[] | null;
   escoposPedidos: string;
+  caminho: CaminhoDaConexao | null;
+  clientId: string | null;
 }
 
 /**
@@ -46,19 +61,31 @@ export interface DadosDaShopify {
 export function situacaoDaShopify(dados: DadosDaShopify): SituacaoDaShopify {
   const dominio = dados.shopDomain ?? '';
   const concedidos = (dados.escopos ?? []).map((escopo) => escopo.trim()).filter((e) => e !== '');
+  const base = {
+    dominio,
+    caminho: dados.caminho,
+    clientId: dados.clientId,
+    oauthDisponivel: dados.configurado,
+  };
 
-  if (!dados.configurado) {
-    return { estado: 'nao_configurado', dominio, faltando: [], concedidos };
-  }
-  if (!dados.temLoja) return { estado: 'sem_loja', dominio, faltando: [], concedidos };
+  /*
+   * Sem loja vem ANTES do app público: "cadastre uma loja" é o passo que
+   * realmente falta, e dizer "em preparação" a quem nem loja tem mandaria a
+   * pessoa esperar por algo que não a destravaria.
+   *
+   * E `nao_configurado` deixou de ser um estado da tela: o caminho manual não
+   * depende do app público, então uma loja sem OAuth disponível é uma loja
+   * simplesmente desconectada, com um caminho a menos para conectar.
+   */
+  if (!dados.temLoja) return { ...base, estado: 'sem_loja', faltando: [], concedidos };
   if (dados.escopos === null) {
-    return { estado: 'desconectada', dominio, faltando: [], concedidos };
+    return { ...base, estado: 'desconectada', faltando: [], concedidos };
   }
 
   const faltando = listarFaltantes(dados.escoposPedidos, concedidos);
   return {
+    ...base,
     estado: faltando.length > 0 ? 'escopos_faltando' : 'conectada',
-    dominio,
     faltando,
     concedidos,
   };

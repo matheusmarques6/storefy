@@ -24,6 +24,7 @@ import {
   ehTopicoConhecido,
 } from '@/lib/shopify';
 import { conferirHmacDoWebhook } from '@/lib/shopify-assinatura';
+import { segredoDoWebhook } from '@/lib/shopify-conexao';
 import { aplicarWebhook } from '@/lib/shopify-webhook';
 
 export const dynamic = 'force-dynamic';
@@ -35,8 +36,37 @@ export async function POST(requisicao: NextRequest): Promise<NextResponse> {
   // de poder ser conferida.
   const texto = await requisicao.text();
 
-  const segredo = process.env.SHOPIFY_API_SECRET ?? '';
-  if (segredo === '') {
+  const topico = (requisicao.headers.get(CABECALHO_DO_TOPICO) ?? '').trim();
+  const shop = (requisicao.headers.get(CABECALHO_DA_LOJA) ?? '').trim().toLowerCase();
+
+  /*
+   * O domínio é lido ANTES da assinatura, e isso é seguro — mas só porque a
+   * assinatura é conferida logo em seguida com o segredo DAQUELA loja.
+   *
+   * Desde que a loja pode conectar pelo app personalizado dela, não existe
+   * mais um segredo só: cada loja assina com o Client Secret do próprio app.
+   * Para saber com que segredo conferir, é preciso saber de quem é a
+   * mensagem, e quem diz isso é este cabeçalho — que vem de fora.
+   *
+   * Dizer-se outra loja não leva a nada: quem faz isso passa a ser conferido
+   * com o segredo DAQUELA loja, que ele não tem. O cabeçalho escolhe a
+   * fechadura; a chave continua sendo a assinatura.
+   */
+  if (!ehDominioDeLoja(shop)) {
+    return NextResponse.json({ erro: 'loja_invalida' }, { status: 400, headers: SEM_CACHE });
+  }
+
+  if (!supabaseConfigurado || !serviceRoleConfigurada) {
+    return NextResponse.json(
+      { erro: 'servidor_nao_configurado' },
+      { status: 503, headers: SEM_CACHE },
+    );
+  }
+
+  const servico = criarClientServiceRole();
+  const segredo = await segredoDoWebhook(servico, shop);
+
+  if (segredo == null) {
     // 503 e não 200: a Shopify reentrega quando o ambiente voltar.
     return NextResponse.json({ erro: 'nao_configurado' }, { status: 503, headers: SEM_CACHE });
   }
@@ -44,13 +74,6 @@ export async function POST(requisicao: NextRequest): Promise<NextResponse> {
   if (!conferirHmacDoWebhook(requisicao.headers.get(CABECALHO_DA_ASSINATURA), segredo, texto)) {
     console.warn('[webhook-shopify] assinatura não confere');
     return NextResponse.json({ erro: 'nao_autorizado' }, { status: 401, headers: SEM_CACHE });
-  }
-
-  const topico = (requisicao.headers.get(CABECALHO_DO_TOPICO) ?? '').trim();
-  const shop = (requisicao.headers.get(CABECALHO_DA_LOJA) ?? '').trim().toLowerCase();
-
-  if (!ehDominioDeLoja(shop)) {
-    return NextResponse.json({ erro: 'loja_invalida' }, { status: 400, headers: SEM_CACHE });
   }
 
   /*
@@ -62,15 +85,8 @@ export async function POST(requisicao: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ ok: true, ignorado: topico }, { headers: SEM_CACHE });
   }
 
-  if (!supabaseConfigurado || !serviceRoleConfigurada) {
-    return NextResponse.json(
-      { erro: 'servidor_nao_configurado' },
-      { status: 503, headers: SEM_CACHE },
-    );
-  }
-
   try {
-    const resultado = await aplicarWebhook(criarClientServiceRole(), topico, shop, texto);
+    const resultado = await aplicarWebhook(servico, topico, shop, texto);
     return NextResponse.json({ ok: true, ...resultado }, { headers: SEM_CACHE });
   } catch (erro) {
     console.error(
