@@ -12,18 +12,18 @@ import 'server-only';
  */
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '@storefy/db';
+import { ATRIBUTO_DO_CARRINHO, VALOR_DO_ATRIBUTO } from '@storefy/config-schema';
 import type { Topico } from '@/lib/shopify';
 
 type Client = SupabaseClient<Database>;
 
-/**
- * O atributo que o bridge injeta no carrinho.
- *
- * Underscore na frente porque a Shopify esconde do cliente final os atributos
- * que começam assim: ele não aparece no e-mail de confirmação nem na página de
- * agradecimento, mas chega ao pedido e ao webhook.
+/*
+ * O atributo que o app injeta no carrinho vem de `@storefy/config-schema`, que
+ * é o contrato painel ⇄ app: o app escreve, a Shopify carrega até o pedido, e
+ * este módulo lê. Uma cópia de cada lado se desencontraria no dia em que
+ * alguém renomeasse uma — e todo pedido do app viraria pedido do site.
  */
-export const ATRIBUTO_DO_APP = '_storefy';
+export { ATRIBUTO_DO_CARRINHO, VALOR_DO_ATRIBUTO } from '@storefy/config-schema';
 
 export interface ResultadoDoWebhook {
   /** O que a rota devolve no corpo, só para o log. */
@@ -42,8 +42,8 @@ export interface ResultadoDoWebhook {
  */
 export function origemDoPedido(pedido: unknown): 'app' | 'site' {
   const atributos = lerAtributos(pedido);
-  const marca = atributos[ATRIBUTO_DO_APP];
-  return marca === '1' || marca === 'true' ? 'app' : 'site';
+  const marca = atributos[ATRIBUTO_DO_CARRINHO];
+  return marca === VALOR_DO_ATRIBUTO || marca === 'true' ? 'app' : 'site';
 }
 
 /** Os `note_attributes` do pedido, como mapa. */

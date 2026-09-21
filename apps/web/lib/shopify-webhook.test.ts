@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { ATRIBUTO_DO_APP, centavosDoPedido, origemDoPedido } from '@/lib/shopify-webhook';
+import { ATRIBUTO_DO_CARRINHO, centavosDoPedido, origemDoPedido } from '@/lib/shopify-webhook';
 
 describe('origemDoPedido', () => {
   const comAtributo = (valor: string): unknown => ({
-    note_attributes: [{ name: ATRIBUTO_DO_APP, value: valor }],
+    note_attributes: [{ name: ATRIBUTO_DO_CARRINHO, value: valor }],
   });
 
   /*
@@ -35,7 +35,7 @@ describe('origemDoPedido', () => {
 
   /** O atributo começa com `_`: a Shopify o esconde do cliente final. */
   it('o atributo é escondido do cliente final', () => {
-    expect(ATRIBUTO_DO_APP.startsWith('_')).toBe(true);
+    expect(ATRIBUTO_DO_CARRINHO.startsWith('_')).toBe(true);
   });
 
   it('payload torto não estoura', () => {
@@ -55,8 +55,10 @@ describe('origemDoPedido', () => {
    * favor do app, que é o erro que ninguém percebe.
    */
   it('o valor precisa ser a string que o bridge escreve, não um número', () => {
-    expect(origemDoPedido({ note_attributes: [{ name: ATRIBUTO_DO_APP, value: 1 }] })).toBe('site');
-    expect(origemDoPedido({ note_attributes: [{ name: ATRIBUTO_DO_APP, value: true }] })).toBe(
+    expect(origemDoPedido({ note_attributes: [{ name: ATRIBUTO_DO_CARRINHO, value: 1 }] })).toBe(
+      'site',
+    );
+    expect(origemDoPedido({ note_attributes: [{ name: ATRIBUTO_DO_CARRINHO, value: true }] })).toBe(
       'site',
     );
   });
@@ -208,7 +210,7 @@ describe('aplicarWebhook', () => {
       currency: 'BRL',
       cart_token: 'token-abc',
       created_at: '2026-09-19T12:00:00-03:00',
-      note_attributes: [{ name: ATRIBUTO_DO_APP, value: '1' }],
+      note_attributes: [{ name: ATRIBUTO_DO_CARRINHO, value: '1' }],
     });
 
     const r = await aplicarWebhook(cliente as never, 'orders/create', 'x.myshopify.com', pedido);

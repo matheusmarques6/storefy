@@ -14,6 +14,8 @@ export interface DadosDaLojaNoBanco {
   name: string;
   primary_url: string;
   shop_domain: string | null;
+  /** `stores.platform`. Decide se o app marca o carrinho para a atribuição. */
+  platform: 'shopify' | 'other';
 }
 
 export interface LinhaDeRascunho {
@@ -39,6 +41,7 @@ export function decidirRascunho(
     name: loja.name,
     url: loja.primary_url,
     shopDomain: loja.shop_domain,
+    platform: loja.platform,
   };
 
   if (rascunho === null) {

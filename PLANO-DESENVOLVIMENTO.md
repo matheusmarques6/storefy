@@ -855,12 +855,13 @@ a pedido de alguém.
 | OAuth da Shopify (`/api/shopify/install` e `/callback`) | ⚠️ as quatro conferências do retorno (assinatura, domínio, `state` em cookie e loja de origem) escritas e testadas; nunca rodou contra a Shopify de verdade, porque falta o app no Partner Dashboard |
 | Tela C14 — Integrações, com conectar, reconectar e desconectar | ✅ conferida no navegador em 1280 e 390 px nos seis estados, com o POST e a validação do domínio |
 | Webhooks, incluindo os três de privacidade da Shopify | ⚠️ uma rota para todos os tópicos, com assinatura base64 sobre o corpo cru; tópico desconhecido responde 200 de propósito, porque uma cadeia de 4xx faz a Shopify DESATIVAR o webhook da loja |
-| Atribuição de pedido pelo atributo de carrinho `_storefy` | ⚠️ `orders/create` lê a marca e grava em `shop_orders` sem duplicar na reentrega; falta o bridge INJETAR o atributo com `/cart/update.js` |
+| Atribuição de pedido pelo atributo de carrinho `_storefy` | ⚠️ a corrente inteira existe: o app grava o atributo, a Shopify carrega até o pedido e `orders/create` o lê sem duplicar na reentrega. Nunca rodou contra uma loja de verdade |
 | `shop_orders` e `analytics_daily` com RLS | ✅ leitura só para membros da organização; quem escreve é o webhook e o job, com a service role |
 | Desconectar para de receber pedido | ✅ apaga os webhooks na Shopify com o token que ainda existe, e só então apaga o token; `app_da_loja_shopify` passa a não achar a loja |
 | `shop/redact` e `app/uninstalled` | ✅ tratados ANTES de procurar o app: precisam funcionar para quem já desinstalou e não está mais no nosso banco |
 | Segredo não se escreve pelo painel | ✅ `insert`/`update` das colunas `_enc` revogados de `authenticated` e `anon`, com asserção que vale para o schema inteiro |
-| Injeção do `_storefy=1` no carrinho pelo bridge | ⬜ próxima etapa desta fase |
+| Injeção do `_storefy=1` no carrinho pelo app | ✅ grava depois da mudança de carrinho e ao abrir `/cart`, uma vez por página, com o `fetch` original. Os 22 testes EXECUTAM o script gerado num `node:vm`, e cada decisão foi conferida por mutação |
+| `store.platform` na `AppConfig` | ✅ campo novo com `default('shopify')` e teste de compatibilidade: config publicada antes continua válida e a atribuição não se desliga sozinha |
 | Job de agregação do `analytics_daily` | ⬜ |
 | Tela C11 e cards de receita no C05 | ⬜ |
 | Seletor de produto/coleção no composer de push | ⬜ |

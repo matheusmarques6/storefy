@@ -16,6 +16,7 @@
 import { gerarApiDaPagina, gerarInjecao } from '@storefy/bridge';
 import type { AppConfig } from '@storefy/config-schema';
 import { gerarObservadorDeCarrinho } from './carrinho';
+import { gerarMarcaDoApp } from './atribuicao';
 
 export interface ContextoDoApp {
   platform: 'ios' | 'android';
@@ -44,9 +45,30 @@ export function observaCarrinho(config: AppConfig): boolean {
   return config.tabs.some((aba) => aba.badge === 'cart_count');
 }
 
+/**
+ * A marca de atribuição entra nesta config?
+ *
+ * Só em loja Shopify: numa loja `other` os endpoints de carrinho não existem,
+ * e insistir seria uma requisição perdida por página na loja do cliente.
+ *
+ * Diferente do observador de carrinho, NÃO depende de nenhuma aba: a receita
+ * do app é medida em toda loja, tenha ela badge de carrinho ou não.
+ */
+export function marcaOCarrinho(config: AppConfig): boolean {
+  return config.store.platform === 'shopify';
+}
+
 /** `injectedJavaScript`: só código nosso. */
 export function scriptDepoisDoConteudo(config: AppConfig): string {
   const partes = [gerarApiDaPagina()];
+
+  /*
+   * A marca vem ANTES do observador, e a ordem não é estética: quem injeta
+   * depois embrulha o `fetch` de quem veio antes. Nesta ordem, a gravação da
+   * marca usa o `fetch` de verdade e o observador não a vê — ao contrário, a
+   * marcação dispararia uma leitura de `/cart.js` a mais, toda vez.
+   */
+  if (marcaOCarrinho(config)) partes.push(gerarMarcaDoApp());
   if (observaCarrinho(config)) partes.push(gerarObservadorDeCarrinho());
   // Termina em `true;`: no iOS, um retorno não serializável derruba a injeção
   // com um aviso que não aparece em lugar nenhum.

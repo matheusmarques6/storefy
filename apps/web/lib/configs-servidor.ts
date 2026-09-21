@@ -50,7 +50,7 @@ export async function garantirRascunho(
 ): Promise<ResultadoDoRascunho> {
   const { data: loja, error: erroLoja } = await supabase
     .from('stores')
-    .select('name, primary_url, shop_domain')
+    .select('name, primary_url, shop_domain, platform')
     .eq('id', storeId)
     .maybeSingle();
 

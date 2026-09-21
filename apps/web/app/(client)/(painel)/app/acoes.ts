@@ -144,7 +144,7 @@ export async function salvarConfig(storeId: string, configBruta: unknown): Promi
 
   const { data: loja } = await supabase
     .from('stores')
-    .select('name, primary_url, shop_domain')
+    .select('name, primary_url, shop_domain, platform')
     .eq('id', storeId)
     .maybeSingle();
 
@@ -162,6 +162,9 @@ export async function salvarConfig(storeId: string, configBruta: unknown): Promi
       name: loja.name,
       url: loja.primary_url,
       domains: dominiosDaLoja(loja.primary_url, loja.shop_domain),
+      // Do banco, como o resto de `store`: é ele que decide se o app marca o
+      // carrinho para a atribuição, e não um campo vindo do formulário.
+      platform: loja.platform,
     },
   };
 

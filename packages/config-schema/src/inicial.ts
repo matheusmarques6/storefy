@@ -87,6 +87,8 @@ export interface DadosDaLoja {
   url: string;
   /** `stores.shop_domain`, quando a loja é Shopify. */
   shopDomain?: string | null;
+  /** `stores.platform`. Sem ele, a config nasce como Shopify. */
+  platform?: 'shopify' | 'other';
 }
 
 /**
@@ -102,6 +104,7 @@ export function configInicial(loja: DadosDaLoja, versao = 1): AppConfig {
       name: loja.name.trim(),
       url: loja.url.trim(),
       domains: dominiosDaLoja(loja.url, loja.shopDomain),
+      platform: loja.platform ?? 'shopify',
     },
     theme: TEMA_PADRAO,
     tabs: ABAS_PADRAO,

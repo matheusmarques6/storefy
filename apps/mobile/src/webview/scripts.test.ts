@@ -2,7 +2,9 @@ import { Script } from 'node:vm';
 import { describe, expect, it } from 'vitest';
 import { parseAppConfig, type AppConfigInput } from '@storefy/config-schema';
 import { MARCA_DE_INJECAO } from './carrinho';
+import { MARCA_DE_INJECAO as MARCA_DA_ATRIBUICAO } from './atribuicao';
 import {
+  marcaOCarrinho,
   observaCarrinho,
   scriptAntesDoConteudo,
   scriptDepoisDoConteudo,
@@ -99,9 +101,61 @@ describe('scriptDepoisDoConteudo', () => {
     const script = scriptDepoisDoConteudo(config({ tabs: ABAS_SEM_CARRINHO }));
     expect(script).toContain('window.Storefy=');
     expect(script).not.toContain(MARCA_DE_INJECAO);
+    expect(script).not.toContain("fetchOriginal('/cart.js'");
     expect(() => {
       compila(script);
     }).not.toThrow();
+  });
+
+  /*
+   * A atribuição de receita não depende de aba nenhuma: ela é medida em toda
+   * loja Shopify, com badge de carrinho ou sem.
+   */
+  it('a marca de atribuição entra mesmo sem badge de carrinho', () => {
+    const script = scriptDepoisDoConteudo(config({ tabs: ABAS_SEM_CARRINHO }));
+
+    expect(script).toContain(MARCA_DA_ATRIBUICAO);
+    expect(script).toContain('/cart/update.js');
+  });
+
+  /*
+   * A ordem não é estética: quem injeta depois embrulha o `fetch` de quem veio
+   * antes. Com a marca primeiro, a gravação usa o `fetch` de verdade e o
+   * observador não a vê — invertido, cada marcação custaria uma leitura de
+   * `/cart.js` a mais.
+   */
+  it('a marca é injetada ANTES do observador de carrinho', () => {
+    const script = scriptDepoisDoConteudo(config({ tabs: ABAS_COM_CARRINHO }));
+
+    expect(script.indexOf(MARCA_DA_ATRIBUICAO)).toBeGreaterThan(-1);
+    expect(script.indexOf(MARCA_DA_ATRIBUICAO)).toBeLessThan(script.indexOf(MARCA_DE_INJECAO));
+  });
+
+  it('loja que não é Shopify não recebe a marca', () => {
+    // Os endpoints de carrinho não existem ali: insistir seria uma requisição
+    // perdida por página na loja do cliente.
+    const script = scriptDepoisDoConteudo(
+      config({
+        store: { name: 'Fora', url: 'https://fora.com.br', domains: [], platform: 'other' },
+      }),
+    );
+
+    expect(script).not.toContain(MARCA_DA_ATRIBUICAO);
+    expect(script).toContain('window.Storefy=');
+    expect(() => {
+      compila(script);
+    }).not.toThrow();
+  });
+
+  it('marcaOCarrinho responde pela plataforma da loja', () => {
+    expect(marcaOCarrinho(config())).toBe(true);
+    expect(
+      marcaOCarrinho(
+        config({
+          store: { name: 'Fora', url: 'https://fora.com.br', domains: [], platform: 'other' },
+        }),
+      ),
+    ).toBe(false);
   });
 
   it('observaCarrinho responde pelo badge, não pelo tipo da aba', () => {

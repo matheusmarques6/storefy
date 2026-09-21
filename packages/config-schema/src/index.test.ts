@@ -253,6 +253,37 @@ describe('AppConfig — compatibilidade retroativa', () => {
     expect(forma.minSupportedBuild.safeParse(undefined).success).toBe(true);
     expect(forma.announcement.safeParse(undefined).success).toBe(true);
   });
+
+  /*
+   * `store.platform` entrou na fase 5 e decide se o app marca o carrinho para
+   * a atribuição de receita. Config gravada antes dele não tem o campo — e o
+   * default TEM que ser `shopify`: com `other`, a atribuição de todas as lojas
+   * já publicadas se desligaria em silêncio até a próxima publicação.
+   */
+  it('config sem store.platform continua válida e nasce como Shopify', () => {
+    const antiga = configMinima() as { store: Record<string, unknown> };
+    delete antiga.store.platform;
+
+    const analise = safeParseAppConfig(antiga);
+    expect(analise.success).toBe(true);
+    if (analise.success) expect(analise.data.store.platform).toBe('shopify');
+  });
+
+  it('e uma loja que não é Shopify continua sendo respeitada', () => {
+    const config = configMinima() as { store: Record<string, unknown> };
+    config.store.platform = 'other';
+
+    const analise = safeParseAppConfig(config);
+    expect(analise.success).toBe(true);
+    if (analise.success) expect(analise.data.store.platform).toBe('other');
+  });
+
+  it('plataforma inventada é recusada', () => {
+    const config = configMinima() as { store: Record<string, unknown> };
+    config.store.platform = 'woocommerce';
+
+    expect(safeParseAppConfig(config).success).toBe(false);
+  });
 });
 
 describe('apertos que o editor do painel depende', () => {

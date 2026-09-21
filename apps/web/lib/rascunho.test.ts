@@ -6,6 +6,7 @@ const LOJA: DadosDaLojaNoBanco = {
   name: 'Oak Vintage',
   primary_url: 'https://oakvintage.com.br',
   shop_domain: 'oak-vintage.myshopify.com',
+  platform: 'shopify' as const,
 };
 
 describe('decidirRascunho', () => {

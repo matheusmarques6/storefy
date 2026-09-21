@@ -56,7 +56,15 @@ describe('configInicial', () => {
       name: 'Oak Vintage',
       url: 'https://oakvintage.com.br',
       domains: ['oakvintage.com.br'],
+      // Sem `platform` no cadastro, a config nasce Shopify: é o produto, e é
+      // o que mantém a atribuição de receita ligada.
+      platform: 'shopify',
     });
+  });
+
+  it('respeita a plataforma do cadastro quando a loja não é Shopify', () => {
+    const config = configInicial({ ...LOJA, platform: 'other' });
+    expect(config.store.platform).toBe('other');
   });
 
   it('nasce com um app que já funciona', () => {

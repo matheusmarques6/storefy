@@ -44,12 +44,28 @@ export const StatusBarStyle = z.enum(['light', 'dark']);
 /** Momento em que o app pede permissão de push. */
 export const PushPromptTiming = z.enum(['onboarding', 'after_first_add_to_cart', 'manual']);
 
+/** Em que plataforma a loja roda. Espelha `stores.platform`. */
+export const StorePlatform = z.enum(['shopify', 'other']);
+
 export const StoreSchema = z.object({
   name: z.string(),
   /** URL pública da loja, ex.: https://loja.com.br */
   url: z.url(),
   /** Domínios que abrem dentro da WebView. O resto abre no navegador externo. */
   domains: z.array(z.string()),
+  /**
+   * O que o app pode assumir sobre a loja.
+   *
+   * Hoje decide uma coisa só, e ela paga a assinatura: em `shopify`, o app
+   * marca o carrinho com `_storefy` para o pedido nascer sabendo que veio
+   * dali. Numa loja `other` esses endpoints não existem, e insistir seria uma
+   * requisição perdida por página.
+   *
+   * `default('shopify')` e não `other`: toda config já publicada é de loja
+   * Shopify — é o produto —, e o outro padrão desligaria a atribuição de todo
+   * mundo até a próxima publicação, sem ninguém perceber.
+   */
+  platform: StorePlatform.default('shopify'),
 });
 
 export const ThemeSchema = z.object({
@@ -166,3 +182,21 @@ export {
   normalizarTokenDePrevia,
   urlDaPrevia,
 } from './previa';
+
+/**
+ * O atributo de carrinho que marca o pedido como vindo do app.
+ *
+ * MORA AQUI PORQUE É CONTRATO ENTRE OS DOIS LADOS: o app escreve com
+ * `/cart/update.js`, a Shopify carrega até o pedido, e o webhook do painel lê
+ * em `note_attributes`. Duas constantes iguais em pacotes diferentes se
+ * desencontram no dia em que alguém renomeia uma — e o sintoma seria todo
+ * pedido do app aparecendo como pedido do site, sem erro em lugar nenhum.
+ *
+ * O underscore na frente não é estilo: a Shopify ESCONDE do cliente final os
+ * atributos que começam com `_`. Sem ele, a marca apareceria no e-mail de
+ * confirmação e na página de agradecimento da loja.
+ */
+export const ATRIBUTO_DO_CARRINHO = '_storefy';
+
+/** O valor gravado no atributo. Só `'1'` conta como pedido do app. */
+export const VALOR_DO_ATRIBUTO = '1';
