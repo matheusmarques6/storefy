@@ -846,6 +846,33 @@ a pedido de alguém.
 - `analytics_daily` + tela C11 + cards do dashboard C05.
 - Automações extras: pedido enviado e de volta ao estoque.
 
+**Pronto quando:** o lojista conecta a loja em dois cliques, e o painel mostra quanto o app vendeu — separado do site — com o número batendo com o extrato da Shopify.
+
+**Progresso (21/09/2026)**
+
+| Item | Situação |
+|---|---|
+| OAuth da Shopify (`/api/shopify/install` e `/callback`) | ⚠️ as quatro conferências do retorno (assinatura, domínio, `state` em cookie e loja de origem) escritas e testadas; nunca rodou contra a Shopify de verdade, porque falta o app no Partner Dashboard |
+| Tela C14 — Integrações, com conectar, reconectar e desconectar | ✅ conferida no navegador em 1280 e 390 px nos seis estados, com o POST e a validação do domínio |
+| Webhooks, incluindo os três de privacidade da Shopify | ⚠️ uma rota para todos os tópicos, com assinatura base64 sobre o corpo cru; tópico desconhecido responde 200 de propósito, porque uma cadeia de 4xx faz a Shopify DESATIVAR o webhook da loja |
+| Atribuição de pedido pelo atributo de carrinho `_storefy` | ⚠️ `orders/create` lê a marca e grava em `shop_orders` sem duplicar na reentrega; falta o bridge INJETAR o atributo com `/cart/update.js` |
+| `shop_orders` e `analytics_daily` com RLS | ✅ leitura só para membros da organização; quem escreve é o webhook e o job, com a service role |
+| Desconectar para de receber pedido | ✅ apaga os webhooks na Shopify com o token que ainda existe, e só então apaga o token; `app_da_loja_shopify` passa a não achar a loja |
+| `shop/redact` e `app/uninstalled` | ✅ tratados ANTES de procurar o app: precisam funcionar para quem já desinstalou e não está mais no nosso banco |
+| Segredo não se escreve pelo painel | ✅ `insert`/`update` das colunas `_enc` revogados de `authenticated` e `anon`, com asserção que vale para o schema inteiro |
+| Injeção do `_storefy=1` no carrinho pelo bridge | ⬜ próxima etapa desta fase |
+| Job de agregação do `analytics_daily` | ⬜ |
+| Tela C11 e cards de receita no C05 | ⬜ |
+| Seletor de produto/coleção no composer de push | ⬜ |
+| Automações de pedido enviado e de volta ao estoque | ⬜ os webhooks `fulfillments/create` e `products/update` já são aceitos e ignorados de propósito |
+| Theme App Extension (banner do app + snippet do bridge) | ⬜ |
+
+> **O que trava o ponta a ponta:** `SHOPIFY_API_KEY` e `SHOPIFY_API_SECRET` de um app criado
+> uma única vez no Partner Dashboard, com a URL de retorno apontando para
+> `https://app.storefy.com.br/api/shopify/callback`. Sem eles a tela C14 diz "em preparação"
+> em vez de mostrar um botão que leva a erro, e o webhook responde 503 — e não 200 —, para a
+> Shopify reentregar quando o ambiente existir, em vez de dar o evento por entregue.
+
 ### Fase 6 — Painel Admin completo (4–6 dias)
 - Telas A02–A13, impersonação com auditoria, presets por tema (A10), feature flags e reexecução de builds.
 - Reaproveitar do admin Convertfy os padrões de tabela, filtros, página de detalhe com abas e notas internas.

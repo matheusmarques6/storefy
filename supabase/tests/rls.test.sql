@@ -1041,6 +1041,64 @@ select tests.ok('segredo',
   ),
   'e toda coluna que NÃO é segredo continua legível: nenhuma nasce invisível');
 
+-- E o par que faltava: segredo também NÃO SE ESCREVE pelo painel.
+--
+-- Ler é o risco óbvio, escrever é o silencioso. Com `update` aberto, o dono da
+-- organização sobrescreve o token da Shopify, o segredo do app ou as chaves
+-- Apple/Google direto pelo PostgREST — sem passar por linha nenhuma do nosso
+-- código, e portanto sem auditoria e sem log. Quem grava essas colunas é a
+-- service role, sempre.
+select tests.ok('segredo',
+  not exists (
+    select 1
+      from pg_attribute a
+      join pg_class c on c.oid = a.attrelid
+      join pg_namespace n on n.oid = c.relnamespace
+     where n.nspname = 'public' and c.relkind = 'r'
+       and a.attnum > 0 and not a.attisdropped
+       and a.attname like '%\_enc'
+       and (has_column_privilege('authenticated', c.oid, a.attnum, 'insert')
+         or has_column_privilege('authenticated', c.oid, a.attnum, 'update')
+         or has_column_privilege('anon', c.oid, a.attnum, 'insert')
+         or has_column_privilege('anon', c.oid, a.attnum, 'update'))
+  ),
+  'NENHUMA coluna _enc do schema é gravável por quem tem sessão');
+
+-- O espelho da asserção de leitura: uma coluna nova nas três tabelas de grant
+-- coluna a coluna nasce sem INSERT e sem UPDATE, e o sintoma é o painel parar
+-- de salvar aquele campo sem erro nenhum na tela.
+select tests.ok('segredo',
+  not exists (
+    select 1
+      from pg_attribute a
+      join pg_class c on c.oid = a.attrelid
+      join pg_namespace n on n.oid = c.relnamespace
+     where n.nspname = 'public' and c.relkind = 'r'
+       and c.relname in ('stores', 'apps', 'developer_accounts')
+       and a.attnum > 0 and not a.attisdropped
+       and a.attname not like '%\_enc'
+       and not (has_column_privilege('authenticated', c.oid, a.attnum, 'insert')
+            and has_column_privilege('authenticated', c.oid, a.attnum, 'update'))
+  ),
+  'e toda coluna que NÃO é segredo continua gravável pelo painel');
+
+select tests.login('a-owner@teste.local');
+set role authenticated;
+
+select tests.ok('segredo',
+  tests.erro($q$update public.stores set shopify_access_token_enc = 'meu'$q$),
+  'owner NÃO sobrescreve o token da Shopify');
+
+select tests.ok('segredo',
+  tests.erro($q$update public.apps set device_secret_enc = 'meu'$q$),
+  'owner NÃO sobrescreve o segredo do app');
+
+select tests.ok('segredo',
+  tests.erro($q$update public.developer_accounts set apns_key_enc = 'minha'$q$),
+  'owner NÃO sobrescreve a chave de push da Apple');
+
+reset role;
+
 select tests.login('a-owner@teste.local');
 set role authenticated;
 
@@ -1498,7 +1556,6 @@ reset role;
 update public.stores set timezone = (
   select name from pg_timezone_names
    where extract(hour from (now() + interval '10 minutes') at time zone name) not between 8 and 21
-     and name like 'America/%'
    limit 1
 ) where id = (select loja_a from tests.lojas);
 
@@ -1631,7 +1688,6 @@ select tests.ok('carrinho',
 update public.stores set timezone = (
   select name from pg_timezone_names
    where extract(hour from (now() + interval '60 minutes') at time zone name) between 9 and 20
-     and name like 'America/%'
    limit 1
 ) where id = (select loja_a from tests.lojas);
 
@@ -1981,7 +2037,6 @@ update public.push_automations set enabled = true, delay_minutes = 60
 update public.stores set timezone = (
   select name from pg_timezone_names
    where extract(hour from now() at time zone name) between 9 and 20
-     and name like 'America/%'
    limit 1
 ) where id = (select loja_a from tests.lojas);
 
@@ -2075,7 +2130,6 @@ update public.push_automations set enabled = true
 update public.stores set timezone = (
   select name from pg_timezone_names
    where extract(hour from now() at time zone name) not between 8 and 21
-     and name like 'America/%'
    limit 1
 ) where id = (select loja_a from tests.lojas);
 
@@ -2566,6 +2620,194 @@ set role authenticated;
 select tests.ok('isolamento',
   tests.contar('select count(*) from public.builds where artifact_url is not null') = 0,
   'e o de outra organização não: o binário de um cliente não vaza para outro');
+
+reset role;
+select tests.logout();
+
+-- --------------------------------- pedidos e analytics (fase 5)
+
+set role service_role;
+
+/*
+ * A loja entra CONECTADA: `app_da_loja_shopify` só devolve app enquanto o
+ * token existe, e sem gravá-lo aqui as asserções de baixo passariam a contar
+ * zero por um motivo que não é o que elas testam.
+ */
+update public.stores
+   set shop_domain = 'loja-a.myshopify.com',
+       shopify_access_token_enc = 'token-cifrado-de-mentira',
+       shopify_scopes = array['read_orders']
+ where id = (select loja_a from tests.lojas);
+
+select tests.ok('shopify',
+  tests.contar($q$select count(*) from public.app_da_loja_shopify('loja-a.myshopify.com')$q$) = 1,
+  'o webhook acha o app pelo domínio .myshopify.com');
+
+select tests.ok('shopify',
+  tests.contar($q$select count(*) from public.app_da_loja_shopify('LOJA-A.MyShopify.com  ')$q$) = 1,
+  'e não se importa com maiúscula nem espaço, que é como a Shopify às vezes manda');
+
+select tests.ok('shopify',
+  tests.contar($q$select count(*) from public.app_da_loja_shopify('outra.myshopify.com')$q$) = 0,
+  'loja que não é nossa não acha app nenhum');
+
+/*
+ * A Shopify REENTREGA webhook: ela desiste em 5 segundos e tenta de novo, e o
+ * mesmo pedido chega duas, três vezes. Sem a trava, a receita do app apareceria
+ * DOBRADA no painel — e o lojista confiaria no número.
+ */
+select tests.ok('shopify',
+  (select public.registrar_pedido(
+     (select app_a from tests.lojas), '12345', 'app', 14990, now(), '#1001', 'BRL', null)),
+  'o primeiro pedido é gravado');
+
+select tests.ok('shopify',
+  not (select public.registrar_pedido(
+     (select app_a from tests.lojas), '12345', 'app', 14990, now(), '#1001', 'BRL', null)),
+  'e a reentrega do mesmo pedido não duplica a receita');
+
+select tests.ok('shopify',
+  tests.contar($q$select count(*) from public.shop_orders
+                where shopify_order_id = '12345'$q$) = 1,
+  'continua uma linha só');
+
+/*
+ * O aparelho é descoberto pelo token do carrinho que o app já reportou. É o
+ * que liga o pedido ao aparelho sem o app precisar mandar nada na compra — ele
+ * nem está aberto quando o webhook chega.
+ */
+insert into public.cart_events (app_id, device_id, cart_token, event, item_count)
+select app_a, (select id from public.devices where app_id = (select app_a from tests.lojas) limit 1),
+       'token-do-carrinho', 'add', 2
+  from tests.lojas
+ where exists (select 1 from public.devices where app_id = (select app_a from tests.lojas));
+
+select tests.ok('shopify',
+  (select public.registrar_pedido(
+     (select app_a from tests.lojas), '99999', 'app', 5000, now(), '#1002', 'BRL',
+     'token-do-carrinho')),
+  'pedido com token de carrinho é gravado');
+
+select tests.ok('shopify',
+  (select device_id is not null from public.shop_orders where shopify_order_id = '99999')
+  or not exists (select 1 from public.devices where app_id = (select app_a from tests.lojas)),
+  'e ele fica ligado ao aparelho que montou aquele carrinho');
+
+/*
+ * `shop/redact` chega 48 horas depois da desinstalação e é OBRIGATÓRIO: é o que
+ * a lei de privacidade exige e o que a revisão do app da Shopify confere.
+ */
+select tests.ok('shopify',
+  (select public.desconectar_shopify('loja-a.myshopify.com')),
+  'app/uninstalled apaga o token da loja');
+
+select tests.ok('segredo',
+  (select shopify_access_token_enc is null and shopify_scopes is null
+     from public.stores where id = (select loja_a from tests.lojas)),
+  'e não sobra token morto guardado');
+
+/*
+ * E a busca do webhook para junto. O `shop_domain` continua gravado de
+ * propósito — ele também é o domínio que o app libera na WebView —, então sem
+ * esta condição um webhook atrasado viraria pedido atribuído numa loja que
+ * desligou a integração, e a receita do app subiria sozinha.
+ */
+select tests.ok('shopify',
+  tests.contar($q$select count(*) from public.app_da_loja_shopify('loja-a.myshopify.com')$q$) = 0,
+  'e loja desconectada não acha mais app: webhook atrasado não vira pedido');
+
+select tests.ok('shopify',
+  (select public.apagar_dados_da_shopify('loja-a.myshopify.com')) >= 2,
+  'shop/redact apaga os pedidos e os eventos de carrinho da loja');
+
+select tests.ok('shopify',
+  tests.contar($q$select count(*) from public.shop_orders
+                where app_id = (select app_a from tests.lojas)$q$) = 0,
+  'e não sobra pedido nenhum');
+
+/*
+ * Os eventos de carrinho também são dado da loja e também somem. Conferir só
+ * os pedidos deixaria passar um `shop/redact` pela metade — que é exatamente o
+ * que a revisão da Shopify procura.
+ */
+select tests.ok('shopify',
+  tests.contar($q$select count(*) from public.cart_events
+                where app_id = (select app_a from tests.lojas)$q$) = 0,
+  'nem evento de carrinho');
+
+/*
+ * Loja que nunca existiu aqui não pode virar erro: a Shopify manda
+ * `shop/redact` para lojas que desinstalaram antes de a gente as conhecer, e
+ * responder erro nisso é motivo de recusa na revisão.
+ */
+select tests.ok('shopify',
+  (select public.apagar_dados_da_shopify('nunca-existiu.myshopify.com')) = 0,
+  'loja desconhecida no shop/redact devolve zero, e não erro');
+
+reset role;
+
+select tests.login('a-owner@teste.local');
+set role authenticated;
+
+set role service_role;
+insert into public.shop_orders (app_id, shopify_order_id, source, total_cents, ordered_at)
+select app_a, 'do-lojista', 'app', 10000, now() from tests.lojas;
+insert into public.analytics_daily (app_id, day, orders_app, revenue_app_cents)
+select app_a, current_date, 1, 10000 from tests.lojas;
+reset role;
+
+select tests.login('a-owner@teste.local');
+set role authenticated;
+
+select tests.ok('shopify',
+  tests.contar('select count(*) from public.shop_orders') = 1,
+  'o lojista vê os pedidos do próprio app');
+
+select tests.ok('shopify',
+  tests.contar('select count(*) from public.analytics_daily') = 1,
+  'e os números diários dele');
+
+/*
+ * Os pedidos e os números são escritos por job e por webhook, com a service
+ * role. Deixar o navegador inserir permitiria ao lojista inventar a própria
+ * receita — o número que ele usa para decidir se renova a assinatura.
+ */
+select tests.ok('shopify',
+  tests.bloqueado($q$insert into public.shop_orders (app_id, shopify_order_id, source, total_cents, ordered_at)
+    values ((select app_a from tests.lojas), 'inventado', 'app', 999999, now())$q$),
+  'mas não inventa pedido nenhum pelo painel');
+
+select tests.ok('shopify',
+  tests.bloqueado($q$update public.analytics_daily set revenue_app_cents = 999999$q$),
+  'nem mexe nos próprios números');
+
+select tests.ok('segredo',
+  tests.erro('select * from public.app_da_loja_shopify($$x.myshopify.com$$)'),
+  'nem usa as funções do webhook');
+
+/*
+ * `registrar_pedido` escreve a receita atribuída ao app — o número que o
+ * lojista usa para decidir se renova a assinatura. Ele não pode escrevê-lo.
+ */
+select tests.ok('segredo',
+  tests.erro($q$select public.registrar_pedido(
+    (select app_a from tests.lojas), 'inventado', 'app', 999999, now())$q$),
+  'nem grava pedido pela função do webhook');
+
+select tests.ok('segredo',
+  tests.erro($q$select public.apagar_dados_da_shopify('x.myshopify.com')$q$),
+  'nem apaga os dados de uma loja qualquer');
+
+reset role;
+select tests.logout();
+
+select tests.login('b-owner@teste.local');
+set role authenticated;
+
+select tests.ok('isolamento',
+  tests.contar('select count(*) from public.shop_orders') = 0
+  and tests.contar('select count(*) from public.analytics_daily') = 0,
+  'a receita de um cliente não aparece para outro');
 
 reset role;
 select tests.logout();

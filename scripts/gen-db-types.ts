@@ -252,6 +252,10 @@ async function main(): Promise<void> {
     'lojas_para_ota',
     'dados_da_ota',
     'contar_ota',
+    'registrar_pedido',
+    'app_da_loja_shopify',
+    'desconectar_shopify',
+    'apagar_dados_da_shopify',
     // Usada pelo envio de teste do painel, pela service role.
     'consumir_limite',
   ];

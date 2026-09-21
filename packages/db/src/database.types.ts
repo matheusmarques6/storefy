@@ -11,6 +11,58 @@ export type Json = string | number | boolean | null | { [chave: string]: Json | 
 export type Database = {
   public: {
     Tables: {
+      analytics_daily: {
+        Row: {
+          app_id: string;
+          day: string;
+          installs: number;
+          active_users: number;
+          sessions: number;
+          push_sent: number;
+          push_opened: number;
+          orders_app: number;
+          revenue_app_cents: number;
+          orders_site: number;
+          revenue_site_cents: number;
+          updated_at: string;
+        };
+        Insert: {
+          app_id: string;
+          day: string;
+          installs?: number;
+          active_users?: number;
+          sessions?: number;
+          push_sent?: number;
+          push_opened?: number;
+          orders_app?: number;
+          revenue_app_cents?: number;
+          orders_site?: number;
+          revenue_site_cents?: number;
+          updated_at?: string;
+        };
+        Update: {
+          app_id?: string;
+          day?: string;
+          installs?: number;
+          active_users?: number;
+          sessions?: number;
+          push_sent?: number;
+          push_opened?: number;
+          orders_app?: number;
+          revenue_app_cents?: number;
+          orders_site?: number;
+          revenue_site_cents?: number;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "analytics_daily_app_id_fkey";
+            columns: ["app_id"];
+            referencedRelation: "apps";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       app_configs: {
         Row: {
           id: string;
@@ -730,6 +782,61 @@ export type Database = {
         };
         Relationships: [];
       };
+      shop_orders: {
+        Row: {
+          id: string;
+          app_id: string;
+          shopify_order_id: string;
+          order_number: string | null;
+          source: Database["public"]["Enums"]["origem_do_pedido"];
+          total_cents: number;
+          currency: string;
+          device_id: string | null;
+          cart_token: string | null;
+          ordered_at: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          app_id: string;
+          shopify_order_id: string;
+          order_number?: string | null;
+          source: Database["public"]["Enums"]["origem_do_pedido"];
+          total_cents?: number;
+          currency?: string;
+          device_id?: string | null;
+          cart_token?: string | null;
+          ordered_at: string;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          app_id?: string;
+          shopify_order_id?: string;
+          order_number?: string | null;
+          source?: Database["public"]["Enums"]["origem_do_pedido"];
+          total_cents?: number;
+          currency?: string;
+          device_id?: string | null;
+          cart_token?: string | null;
+          ordered_at?: string;
+          created_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "shop_orders_app_id_fkey";
+            columns: ["app_id"];
+            referencedRelation: "apps";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "shop_orders_device_id_fkey";
+            columns: ["device_id"];
+            referencedRelation: "devices";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       stores: {
         Row: {
           id: string;
@@ -800,6 +907,14 @@ export type Database = {
         Args: { p_org_id: string };
         Returns: { user_id: string | null; email: string | null; role: Database["public"]["Enums"]["membership_role"] | null; created_at: string | null; ultimo_acesso: string | null }[];
       };
+      apagar_dados_da_shopify: {
+        Args: { p_shop_domain: string };
+        Returns: number;
+      };
+      app_da_loja_shopify: {
+        Args: { p_shop_domain: string };
+        Returns: { app_id: string | null; store_id: string | null; timezone: string | null }[];
+      };
       builds_em_revisao: {
         Args: { p_limite?: number };
         Returns: { id: string | null; bundle_id_ios: string | null; asc_key_enc: string | null; asc_key_id: string | null; asc_issuer_id: string | null }[];
@@ -831,6 +946,10 @@ export type Database = {
       dados_da_ota: {
         Args: { p_store_id: string };
         Returns: { app_id: string | null; store_id: string | null; nome_do_app: string | null; bundle_id_ios: string | null; package_android: string | null; expo_project_id: string | null; onesignal_app_id: string | null; device_secret_enc: string | null }[];
+      };
+      desconectar_shopify: {
+        Args: { p_shop_domain: string };
+        Returns: boolean;
       };
       devolver_aviso: {
         Args: { p_id: string };
@@ -880,6 +999,10 @@ export type Database = {
         Args: { p_app_id: string; p_subscription: string; p_event: Database["public"]["Enums"]["cart_event_type"]; p_item_count: number; p_cart_token?: string; p_value_cents?: number; p_currency?: string };
         Returns: { event_id: string | null; limitado: boolean | null; agendou: boolean | null; cancelou: number | null }[];
       };
+      registrar_pedido: {
+        Args: { p_app_id: string; p_shopify_order_id: string; p_source: Database["public"]["Enums"]["origem_do_pedido"]; p_total_cents: number; p_ordered_at: string; p_order_number?: string; p_currency?: string; p_cart_token?: string };
+        Returns: boolean;
+      };
       reservar_aviso: {
         Args: { p_id: string; p_status: Database["public"]["Enums"]["build_status"] };
         Returns: boolean;
@@ -909,6 +1032,7 @@ export type Database = {
       device_platform: "ios" | "android";
       membership_role: "owner" | "admin" | "member";
       org_status: "trialing" | "active" | "past_due" | "canceled";
+      origem_do_pedido: "app" | "site";
       ota_status: "queued" | "running" | "finished" | "errored";
       platform_admin_role: "superadmin" | "support";
       push_automation_type: "welcome" | "abandoned_cart" | "back_in_stock" | "order_shipped" | "inactive_7d" | "custom_webhook";
