@@ -27,6 +27,20 @@ export default [
     settings: { react: { version: '19.3' } },
   },
   {
+    /*
+     * A miniatura do seletor de catálogo vem do CDN da loja DO CLIENTE, e cada
+     * loja tem o seu. Otimizá-la com `next/image` exigiria liberar um domínio
+     * curinga no `next.config`, o que é bem pior do que não otimizar uma
+     * imagem de 40 pixels.
+     *
+     * A regra é desligada AQUI, e não por comentário no arquivo: o hook de
+     * pre-commit roda o ESLint da raiz, que não conhece as regras do Next — e
+     * um `eslint-disable` de regra desconhecida vira erro que trava o commit.
+     */
+    files: ['app/**/push/catalogo/seletor.tsx'],
+    rules: { '@next/next/no-img-element': 'off' },
+  },
+  {
     ignores: ['.next/**', 'next-env.d.ts', 'playwright-report/**', 'test-results/**'],
   },
 ];

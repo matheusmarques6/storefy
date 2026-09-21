@@ -21,6 +21,7 @@ import { PreviaDaNotificacao } from './previa-da-notificacao';
 import { EnvioDeTeste } from './envio-de-teste';
 import type { AparelhoParaTeste } from '@/lib/push-servidor';
 import type { EstadoDoPush } from './acoes';
+import { SeletorDoCatalogo } from './catalogo/seletor';
 
 export interface ValoresIniciais {
   title: string;
@@ -169,6 +170,17 @@ export function FormularioDaCampanha({
               </>
             )}
           </p>
+
+          {/*
+            O campo acima continua livre: quem já sabe o caminho não deve ser
+            obrigado a procurar na lista, e há link legítimo que não é produto
+            nem coleção — uma landing de campanha, por exemplo.
+          */}
+          <SeletorDoCatalogo
+            aoEscolher={(caminho) => {
+              trocar('deepLink', caminho);
+            }}
+          />
         </div>
 
         <fieldset className="space-y-3">

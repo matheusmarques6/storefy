@@ -841,7 +841,7 @@ a pedido de alguém.
 ### Fase 5 — Shopify app + analytics (5–7 dias)
 **Tarefas**
 - OAuth Shopify, webhooks (incluindo os de GDPR), Theme App Extension (banner do app + snippet do bridge).
-- Seletor de produto/coleção no composer de push (Storefront API).
+- Seletor de produto/coleção no composer de push (pela Admin API, e não pela Storefront: o token do Admin já está guardado desde o OAuth e o escopo `read_products` já cobre a busca — a Storefront exigiria um token a mais, outra tela de configuração e outra coisa para o lojista errar).
 - Atribuição de pedidos: `ORDER_COMPLETED` do bridge e webhook `orders/create` com a marca `source=app` (via atributo de carrinho `_storefy=1` injetado pelo bridge com `/cart/update.js`).
 - `analytics_daily` + tela C11 + cards do dashboard C05.
 - Automações extras: pedido enviado e de volta ao estoque.
@@ -867,7 +867,7 @@ a pedido de alguém.
 | Tela C11 — Analytics | ✅ receita app x site, uso do app e notificações, com período de 7, 30 ou 90 dias na URL. Conferida no navegador em 1280 e 390 px |
 | Cards de receita no C05 | ✅ resumo de 30 dias da loja ativa. Some quando não há número: um zero grande na primeira tela diria ao lojista que o app fracassou antes de ele publicar |
 | Ativos do período (MAU) | ✅ distinto de `device_days`, por `ativos_no_periodo`. Somar `active_users` daria "aparelho-dias" — quem abre todo dia contaria trinta vezes |
-| Seletor de produto/coleção no composer de push | ⬜ |
+| Seletor de produto/coleção no composer de push | ⚠️ busca produto e coleção na loja e preenche o deep link; conferido no navegador em 1280 e 390 px com a Shopify falsa. Nunca rodou contra uma loja de verdade |
 | Automação "pedido enviado" | ✅ `fulfillments/create` avisa o APARELHO que fez o pedido, achado pelo token do carrinho. Um aviso por pedido, mesmo com o pedido saindo em três caixas, e respeitando o silêncio noturno |
 | Automação "de volta ao estoque" | ⚠️ ponta a ponta: botão no tema › bridge › endpoint assinado › `products/update` › push com link do produto. Nunca rodou contra uma loja de verdade |
 | O botão "me avise" só dentro do app | ✅ a inscrição é por aparelho; fora do app não há para onde mandar a notificação, e o botão não aparece |
