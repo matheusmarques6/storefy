@@ -138,15 +138,48 @@ export async function aplicarWebhook(
   if (app == null) return { feito: 'loja_desconhecida' };
 
   if (topico === 'orders/create') return await gravarPedido(supabase, app, corpo);
+  if (topico === 'fulfillments/create') return await avisarEnvio(supabase, app, corpo);
 
   /*
-   * `fulfillments/create` e `products/update` alimentam as automações de
-   * "pedido enviado" e "de volta ao estoque", que entram na etapa seguinte
-   * desta fase. Até lá são aceitos e ignorados — de propósito, e não por
-   * esquecimento: recusá-los faria a Shopify desativar o webhook da loja, e
-   * registrá-los de novo depois exigiria reinstalar o app.
+   * `products/update` alimenta o "de volta ao estoque", que precisa de alguém
+   * inscrito para avisar — e a inscrição vem do botão da Theme App Extension,
+   * que é a etapa seguinte desta fase. Até lá é aceito e ignorado, de
+   * propósito: recusá-lo faria a Shopify DESATIVAR o webhook da loja, e
+   * registrá-lo de novo exigiria reinstalar o app.
    */
   return { feito: `aceito:${topico}` };
+}
+
+/**
+ * `fulfillments/create` — o pedido saiu para entrega.
+ *
+ * O webhook chega por REMESSA, e não por pedido: três itens em três caixas
+ * viram três webhooks. Quem impede três notificações iguais é a trava de
+ * `agendar_pedido_enviado`, no banco, onde a corrida entre duas entregas
+ * simultâneas também é resolvida.
+ */
+async function avisarEnvio(
+  supabase: Client,
+  appId: string,
+  corpo: string,
+): Promise<ResultadoDoWebhook> {
+  let remessa: unknown;
+  try {
+    remessa = JSON.parse(corpo);
+  } catch {
+    return { feito: 'corpo_invalido' };
+  }
+
+  const pedido = texto(remessa, 'order_id');
+  if (pedido === null) return { feito: 'sem_pedido' };
+
+  const { data, error } = await supabase.rpc('agendar_pedido_enviado', {
+    p_app_id: appId,
+    p_shopify_order_id: pedido,
+  });
+  if (error != null) throw new Error(error.message);
+
+  return { feito: data ? 'envio_avisado' : 'envio_sem_aviso' };
 }
 
 async function gravarPedido(

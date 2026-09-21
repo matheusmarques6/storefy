@@ -255,6 +255,7 @@ async function main(): Promise<void> {
     'registrar_pedido',
     'consolidar_analytics',
     'ativos_no_periodo',
+    'agendar_pedido_enviado',
     'contar_abertura',
     'dia_da_loja',
     'app_da_loja_shopify',

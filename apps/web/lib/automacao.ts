@@ -1,9 +1,9 @@
 /**
  * As automações de push (tela C09 do plano).
  *
- * Duas no MVP, e são as duas que pagam o produto: boas-vindas e carrinho
- * abandonado. O resto ("de volta ao estoque", "pedido enviado", "inativo há 7
- * dias") está no plano para depois, e por isso NÃO aparece na tela — um card
+ * Só entra aqui a automação que funciona DE PONTA A PONTA: gatilho de verdade,
+ * destinatário de verdade, envio de verdade. "De volta ao estoque" e "inativo
+ * há 7 dias" ainda não têm gatilho, e por isso NÃO aparecem na tela — um card
  * "em breve" é exatamente o que a regra 3 do CLAUDE.md proíbe.
  *
  * O texto sugerido de cada uma é ponto de partida editável, e não dado
@@ -12,8 +12,8 @@
 import { z } from 'zod';
 import { MAXIMO_DO_CORPO, MAXIMO_DO_TITULO } from '@/lib/campanha';
 
-/** Os tipos que a Fase 3 entrega funcionando de ponta a ponta. */
-export const TIPOS_DE_AUTOMACAO = ['welcome', 'abandoned_cart'] as const;
+/** Os tipos que funcionam de ponta a ponta hoje. */
+export const TIPOS_DE_AUTOMACAO = ['welcome', 'abandoned_cart', 'order_shipped'] as const;
 export type TipoDeAutomacao = (typeof TIPOS_DE_AUTOMACAO)[number];
 
 export function ehTipoDeAutomacao(valor: unknown): valor is TipoDeAutomacao {
@@ -54,6 +54,18 @@ export const DESCRICAO_DO_TIPO: Record<TipoDeAutomacao, DescricaoDoTipo> = {
       title: 'Esqueceu algo?',
       body: 'Seu carrinho continua aqui. Finalize antes que acabe.',
       delayMinutes: 60,
+    },
+  },
+  order_shipped: {
+    nome: 'Pedido enviado',
+    gatilho: 'Quando você marca o pedido como enviado na Shopify.',
+    porque:
+      'É a notificação que o cliente QUER receber, e a que mais faz ele abrir o app de novo depois da compra. Só vai para quem comprou pelo app: quem comprou pelo site não tem para onde receber.',
+    rotuloDoAtraso: 'Avisar depois de',
+    sugestao: {
+      title: 'Seu pedido saiu para entrega',
+      body: 'Acompanhe a entrega por aqui. Qualquer coisa, é só chamar a gente.',
+      delayMinutes: 0,
     },
   },
 };

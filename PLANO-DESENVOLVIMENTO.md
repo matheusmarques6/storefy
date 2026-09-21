@@ -868,7 +868,8 @@ a pedido de alguém.
 | Cards de receita no C05 | ✅ resumo de 30 dias da loja ativa. Some quando não há número: um zero grande na primeira tela diria ao lojista que o app fracassou antes de ele publicar |
 | Ativos do período (MAU) | ✅ distinto de `device_days`, por `ativos_no_periodo`. Somar `active_users` daria "aparelho-dias" — quem abre todo dia contaria trinta vezes |
 | Seletor de produto/coleção no composer de push | ⬜ |
-| Automações de pedido enviado e de volta ao estoque | ⬜ os webhooks `fulfillments/create` e `products/update` já são aceitos e ignorados de propósito |
+| Automação "pedido enviado" | ✅ `fulfillments/create` avisa o APARELHO que fez o pedido, achado pelo token do carrinho. Um aviso por pedido, mesmo com o pedido saindo em três caixas, e respeitando o silêncio noturno |
+| Automação "de volta ao estoque" | ⬜ depende de alguém inscrito no aviso, e o botão que inscreve vem com a Theme App Extension. `products/update` já é aceito e ignorado de propósito |
 | Theme App Extension (banner do app + snippet do bridge) | ⬜ |
 
 > **O que trava o ponta a ponta:** `SHOPIFY_API_KEY` e `SHOPIFY_API_SECRET` de um app criado

@@ -3305,10 +3305,143 @@ select tests.ok('numeros',
       and day = ((now() at time zone 'America/Sao_Paulo')::date - 200)$q$) = 1,
   'e ela para em 90 dias: o dia de 200 atrás não é varrido');
 
+/*
+ * ----------------------------------------------- aviso de pedido enviado
+ *
+ * O destinatário é o APARELHO QUE FEZ O PEDIDO. Sem esse elo, "seu pedido saiu
+ * para entrega" iria para a loja inteira — spam, e motivo de desinstalação.
+ */
+insert into public.push_automations (app_id, type, enabled, delay_minutes, title, body)
+select app_a, 'order_shipped', true, 0, 'Seu pedido saiu', 'Acompanhe por aqui.'
+from tests.lojas
+on conflict (app_id, type) do update set enabled = true;
+
+-- Um pedido feito PELO APP, ligado ao aparelho pelo token do carrinho.
+insert into public.cart_events (app_id, device_id, cart_token, item_count, event)
+select app_a,
+       (select id from public.devices
+         where app_id = (select app_a from tests.lojas)
+           and onesignal_subscription_id = 'sub-dos-numeros'),
+       'token-do-pedido-enviado', 2, 'add'
+from tests.lojas;
+
+select public.registrar_pedido(
+  (select app_a from tests.lojas), 'ped-com-aparelho', 'app', 9900, now(),
+  p_cart_token => 'token-do-pedido-enviado'
+);
+
+select tests.ok('automacao',
+  (select public.agendar_pedido_enviado((select app_a from tests.lojas), 'ped-com-aparelho')),
+  'a remessa agenda o aviso para o aparelho que fez o pedido');
+
+/*
+ * A Shopify manda `fulfillments/create` uma vez por REMESSA: um pedido em três
+ * caixas gera três webhooks. Sem a trava, o cliente receberia três avisos
+ * iguais do mesmo pedido.
+ */
+select tests.ok('automacao',
+  not (select public.agendar_pedido_enviado((select app_a from tests.lojas), 'ped-com-aparelho')),
+  'e a segunda remessa do mesmo pedido não agenda de novo');
+
+select tests.ok('automacao',
+  tests.contar($q$select count(*) from public.automation_runs r
+    join public.push_automations a on a.id = r.automation_id
+   where a.type = 'order_shipped' and r.trigger_ref = 'ped-com-aparelho'$q$) = 1,
+  'um aviso, e só um');
+
+-- Pedido do SITE não tem aparelho: não há para onde mandar.
+select public.registrar_pedido(
+  (select app_a from tests.lojas), 'ped-do-site', 'site', 5000, now()
+);
+
+select tests.ok('automacao',
+  not (select public.agendar_pedido_enviado((select app_a from tests.lojas), 'ped-do-site')),
+  'pedido sem aparelho não gera aviso nenhum');
+
+select tests.ok('automacao',
+  not (select public.agendar_pedido_enviado((select app_a from tests.lojas), 'nunca-existiu')),
+  'nem um pedido que não conhecemos');
+
+/*
+ * O MESMO id de pedido na outra organização, com aparelho. Os ids da Shopify
+ * são por loja, então dois clientes têm pedidos com o mesmo número o tempo
+ * todo — e sem o filtro por app, a remessa de um avisaria o cliente do outro.
+ */
+insert into public.cart_events (app_id, device_id, cart_token, item_count, event)
+select app_b,
+       (select id from public.devices
+         where app_id = (select app_b from tests.lojas)
+           and onesignal_subscription_id = 'sub-da-outra-org'),
+       'token-da-outra-org', 1, 'add'
+from tests.lojas;
+
+select public.registrar_pedido(
+  (select app_b from tests.lojas), 'ped-repetido', 'app', 1000, now(),
+  p_cart_token => 'token-da-outra-org'
+);
+
+select tests.ok('isolamento',
+  not (select public.agendar_pedido_enviado((select app_a from tests.lojas), 'ped-repetido')),
+  'o pedido com o mesmo número na outra organização não vira aviso aqui');
+
+/*
+ * Um pedido NOVO, com aparelho e sem aviso ainda: é o único jeito de provar
+ * que foi a automação desligada que barrou, e não a falta de aparelho.
+ */
+select public.registrar_pedido(
+  (select app_a from tests.lojas), 'ped-com-a-automacao-desligada', 'app', 7700, now(),
+  p_cart_token => 'token-do-pedido-enviado'
+);
+
+update public.push_automations set enabled = false
+ where app_id = (select app_a from tests.lojas) and type = 'order_shipped';
+
+select tests.ok('automacao',
+  not (select public.agendar_pedido_enviado(
+    (select app_a from tests.lojas), 'ped-com-a-automacao-desligada')),
+  'automação desligada não agenda nada');
+
+update public.push_automations set enabled = true
+ where app_id = (select app_a from tests.lojas) and type = 'order_shipped';
+
+select tests.ok('automacao',
+  (select public.agendar_pedido_enviado(
+    (select app_a from tests.lojas), 'ped-com-a-automacao-desligada')),
+  'e ligada de novo, o mesmo pedido agenda: era a automação que barrava');
+
+/*
+ * O silêncio noturno vale aqui também. O atraso é calculado para cair às 3h
+ * da manhã na loja — e não com um número fixo, senão a asserção só valeria se
+ * a suíte rodasse a uma certa hora do dia.
+ */
+update public.push_automations
+   set delay_minutes = (extract(epoch from (
+         ((date_trunc('day', now() at time zone 'America/Sao_Paulo')
+            + interval '1 day 3 hours') at time zone 'America/Sao_Paulo') - now()
+       )) / 60)::integer
+ where app_id = (select app_a from tests.lojas) and type = 'order_shipped';
+
+select public.registrar_pedido(
+  (select app_a from tests.lojas), 'ped-da-madrugada', 'app', 1234, now(),
+  p_cart_token => 'token-do-pedido-enviado'
+);
+
+select public.agendar_pedido_enviado((select app_a from tests.lojas), 'ped-da-madrugada');
+
+select tests.ok('silêncio',
+  (select extract(hour from (r.scheduled_for at time zone 'America/Sao_Paulo'))::integer = 8
+     from public.automation_runs r
+    where r.trigger_ref = 'ped-da-madrugada'),
+  'o aviso que cairia às 3h da manhã é adiado para as 8h');
+
 reset role;
 
 select tests.login('a-owner@teste.local');
 set role authenticated;
+
+select tests.ok('segredo',
+  tests.erro($q$select public.agendar_pedido_enviado(gen_random_uuid(), 'x')$q$),
+  'o lojista não agenda aviso de pedido por fora');
 
 /*
  * MAU não é a soma de `active_users`: somar trinta dias daria "aparelho-dias",

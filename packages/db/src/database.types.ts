@@ -941,6 +941,10 @@ export type Database = {
         Args: { p_org_id: string };
         Returns: { user_id: string | null; email: string | null; role: Database["public"]["Enums"]["membership_role"] | null; created_at: string | null; ultimo_acesso: string | null }[];
       };
+      agendar_pedido_enviado: {
+        Args: { p_app_id: string; p_shopify_order_id: string };
+        Returns: boolean;
+      };
       apagar_dados_da_shopify: {
         Args: { p_shop_domain: string };
         Returns: number;

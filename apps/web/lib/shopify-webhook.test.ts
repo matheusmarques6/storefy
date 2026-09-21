@@ -134,7 +134,7 @@ describe('centavosDoPedido', () => {
  */
 describe('aplicarWebhook', () => {
   /** Um client falso que registra o que foi chamado. */
-  function falso(appId: string | null = 'app-1') {
+  function falso(appId: string | null = 'app-1', agendou = true) {
     const chamadas: { nome: string; args: unknown }[] = [];
     const cliente = {
       rpc: (nome: string, args: unknown) => {
@@ -147,6 +147,9 @@ describe('aplicarWebhook', () => {
         }
         if (nome === 'apagar_dados_da_shopify') {
           return Promise.resolve({ data: 7, error: null });
+        }
+        if (nome === 'agendar_pedido_enviado') {
+          return Promise.resolve({ data: agendou, error: null });
         }
         return Promise.resolve({ data: true, error: null });
       },
@@ -240,17 +243,74 @@ describe('aplicarWebhook', () => {
   });
 
   /*
-   * Os dois tópicos que ainda não têm automação são ACEITOS, e não recusados:
-   * uma cadeia de 4xx faz a Shopify DESATIVAR o webhook da loja, e registrá-lo
-   * de novo exigiria reinstalar o app.
+   * O webhook de remessa avisa o aparelho QUE FEZ O PEDIDO. Sem esse elo,
+   * "seu pedido saiu para entrega" iria para a loja inteira — spam, e motivo
+   * de desinstalação.
    */
-  it('os tópicos ainda sem automação são aceitos, não recusados', async () => {
+  it('remessa agenda o aviso pelo id do pedido', async () => {
+    const { aplicarWebhook } = await import('@/lib/shopify-webhook');
+    const { cliente, chamadas } = falso();
+
+    const remessa = JSON.stringify({ id: 999, order_id: 12345, status: 'success' });
+    const r = await aplicarWebhook(
+      cliente as never,
+      'fulfillments/create',
+      'x.myshopify.com',
+      remessa,
+    );
+
+    expect(r.feito).toBe('envio_avisado');
+    expect(chamadas.find((c) => c.nome === 'agendar_pedido_enviado')?.args).toEqual({
+      p_app_id: 'app-1',
+      p_shopify_order_id: '12345',
+    });
+  });
+
+  /*
+   * Pedido do SITE não tem aparelho para avisar. O banco devolve `false`, e a
+   * rota diz que não avisou — em vez de fingir que avisou alguém.
+   */
+  it('remessa de pedido sem aparelho não vira aviso', async () => {
+    const { aplicarWebhook } = await import('@/lib/shopify-webhook');
+    const { cliente } = falso('app-1', false);
+
+    const r = await aplicarWebhook(
+      cliente as never,
+      'fulfillments/create',
+      'x.myshopify.com',
+      JSON.stringify({ order_id: 42 }),
+    );
+
+    expect(r.feito).toBe('envio_sem_aviso');
+  });
+
+  it('remessa sem pedido ou com JSON quebrado não estoura', async () => {
     const { aplicarWebhook } = await import('@/lib/shopify-webhook');
 
-    for (const topico of ['fulfillments/create', 'products/update'] as const) {
-      const { cliente } = falso();
-      const r = await aplicarWebhook(cliente as never, topico, 'x.myshopify.com', '{}');
-      expect(r.feito).toBe(`aceito:${topico}`);
+    for (const corpo of ['{isto não é json', '{}', 'null', '{"order_id": null}']) {
+      const { cliente, chamadas } = falso();
+      const r = await aplicarWebhook(
+        cliente as never,
+        'fulfillments/create',
+        'x.myshopify.com',
+        corpo,
+      );
+      expect(['corpo_invalido', 'sem_pedido']).toContain(r.feito);
+      expect(chamadas.some((c) => c.nome === 'agendar_pedido_enviado')).toBe(false);
     }
+  });
+
+  /*
+   * `products/update` ainda não tem automação: ele alimenta o "de volta ao
+   * estoque", que precisa de alguém inscrito para avisar. É ACEITO, e não
+   * recusado: uma cadeia de 4xx faz a Shopify DESATIVAR o webhook da loja, e
+   * registrá-lo de novo exigiria reinstalar o app.
+   */
+  it('o tópico ainda sem automação é aceito, não recusado', async () => {
+    const { aplicarWebhook } = await import('@/lib/shopify-webhook');
+    const { cliente } = falso();
+
+    const r = await aplicarWebhook(cliente as never, 'products/update', 'x.myshopify.com', '{}');
+    expect(r.feito).toBe('aceito:products/update');
   });
 });

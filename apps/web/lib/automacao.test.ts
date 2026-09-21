@@ -10,14 +10,16 @@ import {
 
 describe('os tipos oferecidos', () => {
   /*
-   * "De volta ao estoque", "pedido enviado" e "inativo há 7 dias" estão no
-   * plano para depois. Enquanto o job não souber disparar, um card deles na
-   * tela seria um botão que não faz nada — o que a regra 3 proíbe.
+   * "De volta ao estoque" ainda não tem gatilho: ele depende de alguém
+   * inscrito no aviso, e o botão que inscreve vem com a Theme App Extension.
+   * "Inativo há 7 dias" está no plano para depois. Enquanto o job não souber
+   * disparar, um card deles na tela seria um botão que não faz nada — o que a
+   * regra 3 proíbe.
    */
-  it('só os dois que funcionam de ponta a ponta na Fase 3', () => {
-    expect([...TIPOS_DE_AUTOMACAO]).toEqual(['welcome', 'abandoned_cart']);
+  it('só os que funcionam de ponta a ponta', () => {
+    expect([...TIPOS_DE_AUTOMACAO]).toEqual(['welcome', 'abandoned_cart', 'order_shipped']);
     expect(ehTipoDeAutomacao('back_in_stock')).toBe(false);
-    expect(ehTipoDeAutomacao('order_shipped')).toBe(false);
+    expect(ehTipoDeAutomacao('inactive_7d')).toBe(false);
     expect(ehTipoDeAutomacao('qualquer coisa')).toBe(false);
   });
 
