@@ -862,7 +862,8 @@ a pedido de alguém.
 | Segredo não se escreve pelo painel | ✅ `insert`/`update` das colunas `_enc` revogados de `authenticated` e `anon`, com asserção que vale para o schema inteiro |
 | Injeção do `_storefy=1` no carrinho pelo app | ✅ grava depois da mudança de carrinho e ao abrir `/cart`, uma vez por página, com o `fetch` original. Os 22 testes EXECUTAM o script gerado num `node:vm`, e cada decisão foi conferida por mutação |
 | `store.platform` na `AppConfig` | ✅ campo novo com `default('shopify')` e teste de compatibilidade: config publicada antes continua válida e a atribuição não se desliga sozinha |
-| Job de agregação do `analytics_daily` | ⬜ |
+| Job de agregação do `analytics_daily` | ✅ recalcula (não acumula) os últimos dias no fuso de CADA loja, de hora em hora. Dia sem número não vira linha, e linha que zerou é apagada |
+| `device_days`, a fonte de ativos e sessões | ✅ uma linha por aparelho por dia, escrita junto com o ping do app. `last_seen_at` sozinha daria ativos errados para qualquer dia passado |
 | Tela C11 e cards de receita no C05 | ⬜ |
 | Seletor de produto/coleção no composer de push | ⬜ |
 | Automações de pedido enviado e de volta ao estoque | ⬜ os webhooks `fulfillments/create` e `products/update` já são aceitos e ignorados de propósito |

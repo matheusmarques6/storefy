@@ -444,6 +444,40 @@ export type Database = {
           },
         ];
       };
+      device_days: {
+        Row: {
+          app_id: string;
+          device_id: string;
+          day: string;
+          opens: number;
+        };
+        Insert: {
+          app_id: string;
+          device_id: string;
+          day: string;
+          opens?: number;
+        };
+        Update: {
+          app_id?: string;
+          device_id?: string;
+          day?: string;
+          opens?: number;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "device_days_app_id_fkey";
+            columns: ["app_id"];
+            referencedRelation: "apps";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "device_days_device_id_fkey";
+            columns: ["device_id"];
+            referencedRelation: "devices";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       devices: {
         Row: {
           id: string;
@@ -935,9 +969,17 @@ export type Database = {
         Args: { p_id: string };
         Returns: unknown;
       };
+      consolidar_analytics: {
+        Args: { p_dias?: number };
+        Returns: number;
+      };
       consumir_limite: {
         Args: { p_chave: string; p_maximo: number; p_janela_segundos?: number };
         Returns: boolean;
+      };
+      contar_abertura: {
+        Args: { p_app_id: string; p_device_id: string };
+        Returns: unknown;
       };
       contar_ota: {
         Args: { p_id: string; p_ok: boolean };
@@ -962,6 +1004,10 @@ export type Database = {
       devolver_envios_presos: {
         Args: { p_minutos?: number };
         Returns: number;
+      };
+      dia_da_loja: {
+        Args: { p_app_id: string; p_momento?: string };
+        Returns: string;
       };
       emails_do_build: {
         Args: { p_id: string };

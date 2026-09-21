@@ -12,6 +12,10 @@
     {
       "path": "/api/jobs/review-status",
       "schedule": "17 * * * *"
+    },
+    {
+      "path": "/api/jobs/analytics",
+      "schedule": "23 * * * *"
     }
   ]
 }

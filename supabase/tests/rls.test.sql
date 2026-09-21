@@ -3052,6 +3052,329 @@ select grupo,
        count(*) filter (where not passou) as falhou
 from tests.resultados group by grupo order by grupo;
 
+
+-- ================================ grupo 14: números do dia (fase 5)
+--
+-- O que a tela C11 mostra vem daqui. Um número errado aqui não quebra nada e é
+-- pior por isso: o lojista decide se continua pagando olhando para ele.
+
+set role service_role;
+
+-- A loja A volta a existir para a Shopify, com fuso conhecido.
+update public.stores
+   set shop_domain = 'loja-a.myshopify.com',
+       timezone = 'America/Sao_Paulo',
+       shopify_access_token_enc = 'token-cifrado-de-mentira',
+       shopify_scopes = array['read_orders']
+ where id = (select loja_a from tests.lojas);
+
+delete from public.device_days where app_id = (select app_a from tests.lojas);
+delete from public.analytics_daily where app_id = (select app_a from tests.lojas);
+delete from public.shop_orders where app_id = (select app_a from tests.lojas);
+delete from public.rate_limits where chave like 'aparelhos:%';
+
+/*
+ * Momento FIXO, escolhido onde os dois fusos discordam: 01h30 UTC ainda é o
+ * dia anterior em São Paulo. Comparar com `now()` só acusaria o erro entre
+ * meia-noite e três da manhã UTC — o teste passaria 87% do tempo, que é pior
+ * do que não existir.
+ */
+select tests.ok('numeros',
+  (select public.dia_da_loja(
+     (select app_a from tests.lojas), timestamptz '2026-03-10 01:30:00+00'))
+    = date '2026-03-09',
+  'o dia do app é o dia NO FUSO DA LOJA, e não em UTC');
+
+/*
+ * A abertura é contada dentro de `registrar_aparelho`. Duas aberturas do mesmo
+ * aparelho no mesmo dia são UMA linha com duas — é o que separa "ativos" de
+ * "sessões", e o que impede a tabela de crescer por abertura.
+ */
+select * from public.registrar_aparelho(
+  (select app_a from tests.lojas), 'sub-dos-numeros', 'ios'
+);
+select * from public.registrar_aparelho(
+  (select app_a from tests.lojas), 'sub-dos-numeros', 'ios'
+);
+select * from public.registrar_aparelho(
+  (select app_a from tests.lojas), 'sub-dos-numeros-2', 'android'
+);
+
+select tests.ok('numeros',
+  tests.contar($q$select count(*) from public.device_days
+    where app_id = (select app_a from tests.lojas)$q$) = 2,
+  'dois aparelhos viram duas linhas de dia, e não uma por abertura');
+
+select tests.ok('numeros',
+  (select sum(opens) from public.device_days
+    where app_id = (select app_a from tests.lojas)) = 3,
+  'e as três aberturas foram somadas');
+
+-- Um pedido de cada origem, hoje, no fuso da loja.
+insert into public.shop_orders (app_id, shopify_order_id, source, total_cents, ordered_at)
+select app_a, 'ped-app-1', 'app', 14990, now() from tests.lojas;
+insert into public.shop_orders (app_id, shopify_order_id, source, total_cents, ordered_at)
+select app_a, 'ped-site-1', 'site', 5000, now() from tests.lojas;
+
+/*
+ * Um pedido das 23h em São Paulo é 02h do dia SEGUINTE em UTC. Ele tem que
+ * cair no dia de HOJE da loja — é exatamente aqui que o número do painel
+ * deixaria de bater com o extrato da Shopify, por pouco e todo dia.
+ */
+insert into public.shop_orders (app_id, shopify_order_id, source, total_cents, ordered_at)
+select app_a, 'ped-app-noite', 'app', 10,
+       (date_trunc('day', now() at time zone 'America/Sao_Paulo') + interval '23 hours')
+         at time zone 'America/Sao_Paulo'
+from tests.lojas;
+
+/*
+ * Duas campanhas enviadas hoje: uma com números da OneSignal e outra sem. A
+ * segunda tem que contar ZERO — "ainda não sabemos" não vira número estimado
+ * a partir da contagem de aparelhos (regra 1 do CLAUDE.md).
+ */
+insert into public.push_campaigns (app_id, title, body, status, sent_at, stats)
+select app_a, 'Promoção', 'Entra que tem novidade', 'sent', now(),
+       '{"enviados": 10, "entregues": 9, "abertos": 4}'::jsonb
+from tests.lojas;
+
+insert into public.push_campaigns (app_id, title, body, status, sent_at, stats)
+select app_a, 'Recém-enviada', 'Os números ainda não voltaram', 'sent', now(), '{}'::jsonb
+from tests.lojas;
+
+-- E uma de cinco dias atrás, para o dia de hoje não herdar o total de sempre.
+insert into public.push_campaigns (app_id, title, body, status, sent_at, stats)
+select app_a, 'Antiga', 'Isto é de outro dia', 'sent', now() - interval '5 days',
+       '{"enviados": 500, "abertos": 300}'::jsonb
+from tests.lojas;
+
+select tests.ok('numeros',
+  public.consolidar_analytics(2) >= 1,
+  'a consolidação escreve pelo menos um dia');
+
+select tests.ok('numeros',
+  (select push_sent = 10 and push_opened = 4 from public.analytics_daily
+    where app_id = (select app_a from tests.lojas)
+      and day = (now() at time zone 'America/Sao_Paulo')::date),
+  'o push soma o que a OneSignal reportou, e a campanha sem números conta zero');
+
+select tests.ok('numeros',
+  (select orders_app = 2 from public.analytics_daily
+    where app_id = (select app_a from tests.lojas)
+      and day = (now() at time zone 'America/Sao_Paulo')::date),
+  'o pedido das 23h da loja não vaza para o dia seguinte em UTC');
+
+/*
+ * Um aparelho na organização B, para a contagem do app A ter de EXCLUIR
+ * alguém. Sem isso, um `count(*)` sem filtro de app daria o mesmo número e o
+ * vazamento entre clientes passaria batido no teste.
+ */
+select * from public.registrar_aparelho(
+  (select app_b from tests.lojas), 'sub-da-outra-org', 'ios'
+);
+
+select public.consolidar_analytics(2);
+
+select tests.ok('numeros',
+  (select installs from public.analytics_daily
+    where app_id = (select app_a from tests.lojas)
+      and day = (now() at time zone 'America/Sao_Paulo')::date)
+  = (select count(*) from public.devices d
+      where d.app_id = (select app_a from tests.lojas)
+        and (d.created_at at time zone 'America/Sao_Paulo')::date
+            = (now() at time zone 'America/Sao_Paulo')::date),
+  'instalações contam só os aparelhos DESTE app');
+
+select tests.ok('numeros',
+  (select installs from public.analytics_daily
+    where app_id = (select app_a from tests.lojas)
+      and day = (now() at time zone 'America/Sao_Paulo')::date)
+  < (select count(*) from public.devices d
+      where (d.created_at at time zone 'America/Sao_Paulo')::date
+            = (now() at time zone 'America/Sao_Paulo')::date),
+  'e são MENOS do que os aparelhos de todas as lojas juntas');
+
+select tests.ok('numeros',
+  (select active_users = 2 and sessions = 3
+     from public.analytics_daily
+    where app_id = (select app_a from tests.lojas)
+      and day = (now() at time zone 'America/Sao_Paulo')::date),
+  'ativos e sessões saem de device_days, e são coisas diferentes');
+
+select tests.ok('numeros',
+  (select orders_app = 2 and revenue_app_cents = 15000
+      and orders_site = 1 and revenue_site_cents = 5000
+     from public.analytics_daily
+    where app_id = (select app_a from tests.lojas)
+      and day = (now() at time zone 'America/Sao_Paulo')::date),
+  'e a receita do app fica separada da do site, em centavos');
+
+/*
+ * RECALCULAR não pode acumular. Rodar duas vezes com o mesmo dado tem que dar
+ * o mesmo número — é o que deixa o cron chamar de hora em hora sem medo.
+ */
+drop table if exists tests.antes_da_segunda;
+create table tests.antes_da_segunda as
+select installs, active_users, sessions, push_sent, push_opened,
+       orders_app, revenue_app_cents, orders_site, revenue_site_cents
+  from public.analytics_daily
+ where app_id = (select app_a from tests.lojas)
+   and day = (now() at time zone 'America/Sao_Paulo')::date;
+
+select public.consolidar_analytics(2);
+
+/*
+ * A linha INTEIRA, e não três colunas escolhidas a dedo: a acumulação entra
+ * por uma coluna só, e a que ficou de fora é justamente a que ninguém olha.
+ */
+select tests.ok('numeros',
+  (select count(*) from (
+     select installs, active_users, sessions, push_sent, push_opened,
+            orders_app, revenue_app_cents, orders_site, revenue_site_cents
+       from public.analytics_daily
+      where app_id = (select app_a from tests.lojas)
+        and day = (now() at time zone 'America/Sao_Paulo')::date
+     except
+     select * from tests.antes_da_segunda
+   ) as diferenca) = 0,
+  'rodar de novo não dobra nada: a consolidação recalcula, não soma');
+
+/*
+ * Regra 1 do CLAUDE.md: dia sem número não vira linha. Uma linha de zeros
+ * viraria gráfico com chão falso, que parece dado.
+ */
+select tests.ok('numeros',
+  tests.contar($q$select count(*) from public.analytics_daily
+    where app_id = (select app_a from tests.lojas)
+      and day = ((now() at time zone 'America/Sao_Paulo')::date - 1)$q$) = 0,
+  'dia sem nenhum número não vira linha');
+
+/*
+ * E uma linha que deixou de ser verdade é APAGADA. Sem isto, o dado apagado
+ * pelo `shop/redact` continuaria visível no resumo.
+ */
+insert into public.analytics_daily (app_id, day, sessions)
+select app_a, (now() at time zone 'America/Sao_Paulo')::date - 2, 99 from tests.lojas;
+
+select public.consolidar_analytics(3);
+
+select tests.ok('numeros',
+  tests.contar($q$select count(*) from public.analytics_daily
+    where app_id = (select app_a from tests.lojas)
+      and day = ((now() at time zone 'America/Sao_Paulo')::date - 2)$q$) = 0,
+  'linha que zerou é apagada, e não fica mentindo no gráfico');
+
+/*
+ * A janela tem teto. Sem ele, uma chamada com um número grande varreria os
+ * pedidos de todos os clientes no horário do cron.
+ */
+/*
+ * A janela cobre AMANHÃ na loja. Sem isso, a loja em Tóquio — que já virou a
+ * data enquanto aqui ainda é ontem — nunca teria o dia corrente consolidado, e
+ * o painel dela mostraria sempre um dia de atraso.
+ */
+insert into public.device_days (app_id, device_id, day, opens)
+select app_a, (select id from public.devices
+                where app_id = (select app_a from tests.lojas) limit 1),
+       (now() at time zone 'America/Sao_Paulo')::date + 1, 5
+from tests.lojas;
+
+select public.consolidar_analytics(2);
+
+select tests.ok('numeros',
+  (select sessions = 5 from public.analytics_daily
+    where app_id = (select app_a from tests.lojas)
+      and day = ((now() at time zone 'America/Sao_Paulo')::date + 1)),
+  'a janela alcança o dia seguinte da loja, para quem está à frente do UTC');
+
+/*
+ * O teto da janela precisa de uma consequência VISÍVEL, senão "com teto" e
+ * "sem teto" passam igual e o teto some no primeiro refactor. Esta linha de
+ * 200 dias atrás está fora da janela máxima de 90: a consolidação não pode
+ * encostar nela, por mais dias que peçam.
+ */
+insert into public.analytics_daily (app_id, day, sessions)
+select app_a, (now() at time zone 'America/Sao_Paulo')::date - 200, 42 from tests.lojas;
+
+select tests.ok('numeros',
+  public.consolidar_analytics(100000) >= 1,
+  'janela absurda não derruba a consolidação');
+
+select tests.ok('numeros',
+  tests.contar($q$select count(*) from public.analytics_daily
+    where app_id = (select app_a from tests.lojas)
+      and day = ((now() at time zone 'America/Sao_Paulo')::date - 200)$q$) = 1,
+  'e ela para em 90 dias: o dia de 200 atrás não é varrido');
+
+reset role;
+
+select tests.login('a-owner@teste.local');
+set role authenticated;
+
+-- Dois aparelhos hoje, mais a linha de amanhã do teste da janela.
+select tests.ok('numeros',
+  tests.contar($q$select count(*) from public.device_days
+    where app_id = (select app_a from tests.lojas)$q$) = 3,
+  'o lojista LÊ a atividade dos aparelhos do app dele');
+
+select tests.ok('numeros',
+  tests.bloqueado($q$insert into public.device_days (app_id, device_id, day)
+    values ((select app_a from tests.lojas), gen_random_uuid(), current_date)$q$),
+  'mas não escreve: quem conta abertura é o endpoint do app');
+
+select tests.ok('segredo',
+  tests.erro($q$select public.contar_abertura(gen_random_uuid(), gen_random_uuid())$q$),
+  'o lojista não inventa abertura de aparelho');
+
+select tests.ok('segredo',
+  tests.erro('select public.consolidar_analytics(1)'),
+  'nem manda recalcular os números de todo mundo');
+
+select tests.ok('segredo',
+  tests.erro($q$select public.dia_da_loja(gen_random_uuid())$q$),
+  'nem usa a função de fuso da plataforma');
+
+reset role;
+select tests.logout();
+
+/*
+ * A prova do isolamento é feita AGORA, com os dados do app A de pé: depois do
+ * `shop/redact` não sobraria linha nenhuma, e a asserção passaria por não
+ * existir nada — que é o jeito clássico de um teste de vazamento mentir.
+ */
+select tests.login('b-owner@teste.local');
+set role authenticated;
+
+select tests.ok('isolamento',
+  tests.contar($q$select count(*) from public.device_days
+    where app_id = (select app_a from tests.lojas)$q$) = 0,
+  'e a atividade de uma organização não aparece para outra');
+
+select tests.ok('isolamento',
+  tests.contar($q$select count(*) from public.analytics_daily
+    where app_id = (select app_a from tests.lojas)$q$) = 0,
+  'nem os números dela');
+
+reset role;
+select tests.logout();
+
+set role service_role;
+
+-- `shop/redact` leva a atividade e os números junto.
+select tests.ok('numeros',
+  public.apagar_dados_da_shopify('loja-a.myshopify.com') >= 3,
+  'shop/redact apaga pedidos, atividade e números');
+
+select tests.ok('numeros',
+  tests.contar($q$select count(*) from public.device_days
+    where app_id = (select app_a from tests.lojas)$q$) = 0,
+  'e não sobra atividade de aparelho');
+
+select tests.ok('numeros',
+  tests.contar($q$select count(*) from public.analytics_daily
+    where app_id = (select app_a from tests.lojas)$q$) = 0,
+  'nem o resumo do que foi apagado');
+
+
 \echo ''
 \echo 'Falhas:'
 select grupo, descricao from tests.resultados where not passou order by id;
