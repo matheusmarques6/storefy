@@ -17,6 +17,7 @@ interface Storefy {
   haptic: (estilo?: unknown) => boolean;
   openExternal: (url?: unknown) => boolean;
   requestPushPermission: () => boolean;
+  notifyWhenBack: (variante?: unknown, caminho?: unknown) => boolean;
 }
 
 const PAGINA = 'https://oakvintage.com.br/products/jaqueta';
@@ -62,6 +63,7 @@ describe('window.Storefy', () => {
     expect(typeof api.haptic).toBe('function');
     expect(typeof api.openExternal).toBe('function');
     expect(typeof api.requestPushPermission).toBe('function');
+    expect(typeof api.notifyWhenBack).toBe('function');
     expect((pagina.janela.Storefy as Registro)[MARCA_DA_API]).toBe(true);
   });
 
@@ -109,6 +111,46 @@ describe('window.Storefy', () => {
     expect(pagina.api().openExternal()).toBe(false);
     expect(pagina.api().openExternal('   ')).toBe(false);
     expect(pagina.mensagens).toHaveLength(0);
+  });
+
+  it('inscreve no aviso de volta ao estoque', () => {
+    const pagina = criarPagina();
+    pagina.injetar();
+
+    expect(pagina.api().notifyWhenBack('4412345', '/products/jaqueta?variant=4412345')).toBe(true);
+    expect(unicaMensagem(pagina.mensagens)).toEqual({
+      type: 'NOTIFY_WHEN_BACK',
+      variantId: '4412345',
+      path: '/products/jaqueta?variant=4412345',
+    });
+  });
+
+  it('e sem caminho também: a variante basta', () => {
+    const pagina = criarPagina();
+    pagina.injetar();
+
+    expect(pagina.api().notifyWhenBack(4412345)).toBe(false);
+    expect(pagina.api().notifyWhenBack('4412345')).toBe(true);
+    expect(unicaMensagem(pagina.mensagens)).toEqual({
+      type: 'NOTIFY_WHEN_BACK',
+      variantId: '4412345',
+    });
+  });
+
+  /*
+   * Caminho absoluto abriria OUTRO site dentro da aba, com a cara do app. O
+   * bridge recusa do lado de cá também, e não só no schema: quem chama é o
+   * tema do lojista.
+   */
+  it('caminho absoluto é descartado, e a mensagem sai sem ele', () => {
+    const pagina = criarPagina();
+    pagina.injetar();
+
+    expect(pagina.api().notifyWhenBack('44', 'https://evil.com')).toBe(true);
+    expect(unicaMensagem(pagina.mensagens)).toEqual({
+      type: 'NOTIFY_WHEN_BACK',
+      variantId: '44',
+    });
   });
 
   it('pede permissão de push', () => {

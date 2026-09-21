@@ -56,6 +56,14 @@ return enviar({type:'OPEN_EXTERNAL',url:u});
 },
 requestPushPermission:function(){
 return enviar({type:'REQUEST_PUSH_PERMISSION'});
+},
+notifyWhenBack:function(variante,caminho){
+var v=texto(variante);
+if(!v)return false;
+var carga={type:'NOTIFY_WHEN_BACK',variantId:v};
+var c=texto(caminho);
+if(c.charAt(0)==='/')carga.path=c;
+return enviar(carga);
 }
 };
 }catch(e){}

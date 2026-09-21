@@ -3434,6 +3434,187 @@ select tests.ok('silêncio',
     where r.trigger_ref = 'ped-da-madrugada'),
   'o aviso que cairia às 3h da manhã é adiado para as 8h');
 
+/*
+ * ------------------------------------------------ avise-me quando voltar
+ *
+ * A inscrição é CONSUMIDA no aviso: quem pediu recebe uma vez e sai da lista.
+ * Guardar o pedido atendido faria a mesma pessoa receber o mesmo aviso no
+ * reabastecimento seguinte, sem ter pedido de novo.
+ */
+insert into public.push_automations (app_id, type, enabled, delay_minutes, title, body)
+select app_a, 'back_in_stock', true, 0, 'Voltou!', 'O que você queria está de volta.'
+from tests.lojas
+on conflict (app_id, type) do update set enabled = true, delay_minutes = 0;
+
+select tests.ok('automacao',
+  (select public.inscrever_de_volta(
+     (select app_a from tests.lojas),
+     (select id from public.devices
+       where app_id = (select app_a from tests.lojas)
+         and onesignal_subscription_id = 'sub-dos-numeros'),
+     '4412345', '/products/jaqueta?variant=4412345')),
+  'o aparelho pede para ser avisado quando a variante voltar');
+
+/*
+ * Tocar duas vezes no botão não pode virar duas notificações iguais quando o
+ * produto voltar.
+ */
+select tests.ok('automacao',
+  not (select public.inscrever_de_volta(
+     (select app_a from tests.lojas),
+     (select id from public.devices
+       where app_id = (select app_a from tests.lojas)
+         and onesignal_subscription_id = 'sub-dos-numeros'),
+     '4412345', '/products/jaqueta?variant=4412345')),
+  'e pedir de novo não cria um segundo pedido');
+
+/*
+ * O aparelho tem que ser DESTE app. O endpoint já confere a assinatura, mas
+ * esta é a checagem que impede um app de inscrever o aparelho de outro.
+ */
+select tests.ok('isolamento',
+  not (select public.inscrever_de_volta(
+     (select app_a from tests.lojas),
+     (select id from public.devices
+       where app_id = (select app_b from tests.lojas)
+         and onesignal_subscription_id = 'sub-da-outra-org'),
+     '4412345', '/x')),
+  'um app não inscreve o aparelho de outra organização');
+
+select tests.ok('automacao',
+  tests.contar($q$select count(*) from public.back_in_stock_subs
+    where app_id = (select app_a from tests.lojas)$q$) = 1,
+  'um pedido, e só um');
+
+-- Variante que ninguém pediu não avisa ninguém.
+select tests.ok('automacao',
+  (select public.avisar_de_volta((select app_a from tests.lojas), '999')) = 0,
+  'variante sem ninguém inscrito não agenda nada');
+
+/*
+ * A MESMA variante inscrita na outra organização. Os ids da Shopify são por
+ * loja, então duas lojas têm variantes com o mesmo número o tempo todo — e sem
+ * o filtro por app, o reabastecimento de uma avisaria o cliente da outra.
+ */
+insert into public.push_automations (app_id, type, enabled, delay_minutes, title, body)
+select app_b, 'back_in_stock', true, 0, 'Voltou!', 'Está de volta.'
+from tests.lojas
+on conflict (app_id, type) do update set enabled = true;
+
+select public.inscrever_de_volta(
+  (select app_b from tests.lojas),
+  (select id from public.devices
+    where app_id = (select app_b from tests.lojas)
+      and onesignal_subscription_id = 'sub-da-outra-org'),
+  '4412345', '/products/outro-produto');
+
+select tests.ok('automacao',
+  (select public.avisar_de_volta((select app_a from tests.lojas), '4412345')) = 1,
+  'a variante que voltou avisa quem pediu');
+
+select tests.ok('isolamento',
+  tests.contar($q$select count(*) from public.back_in_stock_subs
+    where app_id = (select app_b from tests.lojas)$q$) = 1,
+  'e o pedido da outra organização continua lá: o número da variante se repete entre lojas');
+
+/*
+ * O link do ENVIO vence o da automação: "voltou!" que abre a home obriga o
+ * cliente a procurar de novo o produto que ele pediu para acompanhar.
+ */
+select tests.ok('automacao',
+  (select r.deep_link = '/products/jaqueta?variant=4412345'
+     from public.automation_runs r
+    where r.trigger_ref = '4412345'),
+  'e o aviso leva ao produto, e não à automação');
+
+/*
+ * E o DESPACHO tem que entregar esse link. Conferir só a coluna deixaria
+ * passar um `reservar_envios_de_automacao` que ignora o link do envio e manda
+ * todo mundo para a home — que é o bug que este par de asserções existe para
+ * pegar.
+ */
+select tests.ok('automacao',
+  (select deep_link = '/products/jaqueta?variant=4412345'
+     from public.reservar_envios_de_automacao(100)
+    where id = (select r.id from public.automation_runs r
+                 where r.trigger_ref = '4412345')),
+  'o despacho entrega o link do ENVIO, e não o da automação');
+
+select tests.ok('automacao',
+  tests.contar($q$select count(*) from public.back_in_stock_subs
+    where app_id = (select app_a from tests.lojas)$q$) = 0,
+  'a inscrição é consumida: quem pediu, foi avisado');
+
+select tests.ok('automacao',
+  (select public.avisar_de_volta((select app_a from tests.lojas), '4412345')) = 0,
+  'e o mesmo produto voltando de novo não avisa ninguém sem novo pedido');
+
+/*
+ * Com a automação desligada nada é agendado E NADA É APAGADO: o pedido espera
+ * o lojista ligar. Apagá-lo perderia em silêncio a intenção de compra.
+ */
+update public.push_automations set enabled = false
+ where app_id = (select app_a from tests.lojas) and type = 'back_in_stock';
+
+select public.inscrever_de_volta(
+  (select app_a from tests.lojas),
+  (select id from public.devices
+    where app_id = (select app_a from tests.lojas)
+      and onesignal_subscription_id = 'sub-dos-numeros'),
+  '777', '/products/outro');
+
+select tests.ok('automacao',
+  (select public.avisar_de_volta((select app_a from tests.lojas), '777')) = 0,
+  'automação desligada não avisa');
+
+select tests.ok('automacao',
+  tests.contar($q$select count(*) from public.back_in_stock_subs
+    where variant_id = '777'$q$) = 1,
+  'e o pedido continua esperando o lojista ligar');
+
+update public.push_automations set enabled = true
+ where app_id = (select app_a from tests.lojas) and type = 'back_in_stock';
+
+reset role;
+
+select tests.login('a-owner@teste.local');
+set role authenticated;
+
+select tests.ok('automacao',
+  tests.contar($q$select count(*) from public.back_in_stock_subs
+    where app_id = (select app_a from tests.lojas)$q$) = 1,
+  'o lojista vê quantos pedidos de aviso existem no app dele');
+
+select tests.ok('automacao',
+  tests.bloqueado($q$insert into public.back_in_stock_subs (app_id, device_id, variant_id)
+    values ((select app_a from tests.lojas), gen_random_uuid(), '1')$q$),
+  'mas não inscreve ninguém por fora');
+
+select tests.ok('segredo',
+  tests.erro($q$select public.inscrever_de_volta(
+    gen_random_uuid(), gen_random_uuid(), '1', '/x')$q$),
+  'nem chama a função de inscrição');
+
+select tests.ok('segredo',
+  tests.erro($q$select public.avisar_de_volta(gen_random_uuid(), '1')$q$),
+  'nem dispara o aviso de volta ao estoque');
+
+reset role;
+select tests.logout();
+
+select tests.login('b-owner@teste.local');
+set role authenticated;
+
+select tests.ok('isolamento',
+  tests.contar($q$select count(*) from public.back_in_stock_subs
+    where app_id = (select app_a from tests.lojas)$q$) = 0,
+  'e os pedidos de uma organização não aparecem para outra');
+
+reset role;
+select tests.logout();
+
+set role service_role;
+
 reset role;
 
 select tests.login('a-owner@teste.local');
@@ -3528,6 +3709,21 @@ select tests.ok('numeros',
   tests.contar($q$select count(*) from public.analytics_daily
     where app_id = (select app_a from tests.lojas)$q$) = 0,
   'nem o resumo do que foi apagado');
+
+/*
+ * O pedido de aviso é dado de cliente final: ele diz o que aquela pessoa quer
+ * comprar. Sai junto — e o da OUTRA organização fica, porque o redact é de uma
+ * loja só.
+ */
+select tests.ok('numeros',
+  tests.contar($q$select count(*) from public.back_in_stock_subs
+    where app_id = (select app_a from tests.lojas)$q$) = 0,
+  'nem os pedidos de aviso de quem comprava nela');
+
+select tests.ok('isolamento',
+  tests.contar($q$select count(*) from public.back_in_stock_subs
+    where app_id = (select app_b from tests.lojas)$q$) = 1,
+  'e o shop/redact de uma loja não apaga os pedidos da outra');
 
 
 \echo ''

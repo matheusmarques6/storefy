@@ -77,10 +77,52 @@ describe('lerMensagemDaWeb — mensagens válidas', () => {
       { type: 'SHARE', url: 'https://minha-loja.com.br/p/1' },
       { type: 'REQUEST_PUSH_PERMISSION' },
       { type: 'OPEN_EXTERNAL', url: 'https://instagram.com/loja' },
+      { type: 'NOTIFY_WHEN_BACK', variantId: '4412345' },
+      { type: 'NOTIFY_WHEN_BACK', variantId: '4412345', path: '/products/jaqueta?variant=4412345' },
     ];
     for (const mensagem of mensagens) {
       expect(lerMensagemDaWeb(comoPostMessage(mensagem)).ok, mensagem.type).toBe(true);
     }
+  });
+});
+
+describe('NOTIFY_WHEN_BACK', () => {
+  /*
+   * A página que manda esta mensagem é a loja do lojista, com tema e apps de
+   * terceiro no meio. Um `path` absoluto abriria OUTRO site dentro da aba do
+   * app, com a cara do app.
+   */
+  /*
+   * `//evil.com` começa com barra e é uma URL RELATIVA A PROTOCOLO: resolvida
+   * contra a loja, ela vira `https://evil.com`, e o site de outra pessoa abre
+   * dentro da aba com a cara do app. A barra invertida faz o mesmo em alguns
+   * navegadores.
+   */
+  it('recusa caminho que não começa com barra, e o que só parece começar', () => {
+    for (const path of [
+      'https://evil.com',
+      '//evil.com',
+      '/\\evil.com',
+      '//',
+      'javascript:alert(1)',
+      'products/jaqueta',
+      '',
+    ]) {
+      expect(
+        lerMensagemDaWeb(comoPostMessage({ type: 'NOTIFY_WHEN_BACK', variantId: '1', path })).ok,
+        path,
+      ).toBe(false);
+    }
+  });
+
+  it('exige a variante, e não aceita uma gigante', () => {
+    expect(lerMensagemDaWeb(comoPostMessage({ type: 'NOTIFY_WHEN_BACK', variantId: '' })).ok).toBe(
+      false,
+    );
+    expect(
+      lerMensagemDaWeb(comoPostMessage({ type: 'NOTIFY_WHEN_BACK', variantId: 'x'.repeat(65) })).ok,
+    ).toBe(false);
+    expect(lerMensagemDaWeb(comoPostMessage({ type: 'NOTIFY_WHEN_BACK' })).ok).toBe(false);
   });
 });
 
@@ -199,15 +241,15 @@ describe('mensagens do app para a página', () => {
     }
   });
 
-  it('recusa NAVIGATE com caminho absoluto', () => {
-    // Um caminho absoluto abriria outro site dentro da aba da loja.
-    expect(() =>
-      escreverMensagemParaWeb({
-        type: 'NAVIGATE',
-        // Caminho absoluto abriria outro site dentro da aba da loja.
-        path: 'https://outro-site.com',
-      }),
-    ).toThrow();
+  it('recusa NAVIGATE com caminho absoluto, e com o que só parece relativo', () => {
+    /*
+     * `https://` é o caso óbvio. `//evil.com` é o que engana: ele começa com
+     * barra, passa num `startsWith('/')`, e resolvido contra a loja vira
+     * `https://evil.com` — outro site dentro da aba, com a cara do app.
+     */
+    for (const path of ['https://outro-site.com', '//evil.com', '/\\evil.com']) {
+      expect(() => escreverMensagemParaWeb({ type: 'NAVIGATE', path } as never)).toThrow();
+    }
   });
 
   it('a injeção é JavaScript válido e termina em true;', () => {

@@ -137,17 +137,23 @@ export async function aplicarWebhook(
   // para sempre nem desativar o webhook.
   if (app == null) return { feito: 'loja_desconhecida' };
 
-  if (topico === 'orders/create') return await gravarPedido(supabase, app, corpo);
-  if (topico === 'fulfillments/create') return await avisarEnvio(supabase, app, corpo);
-
   /*
-   * `products/update` alimenta o "de volta ao estoque", que precisa de alguém
-   * inscrito para avisar — e a inscrição vem do botão da Theme App Extension,
-   * que é a etapa seguinte desta fase. Até lá é aceito e ignorado, de
-   * propósito: recusá-lo faria a Shopify DESATIVAR o webhook da loja, e
-   * registrá-lo de novo exigiria reinstalar o app.
+   * `switch` e não `if`, por causa do `default`: todo tópico registrado tem
+   * tratamento, e é o TypeScript que garante isso — acrescentar um em
+   * `TOPICOS` sem tratá-lo aqui quebra a compilação no `default`, em vez de a
+   * loja descobrir em produção. Se um chegar mesmo assim, ACEITAR é a resposta
+   * certa: recusar faria a Shopify DESATIVAR o webhook da loja.
    */
-  return { feito: `aceito:${topico}` };
+  switch (topico) {
+    case 'orders/create':
+      return await gravarPedido(supabase, app, corpo);
+    case 'fulfillments/create':
+      return await avisarEnvio(supabase, app, corpo);
+    case 'products/update':
+      return await avisarDeVolta(supabase, app, corpo);
+    default:
+      return aceitarSemTratamento(topico);
+  }
 }
 
 /**
@@ -180,6 +186,88 @@ async function avisarEnvio(
   if (error != null) throw new Error(error.message);
 
   return { feito: data ? 'envio_avisado' : 'envio_sem_aviso' };
+}
+
+/** Só é alcançada se um tópico novo entrar em `TOPICOS` sem tratamento. */
+function aceitarSemTratamento(topico: never): ResultadoDoWebhook {
+  const nome: string = topico;
+  return { feito: `aceito:${nome}` };
+}
+
+/**
+ * As variantes DISPONÍVEIS deste produto, pelo payload da Shopify.
+ *
+ * `inventory_quantity > 0` não basta: a loja que vende sem controlar estoque
+ * tem `inventory_management: null` e quantidade zero, e ainda assim está
+ * disponível. Quem decide é o mesmo par de campos que o tema usa para desenhar
+ * o botão de comprar.
+ */
+export function variantesDisponiveis(produto: unknown): string[] {
+  if (produto === null || typeof produto !== 'object') return [];
+
+  const lista = (produto as { variants?: unknown }).variants;
+  if (!Array.isArray(lista)) return [];
+
+  const ids: string[] = [];
+  for (const item of lista) {
+    if (item === null || typeof item !== 'object') continue;
+    const variante = item as {
+      id?: unknown;
+      inventory_quantity?: unknown;
+      inventory_management?: unknown;
+      inventory_policy?: unknown;
+    };
+
+    const id = texto(variante, 'id');
+    if (id === null) continue;
+
+    const controlado =
+      typeof variante.inventory_management === 'string' && variante.inventory_management !== '';
+    const quantidade =
+      typeof variante.inventory_quantity === 'number' ? variante.inventory_quantity : 0;
+    const vendeSemEstoque = variante.inventory_policy === 'continue';
+
+    if (!controlado || vendeSemEstoque || quantidade > 0) ids.push(id);
+  }
+  return ids;
+}
+
+/**
+ * `products/update` — alguma variante voltou ao estoque?
+ *
+ * NÃO comparamos com o estoque anterior, e isso é decisão, não atalho: a
+ * inscrição é CONSUMIDA no aviso. Quem pediu recebe uma vez e sai da lista, e
+ * um `products/update` que chegue de novo com a variante disponível não
+ * encontra mais ninguém para avisar. Guardar o estoque de cada variante de
+ * cada loja para chegar ao mesmo resultado seria uma tabela nova mantida por
+ * webhook — e um estado a mais para ficar errado.
+ */
+async function avisarDeVolta(
+  supabase: Client,
+  appId: string,
+  corpo: string,
+): Promise<ResultadoDoWebhook> {
+  let produto: unknown;
+  try {
+    produto = JSON.parse(corpo);
+  } catch {
+    return { feito: 'corpo_invalido' };
+  }
+
+  const disponiveis = variantesDisponiveis(produto);
+  if (disponiveis.length === 0) return { feito: 'sem_variante_disponivel' };
+
+  let avisados = 0;
+  for (const variante of disponiveis) {
+    const { data, error } = await supabase.rpc('avisar_de_volta', {
+      p_app_id: appId,
+      p_variant_id: variante,
+    });
+    if (error != null) throw new Error(error.message);
+    avisados += data;
+  }
+
+  return { feito: `de_volta:${String(avisados)}` };
 }
 
 async function gravarPedido(

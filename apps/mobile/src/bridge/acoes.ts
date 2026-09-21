@@ -23,6 +23,8 @@ export type AcaoNativa =
   | { tipo: 'identificar-cliente'; customerId?: string; emailHash?: string }
   | { tipo: 'checkout-iniciado'; token: string }
   | { tipo: 'pedido-concluido'; orderId: string; totalCents: number; pedirAvaliacao: boolean }
+  /** "Me avise quando voltar": o botão da página do produto foi tocado. */
+  | { tipo: 'avisar-de-volta'; variantId: string; path?: string }
   | { tipo: 'ignorar'; motivo: string };
 
 export interface ContextoDasAcoes {
@@ -95,5 +97,16 @@ export function acaoParaMensagem(bruta: unknown, contexto: ContextoDasAcoes): Ac
         totalCents: mensagem.totalCents,
         pedirAvaliacao: contexto.pedirAvaliacao,
       };
+
+    case 'NOTIFY_WHEN_BACK':
+      /*
+       * Depende do PUSH, e não do backend de eventos: a inscrição só vale se
+       * houver como notificar. Aceitar o pedido num app sem push registraria a
+       * intenção de alguém que nunca receberia o aviso — e o silêncio depois
+       * seria pior do que o botão não existir.
+       */
+      return contexto.push
+        ? { tipo: 'avisar-de-volta', variantId: mensagem.variantId, path: mensagem.path }
+        : { tipo: 'ignorar', motivo: 'Push ainda não configurado neste app.' };
   }
 }

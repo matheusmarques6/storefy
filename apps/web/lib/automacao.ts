@@ -2,9 +2,9 @@
  * As automações de push (tela C09 do plano).
  *
  * Só entra aqui a automação que funciona DE PONTA A PONTA: gatilho de verdade,
- * destinatário de verdade, envio de verdade. "De volta ao estoque" e "inativo
- * há 7 dias" ainda não têm gatilho, e por isso NÃO aparecem na tela — um card
- * "em breve" é exatamente o que a regra 3 do CLAUDE.md proíbe.
+ * destinatário de verdade, envio de verdade. "Inativo há 7 dias" ainda não tem
+ * gatilho, e por isso NÃO aparece na tela — um card "em breve" é exatamente o
+ * que a regra 3 do CLAUDE.md proíbe.
  *
  * O texto sugerido de cada uma é ponto de partida editável, e não dado
  * inventado: nada dele vira linha no banco antes de o lojista salvar.
@@ -13,7 +13,12 @@ import { z } from 'zod';
 import { MAXIMO_DO_CORPO, MAXIMO_DO_TITULO } from '@/lib/campanha';
 
 /** Os tipos que funcionam de ponta a ponta hoje. */
-export const TIPOS_DE_AUTOMACAO = ['welcome', 'abandoned_cart', 'order_shipped'] as const;
+export const TIPOS_DE_AUTOMACAO = [
+  'welcome',
+  'abandoned_cart',
+  'order_shipped',
+  'back_in_stock',
+] as const;
 export type TipoDeAutomacao = (typeof TIPOS_DE_AUTOMACAO)[number];
 
 export function ehTipoDeAutomacao(valor: unknown): valor is TipoDeAutomacao {
@@ -54,6 +59,18 @@ export const DESCRICAO_DO_TIPO: Record<TipoDeAutomacao, DescricaoDoTipo> = {
       title: 'Esqueceu algo?',
       body: 'Seu carrinho continua aqui. Finalize antes que acabe.',
       delayMinutes: 60,
+    },
+  },
+  back_in_stock: {
+    nome: 'De volta ao estoque',
+    gatilho: 'Quando um produto que o cliente pediu para acompanhar volta a ter estoque.',
+    porque:
+      'É a notificação mais pedida que existe — literalmente: quem a recebe tocou num botão pedindo por ela. Para o botão aparecer na sua loja, ligue o bloco da Storefy no editor de tema.',
+    rotuloDoAtraso: 'Avisar depois de',
+    sugestao: {
+      title: 'Voltou!',
+      body: 'O produto que você queria está de volta. Corre que é por pouco tempo.',
+      delayMinutes: 0,
     },
   },
   order_shipped: {

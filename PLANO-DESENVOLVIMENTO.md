@@ -869,7 +869,10 @@ a pedido de alguém.
 | Ativos do período (MAU) | ✅ distinto de `device_days`, por `ativos_no_periodo`. Somar `active_users` daria "aparelho-dias" — quem abre todo dia contaria trinta vezes |
 | Seletor de produto/coleção no composer de push | ⬜ |
 | Automação "pedido enviado" | ✅ `fulfillments/create` avisa o APARELHO que fez o pedido, achado pelo token do carrinho. Um aviso por pedido, mesmo com o pedido saindo em três caixas, e respeitando o silêncio noturno |
-| Automação "de volta ao estoque" | ⬜ depende de alguém inscrito no aviso, e o botão que inscreve vem com a Theme App Extension. `products/update` já é aceito e ignorado de propósito |
+| Automação "de volta ao estoque" | ⚠️ ponta a ponta: botão no tema › bridge › endpoint assinado › `products/update` › push com link do produto. Nunca rodou contra uma loja de verdade |
+| O botão "me avise" só dentro do app | ✅ a inscrição é por aparelho; fora do app não há para onde mandar a notificação, e o botão não aparece |
+| A inscrição é consumida no aviso | ✅ quem pediu recebe uma vez e sai da lista. Com a automação desligada nada é avisado E nada é apagado: o pedido espera o lojista ligar |
+| Bloco "avise-me quando voltar" no tema | ⚠️ escrito e testado (o script roda num DOM falso); falta o `shopify app deploy` |
 | Theme App Extension — banner do app | ⚠️ bloco, script e endereço público escritos e testados (o script roda num DOM falso, e cada guarda foi conferida por mutação). Falta o `shopify app deploy`, que depende do app no Partner Dashboard |
 | Banner sem configuração no editor de tema | ✅ o bloco sabe só o domínio da loja, que o Liquid dá de graça, e pergunta o resto ao servidor. O lojista não cola link de loja de aplicativos em lugar nenhum |
 | Smart App Banner do iOS | ✅ no iPhone entra a meta `apple-itunes-app` e NÃO desenhamos tarja por cima: o convite nativo mostra ícone, nota e "abrir" quando o app já está instalado |

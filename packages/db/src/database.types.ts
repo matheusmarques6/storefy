@@ -215,6 +215,7 @@ export type Database = {
           canceled_reason: string | null;
           created_at: string;
           claimed_at: string | null;
+          deep_link: string | null;
         };
         Insert: {
           id?: string;
@@ -227,6 +228,7 @@ export type Database = {
           canceled_reason?: string | null;
           created_at?: string;
           claimed_at?: string | null;
+          deep_link?: string | null;
         };
         Update: {
           id?: string;
@@ -239,6 +241,7 @@ export type Database = {
           canceled_reason?: string | null;
           created_at?: string;
           claimed_at?: string | null;
+          deep_link?: string | null;
         };
         Relationships: [
           {
@@ -249,6 +252,46 @@ export type Database = {
           },
           {
             foreignKeyName: "automation_runs_device_id_fkey";
+            columns: ["device_id"];
+            referencedRelation: "devices";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      back_in_stock_subs: {
+        Row: {
+          id: string;
+          app_id: string;
+          device_id: string;
+          variant_id: string;
+          deep_link: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          app_id: string;
+          device_id: string;
+          variant_id: string;
+          deep_link?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          app_id?: string;
+          device_id?: string;
+          variant_id?: string;
+          deep_link?: string | null;
+          created_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "back_in_stock_subs_app_id_fkey";
+            columns: ["app_id"];
+            referencedRelation: "apps";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "back_in_stock_subs_device_id_fkey";
             columns: ["device_id"];
             referencedRelation: "devices";
             referencedColumns: ["id"];
@@ -957,6 +1000,10 @@ export type Database = {
         Args: { p_app_id: string; p_de: string; p_ate: string };
         Returns: number;
       };
+      avisar_de_volta: {
+        Args: { p_app_id: string; p_variant_id: string };
+        Returns: number;
+      };
       builds_em_revisao: {
         Args: { p_limite?: number };
         Returns: { id: string | null; bundle_id_ios: string | null; asc_key_enc: string | null; asc_key_id: string | null; asc_issuer_id: string | null }[];
@@ -1035,6 +1082,10 @@ export type Database = {
       };
       gravar_revisao: {
         Args: { p_id: string; p_status?: Database["public"]["Enums"]["build_status"]; p_erro?: string };
+        Returns: boolean;
+      };
+      inscrever_de_volta: {
+        Args: { p_app_id: string; p_device_id: string; p_variant_id: string; p_deep_link?: string };
         Returns: boolean;
       };
       lojas_para_ota: {

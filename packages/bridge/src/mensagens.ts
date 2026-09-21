@@ -89,6 +89,23 @@ const urlNavegavel = z.url().refine(
   { message: 'Só http e https são aceitos.' },
 );
 
+/**
+ * Um caminho DENTRO da loja.
+ *
+ * `startsWith('/')` sozinho NÃO basta, e este é o detalhe que engana: `//evil.com`
+ * começa com barra e é uma URL RELATIVA A PROTOCOLO — `new URL('//evil.com',
+ * 'https://loja.com.br')` resolve para `https://evil.com`. O site de outra
+ * pessoa abriria dentro da aba, com a cara do app. `/\evil.com` faz o mesmo
+ * em alguns navegadores, que tratam a barra invertida como barra.
+ */
+const caminhoInterno = z
+  .string()
+  .startsWith('/')
+  .max(500)
+  .refine((valor) => !/^\/[/\\]/.test(valor), {
+    message: 'Caminho relativo a protocolo abriria outro site.',
+  });
+
 /** Compartilhar pela folha nativa do sistema. */
 export const ShareSchema = z.object({
   type: z.literal('SHARE'),
@@ -107,6 +124,25 @@ export const OpenExternalSchema = z.object({
   url: urlNavegavel,
 });
 
+/**
+ * "Me avise quando voltar ao estoque."
+ *
+ * Quem manda é o botão da Theme App Extension, na página do produto, e só
+ * dentro do app — a inscrição é por APARELHO, e aparelho só existe onde o app
+ * está instalado.
+ *
+ * `variantId` é da VARIANTE, e não do produto: é a variante que tem estoque, e
+ * quem pediu o tamanho 38 não quer ser avisado quando o 42 voltar.
+ *
+ * O caminho é relativo e começa com `/`: absoluto abriria outro site dentro da
+ * aba, e é a página da loja que manda esta mensagem.
+ */
+export const NotifyWhenBackSchema = z.object({
+  type: z.literal('NOTIFY_WHEN_BACK'),
+  variantId: z.string().min(1).max(64),
+  path: caminhoInterno.optional(),
+});
+
 export const WebToNativeSchema = z.discriminatedUnion('type', [
   CartUpdatedSchema,
   CustomerIdentifiedSchema,
@@ -116,6 +152,7 @@ export const WebToNativeSchema = z.discriminatedUnion('type', [
   ShareSchema,
   RequestPushPermissionSchema,
   OpenExternalSchema,
+  NotifyWhenBackSchema,
 ]);
 
 export type WebToNative = z.infer<typeof WebToNativeSchema>;
@@ -135,7 +172,7 @@ export const AppContextSchema = z.object({
 export const NavigateSchema = z.object({
   type: z.literal('NAVIGATE'),
   /** Caminho relativo à loja. Absoluto abriria outro site dentro da aba. */
-  path: z.string().startsWith('/'),
+  path: caminhoInterno,
 });
 
 export const NativeToWebSchema = z.discriminatedUnion('type', [AppContextSchema, NavigateSchema]);

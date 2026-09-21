@@ -67,8 +67,32 @@ export const CorpoDaCaixa = z.object({
   subscriptionId: inscricao,
 });
 
+/**
+ * O pedido de "me avise quando voltar".
+ *
+ * `path` é conferido aqui e não só no bridge: o corpo chega pela rede, e quem
+ * assina a requisição é o app — mas o conteúdo veio da página do lojista. Um
+ * `//evil.com` guardado aqui viraria o link de uma notificação que abre outro
+ * site dentro do app, dias depois, sem ninguém ligar uma coisa à outra.
+ */
+export const CorpoDoAviso = z.object({
+  appId: uuid,
+  subscriptionId: inscricao,
+  variantId: z.string().trim().min(1).max(64),
+  path: z
+    .string()
+    .trim()
+    .startsWith('/')
+    .max(500)
+    .refine((valor) => !/^\/[/\\]/.test(valor), {
+      message: 'Caminho relativo a protocolo abriria outro site.',
+    })
+    .optional(),
+});
+
 export type DadosDoAparelho = z.infer<typeof CorpoDoAparelho>;
 export type DadosDoEvento = z.infer<typeof CorpoDoEvento>;
+export type DadosDoAviso = z.infer<typeof CorpoDoAviso>;
 
 export interface Resposta {
   status: number;

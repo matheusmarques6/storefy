@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { ATRIBUTO_DO_CARRINHO, centavosDoPedido, origemDoPedido } from '@/lib/shopify-webhook';
+import {
+  ATRIBUTO_DO_CARRINHO,
+  centavosDoPedido,
+  origemDoPedido,
+  variantesDisponiveis,
+} from '@/lib/shopify-webhook';
 
 describe('origemDoPedido', () => {
   const comAtributo = (valor: string): unknown => ({
@@ -134,7 +139,7 @@ describe('centavosDoPedido', () => {
  */
 describe('aplicarWebhook', () => {
   /** Um client falso que registra o que foi chamado. */
-  function falso(appId: string | null = 'app-1', agendou = true) {
+  function falso(appId: string | null = 'app-1', agendou = true, avisados = 2) {
     const chamadas: { nome: string; args: unknown }[] = [];
     const cliente = {
       rpc: (nome: string, args: unknown) => {
@@ -150,6 +155,9 @@ describe('aplicarWebhook', () => {
         }
         if (nome === 'agendar_pedido_enviado') {
           return Promise.resolve({ data: agendou, error: null });
+        }
+        if (nome === 'avisar_de_volta') {
+          return Promise.resolve({ data: avisados, error: null });
         }
         return Promise.resolve({ data: true, error: null });
       },
@@ -300,17 +308,104 @@ describe('aplicarWebhook', () => {
     }
   });
 
-  /*
-   * `products/update` ainda não tem automação: ele alimenta o "de volta ao
-   * estoque", que precisa de alguém inscrito para avisar. É ACEITO, e não
-   * recusado: uma cadeia de 4xx faz a Shopify DESATIVAR o webhook da loja, e
-   * registrá-lo de novo exigiria reinstalar o app.
-   */
-  it('o tópico ainda sem automação é aceito, não recusado', async () => {
+  it('produto que voltou avisa quem pediu, variante por variante', async () => {
     const { aplicarWebhook } = await import('@/lib/shopify-webhook');
-    const { cliente } = falso();
+    const { cliente, chamadas } = falso();
 
-    const r = await aplicarWebhook(cliente as never, 'products/update', 'x.myshopify.com', '{}');
-    expect(r.feito).toBe('aceito:products/update');
+    const produto = JSON.stringify({
+      id: 77,
+      variants: [
+        { id: 111, inventory_quantity: 3, inventory_management: 'shopify' },
+        { id: 222, inventory_quantity: 0, inventory_management: 'shopify' },
+        { id: 333, inventory_quantity: 5, inventory_management: 'shopify' },
+      ],
+    });
+
+    const r = await aplicarWebhook(cliente as never, 'products/update', 'x.myshopify.com', produto);
+
+    expect(r.feito).toBe('de_volta:4');
+    expect(chamadas.filter((c) => c.nome === 'avisar_de_volta').map((c) => c.args)).toEqual([
+      { p_app_id: 'app-1', p_variant_id: '111' },
+      { p_app_id: 'app-1', p_variant_id: '333' },
+    ]);
+  });
+
+  it('produto todo esgotado não chama o banco', async () => {
+    const { aplicarWebhook } = await import('@/lib/shopify-webhook');
+    const { cliente, chamadas } = falso();
+
+    const produto = JSON.stringify({
+      variants: [{ id: 1, inventory_quantity: 0, inventory_management: 'shopify' }],
+    });
+
+    const r = await aplicarWebhook(cliente as never, 'products/update', 'x.myshopify.com', produto);
+
+    expect(r.feito).toBe('sem_variante_disponivel');
+    expect(chamadas.some((c) => c.nome === 'avisar_de_volta')).toBe(false);
+  });
+});
+
+describe('variantesDisponiveis', () => {
+  /*
+   * `inventory_quantity > 0` NÃO basta. A loja que vende sem controlar estoque
+   * tem `inventory_management: null` e quantidade zero — e está disponível. Só
+   * olhar a quantidade deixaria essas lojas sem nunca avisar ninguém.
+   */
+  it('variante sem controle de estoque está sempre disponível', () => {
+    expect(
+      variantesDisponiveis({
+        variants: [{ id: 1, inventory_quantity: 0, inventory_management: null }],
+      }),
+    ).toEqual(['1']);
+  });
+
+  it('e a que vende mesmo esgotada também', () => {
+    expect(
+      variantesDisponiveis({
+        variants: [
+          {
+            id: 2,
+            inventory_quantity: 0,
+            inventory_management: 'shopify',
+            inventory_policy: 'continue',
+          },
+        ],
+      }),
+    ).toEqual(['2']);
+  });
+
+  it('a esgotada de verdade fica de fora', () => {
+    expect(
+      variantesDisponiveis({
+        variants: [
+          {
+            id: 3,
+            inventory_quantity: 0,
+            inventory_management: 'shopify',
+            inventory_policy: 'deny',
+          },
+        ],
+      }),
+    ).toEqual([]);
+  });
+
+  it('e a quantidade negativa também: estoque negativo é esgotado', () => {
+    expect(
+      variantesDisponiveis({
+        variants: [{ id: 4, inventory_quantity: -2, inventory_management: 'shopify' }],
+      }),
+    ).toEqual([]);
+  });
+
+  it('payload torto não estoura', () => {
+    for (const produto of [
+      null,
+      'texto',
+      {},
+      { variants: 'não é lista' },
+      { variants: [null, 42, {}] },
+    ]) {
+      expect(variantesDisponiveis(produto), JSON.stringify(produto)).toEqual([]);
+    }
   });
 });

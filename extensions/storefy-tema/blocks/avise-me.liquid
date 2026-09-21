@@ -1,0 +1,53 @@
+{% comment %}
+  O botão "me avise quando voltar", na página do produto.
+
+  Bloco de APP, e não app embed: o lojista arrasta para onde ele deve aparecer
+  no template de produto — normalmente logo abaixo do botão de comprar.
+
+  Ele só faz sentido DENTRO do app: a inscrição é por aparelho, e aparelho só
+  existe onde o app está instalado. Quem abre a loja pelo navegador não vê
+  nada, e é o script que decide isso — o Liquid não sabe quem está do outro
+  lado.
+
+  O estoque é do LIQUID, e não de JavaScript: a Shopify já sabe se a variante
+  está disponível, e perguntar de novo pela rede seria mais lento e às vezes
+  divergente do que a página mostra.
+{% endcomment %}
+{% assign variante = product.selected_or_first_available_variant %}
+{% unless variante.available %}
+  <div
+    class="storefy-avise-me"
+    data-storefy-avise-me
+    data-variante="{{ variante.id }}"
+    data-caminho="{{ product.url }}?variant={{ variante.id }}"
+    data-rotulo="{{ block.settings.rotulo | escape }}"
+    data-confirmacao="{{ block.settings.confirmacao | escape }}"
+    hidden
+  ></div>
+  <script src="{{ 'storefy-avise-me.js' | asset_url }}" defer></script>
+{% endunless %}
+
+{% schema %}
+{
+  "name": "Avise-me quando voltar",
+  "target": "section",
+  "settings": [
+    {
+      "type": "paragraph",
+      "content": "O botão aparece só para quem está no aplicativo e só quando a variante escolhida está esgotada. O aviso é enviado pela automação “De volta ao estoque”, no painel da Storefy."
+    },
+    {
+      "type": "text",
+      "id": "rotulo",
+      "label": "Texto do botão",
+      "default": "Me avise quando voltar"
+    },
+    {
+      "type": "text",
+      "id": "confirmacao",
+      "label": "Texto depois de tocar",
+      "default": "Pronto! Você será avisado."
+    }
+  ]
+}
+{% endschema %}

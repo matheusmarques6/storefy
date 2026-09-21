@@ -41,6 +41,14 @@ export interface DadosDoEvento {
   currency?: string;
 }
 
+/** O pedido de "me avise quando voltar", de uma variante. */
+export interface DadosDoAviso {
+  subscriptionId: string;
+  variantId: string;
+  /** Caminho do produto na loja, para a notificação abrir onde deve. */
+  path?: string;
+}
+
 /** Um aviso da caixa, como o servidor o entrega. */
 export interface AvisoDaCaixa {
   id: string;
@@ -66,6 +74,11 @@ export interface RespostaDoEvento {
   eventId: string | null;
   agendou: boolean;
   cancelou: number;
+}
+
+export interface RespostaDoAviso {
+  /** `false` quando o aparelho já tinha pedido o aviso daquela variante. */
+  novo: boolean;
 }
 
 /**
@@ -151,6 +164,22 @@ export function enviarEventoDeCarrinho(
   opcoes: Opcoes = {},
 ): Promise<Resultado<RespostaDoEvento>> {
   return enviar(credenciais, '/api/public/events', { ...dados }, opcoes);
+}
+
+/**
+ * Pede para ser avisado quando a variante voltar ao estoque.
+ *
+ * Quem dispara é o botão da Theme App Extension, na página do produto. O
+ * caminho vai junto para a notificação abrir o produto certo — um "voltou!"
+ * que cai na home obriga o cliente a procurar de novo o que ele pediu para
+ * acompanhar.
+ */
+export function pedirAvisoDeVolta(
+  credenciais: Credenciais,
+  dados: DadosDoAviso,
+  opcoes: Opcoes = {},
+): Promise<Resultado<RespostaDoAviso>> {
+  return enviar(credenciais, '/api/public/back-in-stock', { ...dados }, opcoes);
 }
 
 /** Busca a caixa de avisos deste aparelho (M07). */

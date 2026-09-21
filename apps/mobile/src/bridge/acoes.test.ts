@@ -97,6 +97,36 @@ describe('acaoParaMensagem — recurso que este build não tem', () => {
     ).toEqual({ tipo: 'pedir-push' });
   });
 
+  /*
+   * O pedido de aviso depende do PUSH, e não do backend de eventos: aceitar a
+   * inscrição num app sem push registraria a intenção de alguém que nunca
+   * receberia o aviso, e o silêncio depois seria pior do que o botão não
+   * existir.
+   */
+  it('só aceita o "me avise" quando há como notificar', () => {
+    const mensagem = comoPostMessage({
+      type: 'NOTIFY_WHEN_BACK',
+      variantId: '4412345',
+      path: '/products/jaqueta?variant=4412345',
+    });
+
+    expect(acaoParaMensagem(mensagem, FASE_1)).toEqual({
+      tipo: 'ignorar',
+      motivo: 'Push ainda não configurado neste app.',
+    });
+    expect(acaoParaMensagem(mensagem, COMPLETO)).toEqual({
+      tipo: 'avisar-de-volta',
+      variantId: '4412345',
+      path: '/products/jaqueta?variant=4412345',
+    });
+  });
+
+  it('e o "me avise" sem caminho continua valendo: a variante basta', () => {
+    expect(
+      acaoParaMensagem(comoPostMessage({ type: 'NOTIFY_WHEN_BACK', variantId: '44' }), COMPLETO),
+    ).toEqual({ tipo: 'avisar-de-volta', variantId: '44', path: undefined });
+  });
+
   it('segura a identificação do cliente até existir para onde mandar', () => {
     const mensagem = comoPostMessage({ type: 'CUSTOMER_IDENTIFIED', customerId: '42' });
     expect(acaoParaMensagem(mensagem, FASE_1)).toEqual({

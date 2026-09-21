@@ -95,6 +95,12 @@ export default tseslint.config(
        * sintaxe exige, e é ignorado de propósito.
        */
       '@typescript-eslint/no-unused-vars': ['error', { caughtErrors: 'none' }],
+      /*
+       * `for...of` sobre `NodeList` depende de `Symbol.iterator`, que faltou em
+       * Safari por anos. Pelo mesmo motivo do `catch` acima, aqui se escreve o
+       * laço com índice.
+       */
+      '@typescript-eslint/prefer-for-of': 'off',
     },
   },
   {
