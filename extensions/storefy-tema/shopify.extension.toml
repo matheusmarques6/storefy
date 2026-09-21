@@ -1,0 +1,12 @@
+# Theme App Extension da Storefy (seção 5.6 do plano).
+#
+# É o que o lojista liga no editor de tema da Shopify, sem mexer em código e
+# sem nós editarmos o tema dele. Um app que altera arquivo de tema quebra na
+# primeira atualização do tema e some quando o lojista troca de tema; um app
+# embed sobrevive aos dois.
+api_version = "2025-07"
+
+[[extensions]]
+type = "theme"
+name = "Storefy"
+handle = "storefy-tema"

@@ -62,6 +62,42 @@ export default tseslint.config(
     extends: [tseslint.configs.disableTypeChecked],
   },
   {
+    /*
+     * Os assets da Theme App Extension rodam na VITRINE do lojista, servidos
+     * pela Shopify: são JavaScript de navegador, sem build e sem TypeScript.
+     * Não pertencem a tsconfig nenhum, então as regras que exigem tipos saem —
+     * mas o resto do lint fica, porque é código que vai para o site de quem
+     * nos paga. `lib/banner-no-tema.test.ts` executa o arquivo de verdade.
+     */
+    files: ['extensions/**/assets/*.js'],
+    extends: [tseslint.configs.disableTypeChecked],
+    languageOptions: {
+      globals: {
+        window: 'readonly',
+        document: 'readonly',
+        navigator: 'readonly',
+        fetch: 'readonly',
+        Number: 'readonly',
+        Date: 'readonly',
+        String: 'readonly',
+        encodeURIComponent: 'readonly',
+      },
+    },
+    rules: {
+      // Um `catch` vazio aqui é a regra, e não a exceção: uma exceção nossa
+      // não pode virar bug na loja do cliente. Cada um tem comentário dizendo
+      // por que engole.
+      'no-empty': 'off',
+      /*
+       * `catch {}` sem binding é ES2019, e este arquivo é ES5 de propósito: ele
+       * roda em qualquer navegador que abra a loja do cliente, inclusive o
+       * WebView velho de um Android de 2016. O binding existe porque a
+       * sintaxe exige, e é ignorado de propósito.
+       */
+      '@typescript-eslint/no-unused-vars': ['error', { caughtErrors: 'none' }],
+    },
+  },
+  {
     // Scripts operacionais rodam fora do bundle da aplicação e lidam com JSON
     // externo, onde o tipo só é conhecido em tempo de execução.
     files: ['scripts/**/*.ts'],

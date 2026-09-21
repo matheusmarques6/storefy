@@ -870,7 +870,9 @@ a pedido de alguém.
 | Seletor de produto/coleção no composer de push | ⬜ |
 | Automação "pedido enviado" | ✅ `fulfillments/create` avisa o APARELHO que fez o pedido, achado pelo token do carrinho. Um aviso por pedido, mesmo com o pedido saindo em três caixas, e respeitando o silêncio noturno |
 | Automação "de volta ao estoque" | ⬜ depende de alguém inscrito no aviso, e o botão que inscreve vem com a Theme App Extension. `products/update` já é aceito e ignorado de propósito |
-| Theme App Extension (banner do app + snippet do bridge) | ⬜ |
+| Theme App Extension — banner do app | ⚠️ bloco, script e endereço público escritos e testados (o script roda num DOM falso, e cada guarda foi conferida por mutação). Falta o `shopify app deploy`, que depende do app no Partner Dashboard |
+| Banner sem configuração no editor de tema | ✅ o bloco sabe só o domínio da loja, que o Liquid dá de graça, e pergunta o resto ao servidor. O lojista não cola link de loja de aplicativos em lugar nenhum |
+| Smart App Banner do iOS | ✅ no iPhone entra a meta `apple-itunes-app` e NÃO desenhamos tarja por cima: o convite nativo mostra ícone, nota e "abrir" quando o app já está instalado |
 
 > **O que trava o ponta a ponta:** `SHOPIFY_API_KEY` e `SHOPIFY_API_SECRET` de um app criado
 > uma única vez no Partner Dashboard, com a URL de retorno apontando para

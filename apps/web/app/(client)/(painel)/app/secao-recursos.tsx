@@ -169,21 +169,35 @@ export function SecaoRecursos({
         </div>
 
         {features.appBanner.enabled ? (
-          <div className="space-y-1.5">
-            <Label htmlFor="texto-do-banner">Texto do banner</Label>
-            <Input
-              id="texto-do-banner"
-              value={features.appBanner.text}
-              placeholder="Compre mais rápido pelo nosso app"
-              disabled={somenteLeitura}
-              onChange={(evento) => {
-                aoMudar(
-                  editarRecursos(config, {
-                    appBanner: { ...features.appBanner, text: evento.target.value },
-                  }),
-                );
-              }}
-            />
+          <div className="space-y-3">
+            <div className="space-y-1.5">
+              <Label htmlFor="texto-do-banner">Texto do banner</Label>
+              <Input
+                id="texto-do-banner"
+                value={features.appBanner.text}
+                placeholder="Compre mais rápido pelo nosso app"
+                disabled={somenteLeitura}
+                onChange={(evento) => {
+                  aoMudar(
+                    editarRecursos(config, {
+                      appBanner: { ...features.appBanner, text: evento.target.value },
+                    }),
+                  );
+                }}
+              />
+            </div>
+
+            {/*
+              Esta chave sozinha não põe a faixa no ar: ela também precisa ser
+              ligada UMA VEZ no editor de tema da Shopify, porque é de lá que o
+              bloco roda. Sem este aviso, o lojista ligaria aqui, não veria nada
+              no site e concluiria que o produto está quebrado.
+            */}
+            <p className="text-muted-foreground border-input rounded-lg border p-3 text-xs">
+              Falta um passo na Shopify: em <strong>Loja virtual › Temas › Personalizar</strong>,
+              abra <strong>Configurações do app</strong> e ligue o bloco <strong>Storefy</strong>. É
+              uma vez só — depois o texto e os links saem daqui.
+            </p>
           </div>
         ) : null}
       </section>

@@ -1,0 +1,42 @@
+{% comment %}
+  O convite para baixar o app, no site da loja.
+
+  O bloco NÃO recebe configuração nenhuma do editor de tema, e isso é
+  proposital: os links da App Store e da Play Store já estão no painel da
+  Storefy, e pedir ao lojista que ache e cole os dois seria exatamente o
+  trabalho que o produto existe para eliminar. O script pergunta o resto ao
+  servidor usando o único dado que o Liquid entrega de graça — o domínio
+  permanente da loja.
+
+  `defer` em vez de bloquear o carregamento: um banner de app não pode atrasar
+  a vitrine de quem nos paga.
+{% endcomment %}
+<script
+  src="{{ 'storefy-banner.js' | asset_url }}"
+  data-storefy-loja="{{ shop.permanent_domain }}"
+  data-storefy-api="{{ block.settings.api_url | default: 'https://app.storefy.com.br' }}"
+  defer
+></script>
+
+{% schema %}
+{
+  "name": "Banner do app",
+  "target": "body",
+  "settings": [
+    {
+      "type": "header",
+      "content": "Este bloco não precisa de configuração"
+    },
+    {
+      "type": "paragraph",
+      "content": "O texto do convite e os links das lojas de aplicativos vêm do painel da Storefy. Para mudá-los, use o editor do app."
+    },
+    {
+      "type": "text",
+      "id": "api_url",
+      "label": "Endereço da Storefy (não mude sem orientação do suporte)",
+      "default": "https://app.storefy.com.br"
+    }
+  ]
+}
+{% endschema %}

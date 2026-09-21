@@ -37,6 +37,7 @@ describe('matcher do proxy', () => {
     for (const caminho of [
       '/api/health',
       '/api/public/app-config/abc-123',
+      '/api/public/banner/oak.myshopify.com',
       '/api/public/devices',
       '/api/webhooks/eas',
       '/api/webhooks/shopify',
