@@ -3310,6 +3310,18 @@ reset role;
 select tests.login('a-owner@teste.local');
 set role authenticated;
 
+/*
+ * MAU não é a soma de `active_users`: somar trinta dias daria "aparelho-dias",
+ * e quem abre o app todo dia contaria trinta vezes. O distinto do PERÍODO só
+ * existe em `device_days`, e é isto que a tela C11 chama de ativos no mês.
+ */
+select tests.ok('numeros',
+  (select public.ativos_no_periodo(
+     (select app_a from tests.lojas),
+     (now() at time zone 'America/Sao_Paulo')::date - 30,
+     (now() at time zone 'America/Sao_Paulo')::date + 1)) = 2,
+  'ativos do período contam aparelho distinto, e não abertura nem dia');
+
 -- Dois aparelhos hoje, mais a linha de amanhã do teste da janela.
 select tests.ok('numeros',
   tests.contar($q$select count(*) from public.device_days
@@ -3348,6 +3360,16 @@ select tests.ok('isolamento',
   tests.contar($q$select count(*) from public.device_days
     where app_id = (select app_a from tests.lojas)$q$) = 0,
   'e a atividade de uma organização não aparece para outra');
+
+/*
+ * A função de ativos é `security invoker`: a RLS de quem chama é que decide.
+ * Numa `security definer` mal feita, este número seria o da OUTRA loja.
+ */
+select tests.ok('isolamento',
+  (select public.ativos_no_periodo(
+     (select app_a from tests.lojas),
+     current_date - 30, current_date + 1)) = 0,
+  'e nem pelos ativos do período: a função respeita a RLS de quem chama');
 
 select tests.ok('isolamento',
   tests.contar($q$select count(*) from public.analytics_daily

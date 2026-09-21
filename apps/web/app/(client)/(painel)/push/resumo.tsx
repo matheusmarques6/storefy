@@ -6,7 +6,7 @@
  * porque a contagem falhou faria ele achar que ninguém instalou (regra 1).
  */
 import { Bell, CheckCircle2, Smartphone } from 'lucide-react';
-import { Card, CardContent } from '@/components/ui/card';
+import { CartaoDeNumero } from '@/components/cartao-de-numero';
 import { lerMetricas, numeroOuTraco } from '@/lib/campanha';
 import type { CampanhaNaLista } from '@/lib/push-servidor';
 
@@ -32,19 +32,19 @@ export function ResumoDoPush({
 
   return (
     <div className="grid gap-4 sm:grid-cols-3">
-      <Numero
+      <CartaoDeNumero
         icone={Smartphone}
         rotulo="Aparelhos com o app"
         valor={numeroOuTraco(aparelhos)}
         dica="Quem instalou e pode receber notificações."
       />
-      <Numero
+      <CartaoDeNumero
         icone={CheckCircle2}
         rotulo="Campanhas enviadas"
         valor={enviadas.toLocaleString('pt-BR')}
         dica="Total já disparado por esta loja."
       />
-      <Numero
+      <CartaoDeNumero
         icone={Bell}
         rotulo="Notificações entregues"
         valor={numeroOuTraco(entregues)}
@@ -55,30 +55,5 @@ export function ResumoDoPush({
         }
       />
     </div>
-  );
-}
-
-function Numero({
-  icone: Icone,
-  rotulo,
-  valor,
-  dica,
-}: {
-  icone: typeof Bell;
-  rotulo: string;
-  valor: string;
-  dica: string;
-}) {
-  return (
-    <Card>
-      <CardContent className="space-y-1 p-5">
-        <div className="text-muted-foreground flex items-center gap-2 text-sm">
-          <Icone className="size-4" aria-hidden />
-          {rotulo}
-        </div>
-        <p className="text-2xl font-semibold tabular-nums">{valor}</p>
-        <p className="text-muted-foreground text-xs">{dica}</p>
-      </CardContent>
-    </Card>
   );
 }

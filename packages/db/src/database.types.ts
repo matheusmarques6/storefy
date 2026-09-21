@@ -949,6 +949,10 @@ export type Database = {
         Args: { p_shop_domain: string };
         Returns: { app_id: string | null; store_id: string | null; timezone: string | null }[];
       };
+      ativos_no_periodo: {
+        Args: { p_app_id: string; p_de: string; p_ate: string };
+        Returns: number;
+      };
       builds_em_revisao: {
         Args: { p_limite?: number };
         Returns: { id: string | null; bundle_id_ios: string | null; asc_key_enc: string | null; asc_key_id: string | null; asc_issuer_id: string | null }[];

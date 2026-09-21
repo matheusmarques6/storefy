@@ -864,7 +864,9 @@ a pedido de alguém.
 | `store.platform` na `AppConfig` | ✅ campo novo com `default('shopify')` e teste de compatibilidade: config publicada antes continua válida e a atribuição não se desliga sozinha |
 | Job de agregação do `analytics_daily` | ✅ recalcula (não acumula) os últimos dias no fuso de CADA loja, de hora em hora. Dia sem número não vira linha, e linha que zerou é apagada |
 | `device_days`, a fonte de ativos e sessões | ✅ uma linha por aparelho por dia, escrita junto com o ping do app. `last_seen_at` sozinha daria ativos errados para qualquer dia passado |
-| Tela C11 e cards de receita no C05 | ⬜ |
+| Tela C11 — Analytics | ✅ receita app x site, uso do app e notificações, com período de 7, 30 ou 90 dias na URL. Conferida no navegador em 1280 e 390 px |
+| Cards de receita no C05 | ✅ resumo de 30 dias da loja ativa. Some quando não há número: um zero grande na primeira tela diria ao lojista que o app fracassou antes de ele publicar |
+| Ativos do período (MAU) | ✅ distinto de `device_days`, por `ativos_no_periodo`. Somar `active_users` daria "aparelho-dias" — quem abre todo dia contaria trinta vezes |
 | Seletor de produto/coleção no composer de push | ⬜ |
 | Automações de pedido enviado e de volta ao estoque | ⬜ os webhooks `fulfillments/create` e `products/update` já são aceitos e ignorados de propósito |
 | Theme App Extension (banner do app + snippet do bridge) | ⬜ |
