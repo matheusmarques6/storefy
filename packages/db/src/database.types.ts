@@ -499,6 +499,54 @@ export type Database = {
         };
         Relationships: [];
       };
+      ota_updates: {
+        Row: {
+          id: string;
+          status: Database["public"]["Enums"]["ota_status"];
+          message: string;
+          commit_sha: string | null;
+          total: number | null;
+          concluidas: number;
+          falhas: number;
+          error: string | null;
+          triggered_by: string | null;
+          started_at: string | null;
+          finished_at: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          status?: Database["public"]["Enums"]["ota_status"];
+          message: string;
+          commit_sha?: string | null;
+          total?: number | null;
+          concluidas?: number;
+          falhas?: number;
+          error?: string | null;
+          triggered_by?: string | null;
+          started_at?: string | null;
+          finished_at?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          status?: Database["public"]["Enums"]["ota_status"];
+          message?: string;
+          commit_sha?: string | null;
+          total?: number | null;
+          concluidas?: number;
+          falhas?: number;
+          error?: string | null;
+          triggered_by?: string | null;
+          started_at?: string | null;
+          finished_at?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
       platform_admins: {
         Row: {
           user_id: string;
@@ -776,6 +824,14 @@ export type Database = {
         Args: { p_chave: string; p_maximo: number; p_janela_segundos?: number };
         Returns: boolean;
       };
+      contar_ota: {
+        Args: { p_id: string; p_ok: boolean };
+        Returns: unknown;
+      };
+      dados_da_ota: {
+        Args: { p_store_id: string };
+        Returns: { app_id: string | null; store_id: string | null; nome_do_app: string | null; bundle_id_ios: string | null; package_android: string | null; expo_project_id: string | null; onesignal_app_id: string | null; device_secret_enc: string | null }[];
+      };
       devolver_aviso: {
         Args: { p_id: string };
         Returns: unknown;
@@ -807,6 +863,10 @@ export type Database = {
       gravar_revisao: {
         Args: { p_id: string; p_status?: Database["public"]["Enums"]["build_status"]; p_erro?: string };
         Returns: boolean;
+      };
+      lojas_para_ota: {
+        Args: Record<string, never>;
+        Returns: { store_id: string | null; app_id: string | null; nome: string | null }[];
       };
       publicar_config: {
         Args: { p_app_id: string };
@@ -849,6 +909,7 @@ export type Database = {
       device_platform: "ios" | "android";
       membership_role: "owner" | "admin" | "member";
       org_status: "trialing" | "active" | "past_due" | "canceled";
+      ota_status: "queued" | "running" | "finished" | "errored";
       platform_admin_role: "superadmin" | "support";
       push_automation_type: "welcome" | "abandoned_cart" | "back_in_stock" | "order_shipped" | "inactive_7d" | "custom_webhook";
       push_campaign_status: "draft" | "scheduled" | "sending" | "sent" | "failed" | "canceled";

@@ -249,6 +249,9 @@ async function main(): Promise<void> {
     'reservar_aviso',
     'devolver_aviso',
     'emails_do_build',
+    'lojas_para_ota',
+    'dados_da_ota',
+    'contar_ota',
     // Usada pelo envio de teste do painel, pela service role.
     'consumir_limite',
   ];

@@ -827,7 +827,8 @@ a pedido de alguém.
 | E-mail de atendimento da loja | ✅ campo na edição da loja; sem ele a política manda o cliente pelo site, em vez de inventar um endereço |
 | Rascunho da ficha do app | ✅ cinco campos, cada um no limite da loja de aplicativos, com botão de copiar |
 | Capturas de tela a partir da prévia | ⬜ precisa de navegador headless nos tamanhos exatos de cada aparelho; cabe no workflow de build, não na função serverless |
-| Canal de EAS Update por loja e botão de correção OTA | ⬜ |
+| Canal de EAS Update por loja | ✅ `production-<storeId>`, um por loja: o pacote carrega o segredo daquela loja |
+| Botão admin "enviar correção OTA para todas as lojas" | ⚠️ tela, trava de rodada única, trilha de auditoria e workflow em matriz escritos e testados; o `eas update` nunca rodou daqui |
 | Chegar ao TestFlight e à trilha interna do Play | ⬜ depende das contas Apple/Google de uma loja real e dos segredos do repositório |
 
 > **O que trava o ponta a ponta:** `EXPO_TOKEN`, `EAS_PROJECT_ID` completo, `EXPO_OWNER`,

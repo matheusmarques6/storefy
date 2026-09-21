@@ -8,6 +8,7 @@ const ITENS = [
   { href: '/admin', rotulo: 'Organizações' },
   { href: '/admin/lojas', rotulo: 'Lojas' },
   { href: '/admin/logs', rotulo: 'Auditoria' },
+  { href: '/admin/ota', rotulo: 'Correção OTA' },
 ] as const;
 
 export function NavegacaoAdmin() {

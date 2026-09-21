@@ -2570,6 +2570,104 @@ select tests.ok('isolamento',
 reset role;
 select tests.logout();
 
+-- ------------------------------------------- correção OTA (fase 4)
+
+set role service_role;
+
+insert into public.ota_updates (message, triggered_by)
+select 'Corrige o carrinho no iPhone', u_equipe from tests.ids;
+
+/*
+ * A lista que vira matriz de jobs no GitHub NÃO leva segredo: os nomes dos
+ * jobs ficam visíveis para quem tem leitura no repositório.
+ */
+select tests.ok('ota',
+  tests.contar('select count(*) from public.lojas_para_ota()') = 0,
+  'loja sem projeto no Expo fica de fora: não há canal para publicar');
+
+update public.apps set expo_project_id = 'proj-a' where id = (select app_a from tests.lojas);
+
+select tests.ok('ota',
+  tests.contar('select count(*) from public.lojas_para_ota()') = 1,
+  'e a loja com projeto entra');
+
+/*
+ * Loja pausada não recebe correção. Publicar num canal de loja pausada gasta
+ * cota do Expo por um app que ninguém está usando.
+ */
+update public.apps set expo_project_id = 'proj-b' where id = (select app_b from tests.lojas);
+update public.stores set status = 'paused' where id = (select loja_b from tests.lojas);
+
+select tests.ok('ota',
+  tests.contar('select count(*) from public.lojas_para_ota()') = 1,
+  'loja pausada fica de fora');
+
+update public.stores set status = 'draft' where id = (select loja_b from tests.lojas);
+
+/*
+ * A soma é ATÔMICA no banco: os jobs da matriz correm em paralelo, e dois
+ * terminando ao mesmo tempo escreveriam por cima um do outro se o contador
+ * fosse lido e gravado em duas idas.
+ */
+select public.contar_ota((select id from public.ota_updates limit 1), true);
+select public.contar_ota((select id from public.ota_updates limit 1), true);
+select public.contar_ota((select id from public.ota_updates limit 1), false);
+
+select tests.ok('ota',
+  (select concluidas = 2 and falhas = 1 and status = 'running'
+     from public.ota_updates limit 1),
+  'contar_ota soma cada loja e põe a rodada em andamento');
+
+reset role;
+
+select tests.login('a-owner@teste.local');
+set role authenticated;
+
+/*
+ * Uma correção OTA é ação da PLATAFORMA. Mostrá-la ao lojista contaria a ele
+ * que outras lojas existem e quantas são.
+ */
+select tests.ok('ota',
+  tests.contar('select count(*) from public.ota_updates') = 0,
+  'o lojista não vê correção OTA nenhuma');
+
+select tests.ok('segredo',
+  tests.erro('select * from public.lojas_para_ota()'),
+  'nem lista as lojas da plataforma');
+
+select tests.ok('segredo',
+  tests.erro($q$select * from public.dados_da_ota(gen_random_uuid())$q$),
+  'nem busca o segredo do app de uma loja');
+
+select tests.ok('segredo',
+  tests.erro($q$select public.contar_ota(gen_random_uuid(), true)$q$),
+  'nem mexe no andamento de uma rodada');
+
+reset role;
+select tests.logout();
+
+select tests.login('equipe@teste.local');
+set role authenticated;
+
+select tests.ok('admin',
+  tests.contar('select count(*) from public.ota_updates') = 1,
+  'a equipe da Storefy vê as correções OTA');
+
+reset role;
+select tests.logout();
+
+/*
+ * A auditoria de uma correção OTA nasce SEM organização, e é o primeiro caso
+ * assim: ela não pertence a nenhum cliente. Forçar uma org aqui atribuiria a
+ * um deles uma ação que não foi dele.
+ */
+select tests.ok('auditoria',
+  exists (
+    select 1 from public.audit_logs
+     where entity = 'ota_updates' and action = 'create' and org_id is null
+  ),
+  'publicar correção OTA fica na trilha, sem organização');
+
 /*
  * O Realtime da tela de publicação (C12).
  *

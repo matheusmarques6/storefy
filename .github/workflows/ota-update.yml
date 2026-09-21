@@ -1,0 +1,191 @@
+# Publica uma correção de JavaScript em todas as lojas (seção 7 do plano).
+#
+# O `expo-updates` baixa o pacote corrigido na próxima abertura do app: não há
+# build novo nem revisão da Apple. É a diferença entre consertar em minutos e
+# consertar em três dias.
+#
+# UMA PUBLICAÇÃO POR LOJA, numa matriz. Não é desperdício: o pacote carrega as
+# variáveis daquela loja — o id do app dela, o segredo com que ele assina o que
+# manda —, e publicar um pacote só para todos os canais entregaria o segredo de
+# uma loja ao app de outra.
+#
+# OS MESMOS SEGREDOS do workflow de build: STOREFY_API_URL, BUILD_API_SECRET e
+# EXPO_TOKEN.
+
+name: ota-update
+
+on:
+  repository_dispatch:
+    types: [storefy-ota]
+
+# Uma correção de cada vez. Duas em paralelo publicariam no mesmo canal em
+# ordem indefinida, e o app de uma loja poderia ficar com a versão mais velha.
+concurrency:
+  group: ota-update
+  cancel-in-progress: false
+
+jobs:
+  preparar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      lojas: ${{ steps.lista.outputs.lojas }}
+      quantas: ${{ steps.lista.outputs.quantas }}
+
+    steps:
+      - name: Conferir a configuração
+        run: |
+          faltando=""
+          [ -n "${{ secrets.STOREFY_API_URL }}" ]  || faltando="$faltando STOREFY_API_URL"
+          [ -n "${{ secrets.BUILD_API_SECRET }}" ] || faltando="$faltando BUILD_API_SECRET"
+          [ -n "${{ secrets.EXPO_TOKEN }}" ]       || faltando="$faltando EXPO_TOKEN"
+          if [ -n "$faltando" ]; then
+            echo "::error::Faltam segredos no repositório:$faltando"
+            exit 1
+          fi
+
+      - name: Buscar as lojas
+        id: lista
+        env:
+          API: ${{ secrets.STOREFY_API_URL }}
+          SEGREDO: ${{ secrets.BUILD_API_SECRET }}
+          OTA_ID: ${{ github.event.client_payload.otaId }}
+        run: |
+          # A resposta desta chamada vira NOME DE JOB na interface do GitHub.
+          # Por isso ela não traz segredo nenhum: cada job busca o que precisa
+          # depois, na etapa "loja".
+          http=$(curl -sS -o /tmp/ota.json -w '%{http_code}' \
+            --fail-with-body \
+            -X POST "$API/api/internal/ota" \
+            -H "Authorization: Bearer $SEGREDO" \
+            -H 'Content-Type: application/json' \
+            -d "{\"etapa\":\"lista\",\"otaId\":\"$OTA_ID\"}") || true
+
+          if [ "$http" != "200" ]; then
+            echo "::error::A Storefy não liberou a lista de lojas (HTTP $http)."
+            exit 1
+          fi
+
+          quantas=$(jq '.lojas | length' /tmp/ota.json)
+          echo "quantas=$quantas" >> "$GITHUB_OUTPUT"
+          echo "lojas=$(jq -c '.lojas' /tmp/ota.json)" >> "$GITHUB_OUTPUT"
+          echo "Lojas nesta rodada: $quantas"
+
+      # Sem loja nenhuma a matriz não roda, e a rodada ficaria "publicando"
+      # para sempre na tela do admin.
+      - name: Encerrar quando não há loja
+        if: steps.lista.outputs.quantas == '0'
+        env:
+          API: ${{ secrets.STOREFY_API_URL }}
+          SEGREDO: ${{ secrets.BUILD_API_SECRET }}
+          OTA_ID: ${{ github.event.client_payload.otaId }}
+        run: |
+          curl -sS -X POST "$API/api/internal/ota/status" \
+            -H "Authorization: Bearer $SEGREDO" \
+            -H 'Content-Type: application/json' \
+            -d "$(jq -n --arg id "$OTA_ID" \
+              '{otaId: $id, erro: "Nenhuma loja tem projeto no Expo ainda."}')" > /dev/null
+
+      - name: Avisar que a preparação falhou
+        if: failure()
+        env:
+          API: ${{ secrets.STOREFY_API_URL }}
+          SEGREDO: ${{ secrets.BUILD_API_SECRET }}
+          OTA_ID: ${{ github.event.client_payload.otaId }}
+        run: |
+          curl -sS -X POST "$API/api/internal/ota/status" \
+            -H "Authorization: Bearer $SEGREDO" \
+            -H 'Content-Type: application/json' \
+            -d "$(jq -n --arg id "$OTA_ID" \
+              '{otaId: $id, erro: "Não conseguimos montar a lista de lojas."}')" > /dev/null || true
+
+  enviar:
+    needs: preparar
+    if: needs.preparar.outputs.quantas != '0'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    strategy:
+      # `fail-fast: false` é obrigatório aqui: uma loja com problema não pode
+      # impedir que as outras recebam a correção.
+      fail-fast: false
+      # Cinco de cada vez. Mais do que isso derruba a cota do Expo e faz as
+      # lojas do fim da fila falharem por limite, não por defeito.
+      max-parallel: 5
+      matrix:
+        loja: ${{ fromJson(needs.preparar.outputs.lojas) }}
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+
+      - name: Buscar os dados desta loja
+        env:
+          API: ${{ secrets.STOREFY_API_URL }}
+          SEGREDO: ${{ secrets.BUILD_API_SECRET }}
+          OTA_ID: ${{ github.event.client_payload.otaId }}
+          STORE_ID: ${{ matrix.loja.storeId }}
+        run: |
+          http=$(curl -sS -o /tmp/loja.json -w '%{http_code}' \
+            --fail-with-body \
+            -X POST "$API/api/internal/ota" \
+            -H "Authorization: Bearer $SEGREDO" \
+            -H 'Content-Type: application/json' \
+            -d "{\"etapa\":\"loja\",\"otaId\":\"$OTA_ID\",\"storeId\":\"$STORE_ID\"}") || true
+
+          # O corpo de SUCESSO nunca é ecoado: ele traz o segredo do app.
+          if [ "$http" != "200" ]; then
+            echo "::error::A Storefy não liberou os dados desta loja (HTTP $http)."
+            exit 1
+          fi
+
+      - name: Publicar a correção
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+          CANAL: ${{ matrix.loja.canal }}
+          MENSAGEM: ${{ github.event.client_payload.mensagem }}
+          STORE_ID: ${{ matrix.loja.storeId }}
+        working-directory: apps/mobile
+        run: |
+          # Pelo ambiente, e não pela linha de comando: `ps` mostra argumento,
+          # não mostra ambiente.
+          export STOREFY_APP_ID=$(jq -r '.appId' /tmp/loja.json)
+          export ONESIGNAL_APP_ID=$(jq -r '.oneSignalAppId // empty' /tmp/loja.json)
+          export STOREFY_DEVICE_SECRET=$(jq -r '.deviceSecret // empty' /tmp/loja.json)
+          export EAS_PROJECT_ID=$(jq -r '.expoProjectId // empty' /tmp/loja.json)
+          export APP_NAME=$(jq -r '.nomeDoApp' /tmp/loja.json)
+          export IOS_BUNDLE_ID=$(jq -r '.bundleIdIos // empty' /tmp/loja.json)
+          export ANDROID_PACKAGE=$(jq -r '.packageAndroid // empty' /tmp/loja.json)
+
+          pnpm dlx eas-cli@latest update \
+            --channel "$CANAL" \
+            --message "$MENSAGEM" \
+            --non-interactive
+
+      - name: Contar esta loja
+        if: always()
+        env:
+          API: ${{ secrets.STOREFY_API_URL }}
+          SEGREDO: ${{ secrets.BUILD_API_SECRET }}
+          OTA_ID: ${{ github.event.client_payload.otaId }}
+          DEU_CERTO: ${{ job.status == 'success' }}
+        run: |
+          # `always()` porque uma loja que falha PRECISA ser contada: sem isso
+          # a rodada nunca fecha e o admin vê "publicando" para sempre.
+          curl -sS -X POST "$API/api/internal/ota/status" \
+            -H "Authorization: Bearer $SEGREDO" \
+            -H 'Content-Type: application/json' \
+            -d "$(jq -n \
+              --arg id "$OTA_ID" \
+              --argjson ok "$DEU_CERTO" \
+              --arg sha "${{ github.sha }}" \
+              '{otaId: $id, ok: $ok, commitSha: $sha}')" > /dev/null || true
+
+      - name: Limpar os segredos do disco
+        if: always()
+        run: rm -f /tmp/loja.json
