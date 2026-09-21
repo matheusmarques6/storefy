@@ -52,7 +52,48 @@ describe('urlLojaSchema', () => {
 describe('lojaSchema', () => {
   it('aceita nome e URL válidos', () => {
     const resultado = lojaSchema.parse({ nome: 'Minha Loja', url: 'minhaloja.com.br' });
-    expect(resultado).toEqual({ nome: 'Minha Loja', url: 'https://minhaloja.com.br' });
+    expect(resultado).toEqual({
+      nome: 'Minha Loja',
+      url: 'https://minhaloja.com.br',
+      // Sem o campo, "sem contato": o cadastro não o pede, a edição pede.
+      emailDeAtendimento: null,
+    });
+  });
+
+  /*
+   * O e-mail de atendimento vai para a política de privacidade do app, que o
+   * cliente final lê. Campo em branco precisa virar `null`, e não string
+   * vazia: a política mostraria um endereço vazio para ele escrever.
+   */
+  it('e-mail de atendimento em branco vira null, não string vazia', () => {
+    for (const vazio of ['', '   ', undefined]) {
+      const resultado = lojaSchema.parse({
+        nome: 'Minha Loja',
+        url: 'x.com.br',
+        emailDeAtendimento: vazio,
+      });
+      expect(resultado.emailDeAtendimento).toBeNull();
+    }
+  });
+
+  it('aceita e-mail de atendimento válido, sem espaços', () => {
+    const resultado = lojaSchema.parse({
+      nome: 'Minha Loja',
+      url: 'x.com.br',
+      emailDeAtendimento: '  atendimento@loja.com.br ',
+    });
+    expect(resultado.emailDeAtendimento).toBe('atendimento@loja.com.br');
+  });
+
+  it('recusa e-mail de atendimento inválido', () => {
+    for (const ruim of ['atendimento', 'a@', '@loja.com', 'a b@loja.com']) {
+      const r = lojaSchema.safeParse({
+        nome: 'Minha Loja',
+        url: 'x.com.br',
+        emailDeAtendimento: ruim,
+      });
+      expect(r.success, ruim).toBe(false);
+    }
   });
 
   it('recusa nome com menos de 2 caracteres', () => {

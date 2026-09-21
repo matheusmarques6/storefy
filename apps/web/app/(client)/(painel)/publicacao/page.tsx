@@ -6,11 +6,14 @@ import { exigirContextoCliente } from '@/lib/contexto';
 import { criarClientServidor } from '@/lib/supabase/server';
 import { dadosDaPublicacao, temBuildEmAndamento } from '@/lib/publicacao-servidor';
 import { montarChecklist } from '@/lib/checklist-de-publicacao';
+import { montarFicha } from '@/lib/ficha-da-loja';
+import { urlDoSite } from '@/lib/env';
 import { EstadoVazio } from '@/components/estado-vazio';
 import { Button } from '@/components/ui/button';
 import { ChecklistDaPlataforma } from './checklist';
 import { HistoricoDeBuilds } from './historico';
 import { BuildsAoVivo } from './ao-vivo';
+import { FichaDaLoja } from './ficha';
 
 export const metadata: Metadata = { title: 'Publicação' };
 
@@ -68,6 +71,16 @@ export default async function PaginaDePublicacao() {
         <ChecklistDaPlataforma plataforma="ios" itens={itens} podeEscrever={podeEscrever} />
         <ChecklistDaPlataforma plataforma="android" itens={itens} podeEscrever={podeEscrever} />
       </div>
+
+      <FichaDaLoja
+        campos={montarFicha({
+          nomeDaLoja: dados.loja.nome,
+          urlDaLoja: dados.loja.url,
+          pushLigado: dados.estado.pushLigado,
+        })}
+        urlDaPolitica={`${urlDoSite()}/privacy/${lojaAtiva.id}`}
+        temContato={dados.loja.temContato}
+      />
 
       <HistoricoDeBuilds builds={dados.builds} />
     </div>

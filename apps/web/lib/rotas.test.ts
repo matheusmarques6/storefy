@@ -46,6 +46,15 @@ describe('matcher do proxy', () => {
     }
   });
 
+  /*
+   * A Apple depende desta: o revisor abre o endereço da política antes de
+   * aprovar o app, e um 307 para a tela de login ali vira recusa — que chega
+   * dias depois.
+   */
+  it('NÃO intercepta a política de privacidade pública', () => {
+    expect(intercepta('/privacy/11111111-1111-4111-8111-111111111111')).toBe(false);
+  });
+
   it('NÃO intercepta o callback do auth', () => {
     // Precisa rodar sem interferência para trocar o código pela sessão.
     expect(intercepta('/auth/callback')).toBe(false);
@@ -69,5 +78,6 @@ describe('matcher do proxy', () => {
   it('intercepta uma rota cujo nome apenas começa parecido com api', () => {
     // `/apizinha` não é rota de API: a exclusão tem que ser do segmento.
     expect(intercepta('/apizinha')).toBe(true);
+    expect(intercepta('/privacidade')).toBe(true);
   });
 });

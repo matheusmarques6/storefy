@@ -25,17 +25,28 @@ export function FormularioLoja({
   acao,
   nomeInicial = '',
   urlInicial = '',
+  emailInicial = '',
   rotuloEnvio,
   carregando,
   comDeteccao = false,
+  comContato = false,
 }: {
   acao: (anterior: EstadoLoja, dados: FormData) => Promise<EstadoLoja>;
   nomeInicial?: string;
   urlInicial?: string;
+  emailInicial?: string;
   rotuloEnvio: string;
   carregando: string;
   /** A detecção só faz sentido no cadastro; na edição a loja já está lida. */
   comDeteccao?: boolean;
+  /**
+   * Mostra o e-mail de atendimento.
+   *
+   * Fica fora do cadastro de propósito: pedi-lo ali travaria quem só quer ver
+   * o painel funcionando. Ele importa na hora de publicar, e a tela de
+   * publicação manda o lojista para cá quando falta.
+   */
+  comContato?: boolean;
 }) {
   const [estado, despachar] = useActionState<EstadoLoja, FormData>(acao, {});
   const [nome, setNome] = useState(nomeInicial);
@@ -174,6 +185,23 @@ export function FormularioLoja({
           required
         />
       </Campo>
+
+      {comContato ? (
+        <Campo
+          id="emailDeAtendimento"
+          rotulo="E-mail de atendimento"
+          erro={estado.erros?.emailDeAtendimento}
+          dica="Aparece na política de privacidade do app e na ficha das lojas de aplicativos. Pode deixar em branco por enquanto."
+        >
+          <Input
+            {...propsDoCampo('emailDeAtendimento', estado.erros?.emailDeAtendimento, false)}
+            type="email"
+            defaultValue={emailInicial}
+            placeholder="atendimento@sualoja.com.br"
+            autoComplete="email"
+          />
+        </Campo>
+      ) : null}
 
       {/* A cor detectada entra no rascunho do app. O servidor revalida. */}
       <input type="hidden" name="corDetectada" value={marca?.corPrincipal ?? ''} />

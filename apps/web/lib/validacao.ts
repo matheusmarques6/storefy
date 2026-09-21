@@ -70,6 +70,28 @@ export const urlLojaSchema = z
     { message: 'Endereço inválido. Exemplo: minhaloja.com.br' },
   );
 
+/**
+ * O e-mail de atendimento da loja.
+ *
+ * OPCIONAL, e é de propósito: exigi-lo no cadastro travaria quem só quer ver o
+ * painel funcionando. Ele vira necessário na hora de publicar — a política de
+ * privacidade e a ficha do app pedem um contato —, e a tela de publicação diz
+ * isso lá, onde faz diferença.
+ *
+ * Campo vazio vira `null`, e não string vazia: no banco, "sem contato" e
+ * "contato em branco" precisam ser a mesma coisa, senão a política mostraria
+ * um endereço vazio para o cliente final escrever.
+ */
+export const emailDeAtendimentoSchema = z
+  .string()
+  .trim()
+  .max(200, 'O e-mail é muito longo.')
+  .transform((valor) => (valor === '' ? null : valor))
+  .refine(
+    (valor) => valor === null || z.email().safeParse(valor).success,
+    'Digite um e-mail válido, como atendimento@sualoja.com.br.',
+  );
+
 export const lojaSchema = z.object({
   nome: z
     .string()
@@ -77,6 +99,11 @@ export const lojaSchema = z.object({
     .min(2, 'O nome da loja precisa de pelo menos 2 caracteres.')
     .max(120, 'O nome da loja é muito longo.'),
   url: urlLojaSchema,
+  /*
+   * Ausente vale como "sem contato". O cadastro não pede este campo — pedi-lo
+   * ali travaria quem só quer ver o painel funcionando —, e a edição pede.
+   */
+  emailDeAtendimento: emailDeAtendimentoSchema.default(null),
 });
 
 export const organizacaoSchema = z.object({

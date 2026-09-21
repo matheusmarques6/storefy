@@ -87,8 +87,10 @@ export default async function PaginaLoja({
               acao={editarLoja.bind(null, loja.id)}
               nomeInicial={loja.name}
               urlInicial={loja.primary_url}
+              emailInicial={loja.support_email ?? ''}
               rotuloEnvio="Salvar alterações"
               carregando="Salvando..."
+              comContato
             />
           ) : (
             <dl className="space-y-3 text-sm">
@@ -99,6 +101,10 @@ export default async function PaginaLoja({
               <div>
                 <dt className="text-muted-foreground">Endereço</dt>
                 <dd className="font-medium">{loja.primary_url}</dd>
+              </div>
+              <div>
+                <dt className="text-muted-foreground">E-mail de atendimento</dt>
+                <dd className="font-medium">{loja.support_email ?? 'Ainda não cadastrado'}</dd>
               </div>
             </dl>
           )}

@@ -147,6 +147,9 @@ function traduzirErroBanco(codigo: string, mensagem: string): string {
 }
 
 export async function criarLoja(_anterior: EstadoLoja, dados: FormData): Promise<EstadoLoja> {
+  // O cadastro não pede o e-mail de atendimento: ele aparece na edição e na
+  // tela de publicação, onde faz diferença. Sem o campo, o schema entende
+  // "sem contato".
   const analise = lojaSchema.safeParse({ nome: dados.get('nome'), url: dados.get('url') });
   if (!analise.success) return { erros: extrairErros(analise.error) };
 
@@ -216,7 +219,11 @@ export async function editarLoja(
   _anterior: EstadoLoja,
   dados: FormData,
 ): Promise<EstadoLoja> {
-  const analise = lojaSchema.safeParse({ nome: dados.get('nome'), url: dados.get('url') });
+  const analise = lojaSchema.safeParse({
+    nome: dados.get('nome'),
+    url: dados.get('url'),
+    emailDeAtendimento: dados.get('emailDeAtendimento') ?? '',
+  });
   if (!analise.success) return { erros: extrairErros(analise.error) };
 
   const supabase = await criarClientServidor();
@@ -226,6 +233,7 @@ export async function editarLoja(
       name: analise.data.nome,
       primary_url: analise.data.url,
       shop_domain: new URL(analise.data.url).hostname,
+      support_email: analise.data.emailDeAtendimento,
     })
     .eq('id', lojaId)
     .select('id')

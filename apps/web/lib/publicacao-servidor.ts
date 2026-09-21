@@ -47,6 +47,8 @@ export interface DadosDaPublicacao {
   appId: string;
   estado: EstadoDaPublicacao;
   builds: BuildNaLista[];
+  /** O que a ficha do app e a política de privacidade precisam saber da loja. */
+  loja: { nome: string; url: string; temContato: boolean };
 }
 
 /**
@@ -66,6 +68,12 @@ export async function dadosDaPublicacao(
   storeId: string,
   orgId: string,
 ): Promise<DadosDaPublicacao | null> {
+  const { data: loja } = await supabase
+    .from('stores')
+    .select('name, primary_url, support_email')
+    .eq('id', storeId)
+    .maybeSingle();
+
   const { data: app } = await supabase
     .from('apps')
     .select(
@@ -99,6 +107,11 @@ export async function dadosDaPublicacao(
 
   return {
     appId: app.id,
+    loja: {
+      nome: loja?.name ?? '',
+      url: loja?.primary_url ?? '',
+      temContato: (loja?.support_email ?? '') !== '',
+    },
     estado: {
       nomeDoApp: app.display_name,
       versaoPublicada: publicada?.version ?? null,

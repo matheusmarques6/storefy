@@ -696,6 +696,7 @@ export type Database = {
           created_at: string;
           updated_at: string;
           timezone: string;
+          support_email: string | null;
         };
         Insert: {
           id?: string;
@@ -710,6 +711,7 @@ export type Database = {
           created_at?: string;
           updated_at?: string;
           timezone?: string;
+          support_email?: string | null;
         };
         Update: {
           id?: string;
@@ -724,6 +726,7 @@ export type Database = {
           created_at?: string;
           updated_at?: string;
           timezone?: string;
+          support_email?: string | null;
         };
         Relationships: [
           {

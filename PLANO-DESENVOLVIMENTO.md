@@ -823,7 +823,10 @@ a pedido de alguém.
 | Primeiro envio manual ao Play Console, guiado na tela | ✅ passo a passo com o arquivo para baixar, conferido no navegador em 1280 e 390 px |
 | Cron de status da revisão (App Store Connect) | ⚠️ escrito e testado; a consulta à API da Apple nunca rodou daqui (rede bloqueada) |
 | Aviso por e-mail da decisão da Apple (Resend) | ⚠️ escrito e testado; depende de `RESEND_API_KEY` e `EMAIL_REMETENTE`. Sem eles o aviso NÃO é descartado: volta para a fila e sai quando as chaves existirem |
-| Política de privacidade por loja e rascunho da ficha | ⬜ |
+| Política de privacidade por loja (`/privacy/<store>`) | ✅ pública, sem login, montada a partir do que o app realmente faz — sem push ligado, a seção de notificações não existe |
+| E-mail de atendimento da loja | ✅ campo na edição da loja; sem ele a política manda o cliente pelo site, em vez de inventar um endereço |
+| Rascunho da ficha do app | ✅ cinco campos, cada um no limite da loja de aplicativos, com botão de copiar |
+| Capturas de tela a partir da prévia | ⬜ precisa de navegador headless nos tamanhos exatos de cada aparelho; cabe no workflow de build, não na função serverless |
 | Canal de EAS Update por loja e botão de correção OTA | ⬜ |
 | Chegar ao TestFlight e à trilha interna do Play | ⬜ depende das contas Apple/Google de uma loja real e dos segredos do repositório |
 

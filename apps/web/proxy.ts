@@ -129,7 +129,8 @@ export const config = {
      *  - arquivos estáticos;
      *  - `auth/`, que precisa rodar sem interferência para trocar o código
      *    pela sessão;
-     *  - `api/`, que NÃO deve passar por este middleware.
+     *  - `api/`, que NÃO deve passar por este middleware;
+     *  - `privacy/`, a política de privacidade pública de cada loja.
      *
      * A exclusão de `api/` é deliberada. Este middleware redireciona para
      * `/entrar` quem não tem sessão, o que faz sentido para tela, não para
@@ -137,8 +138,12 @@ export const config = {
      * página de login em vez de ser processado, e o app mobile receberia HTML
      * ao buscar a própria config. Cada rota de API faz a autenticação que lhe
      * cabe — assinatura HMAC, segredo de cron, ou nenhuma quando é pública.
+     *
+     * A de `privacy/` é do mesmo tipo, e a Apple depende dela: o revisor abre
+     * esse endereço para conferir a política antes de aprovar o app. Um 307
+     * para a tela de login ali vira recusa — e a recusa chega dias depois.
      */
-    '/((?!_next/static|_next/image|favicon.ico|auth/|api/|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)',
+    '/((?!_next/static|_next/image|favicon.ico|auth/|api/|privacy/|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)',
   ],
 };
 

@@ -2247,6 +2247,39 @@ select tests.ok('auditoria',
   'pedir um build fica na trilha de auditoria');
 
 /*
+ * O e-mail de atendimento da loja (fase 4).
+ *
+ * Ele aparece na política de privacidade PÚBLICA de cada loja, e a coluna nova
+ * precisa do grant coluna a coluna: o Postgres não estende grant de coluna
+ * para colunas criadas depois, e sem isso o campo existiria no banco e seria
+ * invisível para o painel — o mesmo defeito que `stores.timezone` teve.
+ */
+select tests.login('a-owner@teste.local');
+set role authenticated;
+
+select tests.ok('permissões',
+  not tests.erro('select support_email from public.stores'),
+  'o painel lê o e-mail de atendimento da loja');
+
+select tests.ok('permissões',
+  not tests.bloqueado($q$update public.stores set support_email = 'oi@loja.com.br'$q$),
+  'e o owner consegue gravá-lo');
+
+reset role;
+select tests.logout();
+
+/*
+ * `anon` não tem grant NENHUM em `stores`: a consulta falha antes mesmo de a
+ * RLS ser avaliada. Quem serve a política pública é o servidor, com a service
+ * role, e devolvendo só três colunas.
+ */
+set role anon;
+select tests.ok('isolamento',
+  tests.erro('select support_email from public.stores'),
+  'anon não alcança o e-mail de atendimento de loja nenhuma');
+reset role;
+
+/*
  * A revisão da Apple (fase 4).
  *
  * `builds_em_revisao` devolve a chave .p8 CIFRADA de cada loja, e
