@@ -18,7 +18,12 @@ import { z } from 'zod';
 import { criarClientServiceRole } from '@/lib/supabase/admin';
 import { criptografiaConfigurada, descriptografar } from '@/lib/cripto';
 import { serviceRoleConfigurada, supabaseConfigurado } from '@/lib/env';
-import { CABECALHO_DO_SEGREDO, abrirOuNulo, autorizarWorkflow } from '@/lib/build-interno';
+import {
+  CABECALHO_DO_SEGREDO,
+  abrirOuNulo,
+  autorizarWorkflow,
+  slugDoProjeto,
+} from '@/lib/build-interno';
 import { canalDaOta } from '@/lib/ota';
 
 export const dynamic = 'force-dynamic';
@@ -120,6 +125,7 @@ export async function POST(requisicao: NextRequest): Promise<NextResponse> {
         bundleIdIos: loja.bundle_id_ios,
         packageAndroid: loja.package_android,
         expoProjectId: loja.expo_project_id,
+        slug: slugDoProjeto(loja.store_id),
         oneSignalAppId: loja.onesignal_app_id,
         deviceSecret: abrirOuNulo(loja.device_secret_enc, descriptografar),
         canal: canalDaOta(loja.store_id),

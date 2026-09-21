@@ -10,9 +10,18 @@
 #   STOREFY_API_URL    — base do painel, ex.: https://app.storefy.com.br
 #   BUILD_API_SECRET   — o mesmo valor que está no ambiente do painel
 #   EXPO_TOKEN         — token de robô da conta Expo da Storefy
+#   EAS_WEBHOOK_SECRET — o mesmo valor que está no ambiente do painel
+#   EXPO_OWNER         — conta ou organização dona dos projetos (opcional)
 #
 # Sem eles o workflow para no primeiro passo, com a mensagem dizendo qual falta
 # — em vez de falhar vinte minutos depois, dentro do EAS.
+#
+# `EXPO_OWNER` é o único opcional, e é opcional porque a falta dele é BARULHENTA:
+# num token de conta pessoal o EAS resolve sozinho, e num token que enxerga mais
+# de uma organização ele para com a pergunta na tela. `EAS_WEBHOOK_SECRET` é
+# obrigatório pelo motivo oposto: sem ele o projeto novo nasce sem webhook, o
+# binário fica pronto e ninguém avisa — a tela do lojista diria "gerando" para
+# sempre.
 
 name: build-store-app
 
@@ -36,9 +45,10 @@ jobs:
       - name: Conferir a configuração
         run: |
           faltando=""
-          [ -n "${{ secrets.STOREFY_API_URL }}" ]  || faltando="$faltando STOREFY_API_URL"
-          [ -n "${{ secrets.BUILD_API_SECRET }}" ] || faltando="$faltando BUILD_API_SECRET"
-          [ -n "${{ secrets.EXPO_TOKEN }}" ]       || faltando="$faltando EXPO_TOKEN"
+          [ -n "${{ secrets.STOREFY_API_URL }}" ]    || faltando="$faltando STOREFY_API_URL"
+          [ -n "${{ secrets.BUILD_API_SECRET }}" ]   || faltando="$faltando BUILD_API_SECRET"
+          [ -n "${{ secrets.EXPO_TOKEN }}" ]         || faltando="$faltando EXPO_TOKEN"
+          [ -n "${{ secrets.EAS_WEBHOOK_SECRET }}" ] || faltando="$faltando EAS_WEBHOOK_SECRET"
           if [ -n "$faltando" ]; then
             echo "::error::Faltam segredos no repositório:$faltando"
             exit 1
@@ -159,6 +169,7 @@ jobs:
         id: projeto
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+          EXPO_OWNER: ${{ secrets.EXPO_OWNER }}
           STORE_ID: ${{ steps.dados.outputs.store_id }}
         working-directory: apps/mobile
         run: |
@@ -169,6 +180,12 @@ jobs:
             exit 0
           fi
 
+          # O SLUG É POR LOJA, e é o que separa um projeto EAS do outro: o EAS
+          # acha o projeto pelo par dono + slug, e `app.config.ts` é um só para
+          # todas as lojas. Sem esta linha, a segunda loja a publicar entraria
+          # no projeto EAS da primeira e as duas passariam a dividir o canal de
+          # update — uma correção OTA de uma chegaria no app da outra.
+          export APP_SLUG=$(jq -r '.slug' /tmp/build.json)
           export APP_NAME=$(jq -r '.nomeDoApp' /tmp/build.json)
           export IOS_BUNDLE_ID=$(jq -r '.bundleIdIos // empty' /tmp/build.json)
           export ANDROID_PACKAGE=$(jq -r '.packageAndroid // empty' /tmp/build.json)
@@ -189,10 +206,59 @@ jobs:
           echo "id=$criado" >> "$GITHUB_OUTPUT"
           echo "novo=sim" >> "$GITHUB_OUTPUT"
 
+      # O webhook de status do EAS é POR PROJETO, e cada loja tem o seu. Sem
+      # este passo, o projeto criado acima geraria o binário e nunca avisaria:
+      # `eas build --no-wait` devolve na hora, nenhum processo nosso fica
+      # esperando, e quem fecha a linha de `builds` é o webhook. A tela do
+      # lojista diria "gerando" para sempre, e o envio à loja nunca sairia.
+      #
+      # Roda a cada build, e não só na criação, de propósito: é idempotente,
+      # custa uma chamada e conserta sozinho o projeto que ficou sem webhook.
+      - name: Garantir o webhook de status neste projeto
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+          EXPO_OWNER: ${{ secrets.EXPO_OWNER }}
+          API: ${{ secrets.STOREFY_API_URL }}
+          SEGREDO_DO_WEBHOOK: ${{ secrets.EAS_WEBHOOK_SECRET }}
+          STORE_ID: ${{ steps.dados.outputs.store_id }}
+          PROJETO: ${{ steps.projeto.outputs.id }}
+        working-directory: apps/mobile
+        run: |
+          export EAS_PROJECT_ID="$PROJETO"
+          export APP_SLUG=$(jq -r '.slug' /tmp/build.json)
+          export APP_NAME=$(jq -r '.nomeDoApp' /tmp/build.json)
+
+          alvo="$API/api/webhooks/eas"
+
+          # O EAS recusa segredo curto, e a mensagem dele não diz qual variável
+          # está errada. Vale conferir aqui, com o nome do segredo na tela.
+          if [ ${#SEGREDO_DO_WEBHOOK} -lt 16 ]; then
+            echo "::error::EAS_WEBHOOK_SECRET precisa ter pelo menos 16 caracteres."
+            exit 1
+          fi
+
+          # A busca é pelo TEXTO da URL: o formato do `webhook:list` mudou entre
+          # versões do CLI, e a URL é a única coisa que aparece em todos eles.
+          lista=$(pnpm dlx eas-cli@latest webhook:list --json --non-interactive 2>/dev/null \
+            || pnpm dlx eas-cli@latest webhook:list 2>/dev/null \
+            || true)
+
+          if printf '%s' "$lista" | grep -qF "$alvo"; then
+            echo "Webhook de status já registrado neste projeto."
+            exit 0
+          fi
+
+          pnpm dlx eas-cli@latest webhook:create \
+            --event BUILD \
+            --url "$alvo" \
+            --secret "$SEGREDO_DO_WEBHOOK" \
+            --non-interactive
+
       - name: Gerar o binário
         id: eas
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+          EXPO_OWNER: ${{ secrets.EXPO_OWNER }}
           STORE_ID: ${{ steps.dados.outputs.store_id }}
           PLATFORM: ${{ steps.dados.outputs.platform }}
           PROFILE: ${{ steps.dados.outputs.profile }}
@@ -204,6 +270,7 @@ jobs:
           export ONESIGNAL_APP_ID=$(jq -r '.oneSignalAppId // empty' /tmp/build.json)
           export STOREFY_DEVICE_SECRET=$(jq -r '.deviceSecret // empty' /tmp/build.json)
           export EAS_PROJECT_ID="${{ steps.projeto.outputs.id }}"
+          export APP_SLUG=$(jq -r '.slug' /tmp/build.json)
           export APP_NAME=$(jq -r '.nomeDoApp' /tmp/build.json)
           export IOS_BUNDLE_ID=$(jq -r '.bundleIdIos // empty' /tmp/build.json)
           export ANDROID_PACKAGE=$(jq -r '.packageAndroid // empty' /tmp/build.json)

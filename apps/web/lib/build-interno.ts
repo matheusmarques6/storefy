@@ -132,6 +132,8 @@ export interface DadosParaOBuild {
   bundleIdIos: string | null;
   packageAndroid: string | null;
   expoProjectId: string | null;
+  /** Slug do projeto EAS desta loja. Ver `slugDoProjeto`. */
+  slug: string;
   oneSignalAppId: string | null;
   /** Segredo com que o app assina o que manda, em claro. */
   deviceSecret: string | null;
@@ -169,6 +171,8 @@ export interface DadosParaOEnvio {
   bundleIdIos: string | null;
   packageAndroid: string | null;
   expoProjectId: string | null;
+  /** Slug do projeto EAS desta loja. Ver `slugDoProjeto`. */
+  slug: string;
   nomeDoApp: string;
   credenciais: CredenciaisDoBuild;
 }
@@ -181,6 +185,22 @@ export interface DadosParaOEnvio {
  */
 export function canalDaLoja(storeId: string, profile: string): string {
   return `${profile}-${storeId}`;
+}
+
+/**
+ * O slug do projeto EAS de uma loja.
+ *
+ * O EAS identifica o projeto pelo par dono + slug. O `app.config.ts` é um só
+ * para todas as lojas, então sem um slug POR LOJA todas cairiam no slug
+ * padrão de desenvolvimento — e a segunda loja a publicar entraria no projeto
+ * EAS da primeira. As duas passariam a dividir canal de update: uma correção
+ * OTA de uma loja chegaria no app da outra.
+ *
+ * O id da loja é um uuid, então o slug é feio e é ÚNICO, nesta ordem de
+ * prioridade. Quem o lojista lê é o `display_name`, que vai em `APP_NAME`.
+ */
+export function slugDoProjeto(storeId: string): string {
+  return `storefy-${storeId}`;
 }
 
 /**

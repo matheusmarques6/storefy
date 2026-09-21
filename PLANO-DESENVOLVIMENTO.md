@@ -828,15 +828,20 @@ a pedido de alguém.
 | Rascunho da ficha do app | ✅ cinco campos, cada um no limite da loja de aplicativos, com botão de copiar |
 | Capturas de tela | ✅ a tela diz a medida exata de cada loja e como tirá-las no aparelho. A Storefy NÃO as gera: uma imagem montada no computador não tem a barra de status nem a tab bar nativas, e a Apple recusa screenshot que é claramente montagem — a recusa chega dias depois sem dizer qual imagem estava errada |
 | Canal de EAS Update por loja | ✅ `production-<storeId>`, um por loja: o pacote carrega o segredo daquela loja |
+| Projeto EAS por loja | ✅ slug `storefy-<storeId>`, derivado no servidor e injetado como `APP_SLUG`; o workflow cria o projeto na primeira publicação e registra nele o webhook de status. Um slug fixo faria a segunda loja entrar no projeto da primeira, e as duas dividiriam o canal de update |
 | Botão admin "enviar correção OTA para todas as lojas" | ⚠️ tela, trava de rodada única, trilha de auditoria e workflow em matriz escritos e testados; o `eas update` nunca rodou daqui |
 | Chegar ao TestFlight e à trilha interna do Play | ⬜ depende das contas Apple/Google de uma loja real e dos segredos do repositório |
 
-> **O que trava o ponta a ponta:** `EXPO_TOKEN`, `EAS_PROJECT_ID` completo, `EXPO_OWNER`,
-> `GITHUB_DISPATCH_TOKEN`, `GITHUB_REPO`, `BUILD_API_SECRET`, `EAS_WEBHOOK_SECRET`,
-> `STOREFY_API_URL`, `RESEND_API_KEY` e `EMAIL_REMETENTE`. O `EAS_WEBHOOK_SECRET` é o valor
-> que o `eas webhook:create` imprime; sem ele a rota do webhook responde 503 de propósito,
-> em vez de aceitar qualquer POST. As duas do e-mail são as únicas cuja ausência não perde
-> nada: o aviso volta para a fila e sai no ciclo seguinte, quando elas existirem.
+> **O que trava o ponta a ponta:** `EXPO_TOKEN`, `EXPO_OWNER`, `GITHUB_DISPATCH_TOKEN`,
+> `GITHUB_REPO`, `BUILD_API_SECRET`, `EAS_WEBHOOK_SECRET`, `STOREFY_API_URL`,
+> `RESEND_API_KEY` e `EMAIL_REMETENTE`. O `EAS_WEBHOOK_SECRET` é um valor que NÓS geramos
+> (`openssl rand -hex 32`) e que vive nos dois lados: o workflow o usa para registrar o
+> webhook no projeto EAS de cada loja, e a rota o usa para conferir a assinatura. Sem ele
+> a rota responde 503 de propósito, em vez de aceitar qualquer POST. Não há
+> `EAS_PROJECT_ID` de configuração: o projeto é por loja, criado pelo workflow na primeira
+> publicação e guardado em `apps.expo_project_id`. As duas do e-mail são as únicas cuja
+> ausência não perde nada: o aviso volta para a fila e sai no ciclo seguinte, quando elas
+> existirem.
 
 ### Fase 5 — Shopify app + analytics (5–7 dias)
 **Tarefas**

@@ -181,6 +181,32 @@ describe('POST /api/internal/ota', () => {
   });
 
   /*
+   * O slug vai junto porque o `eas update` carrega o `app.config.ts` e o EAS
+   * confere o slug do config contra o do projeto. Um slug fixo para todas as
+   * lojas é exatamente o caminho de uma correção chegar no app da loja errada
+   * — que é o que esta rodada existe para não fazer.
+   */
+  it('cada loja recebe o slug do projeto dela', async () => {
+    const slugDe = async (loja: string): Promise<string> => {
+      const resposta = await postarOta(
+        requisicao('/api/internal/ota', { etapa: 'loja', otaId: OTA, storeId: loja }),
+      );
+      return ((await resposta.json()) as { slug: string }).slug;
+    };
+
+    const slugA = await slugDe(LOJA_A);
+
+    // A mesma rodada, outra loja: é a troca que prova que o slug acompanha a
+    // loja em vez de ser o mesmo para todas.
+    dadosDaLoja = [{ ...dadosDaLoja[0], store_id: LOJA_B, expo_project_id: 'proj-b' }];
+    const slugB = await slugDe(LOJA_B);
+
+    expect(slugA).toContain(LOJA_A);
+    expect(slugB).toContain(LOJA_B);
+    expect(slugA).not.toBe(slugB);
+  });
+
+  /*
    * Um `otaId` antigo, que apareceu num log de execução, não pode continuar
    * servindo para buscar o segredo do app de um cliente.
    */

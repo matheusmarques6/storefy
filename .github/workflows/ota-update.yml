@@ -147,6 +147,7 @@ jobs:
       - name: Publicar a correção
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+          EXPO_OWNER: ${{ secrets.EXPO_OWNER }}
           CANAL: ${{ matrix.loja.canal }}
           MENSAGEM: ${{ github.event.client_payload.mensagem }}
           STORE_ID: ${{ matrix.loja.storeId }}
@@ -158,6 +159,10 @@ jobs:
           export ONESIGNAL_APP_ID=$(jq -r '.oneSignalAppId // empty' /tmp/loja.json)
           export STOREFY_DEVICE_SECRET=$(jq -r '.deviceSecret // empty' /tmp/loja.json)
           export EAS_PROJECT_ID=$(jq -r '.expoProjectId // empty' /tmp/loja.json)
+          # O slug é por loja: o EAS confere o slug do config contra o do
+          # projeto, e um slug fixo faria a correção desta loja ser recusada —
+          # ou, pior, aceita no projeto de outra.
+          export APP_SLUG=$(jq -r '.slug' /tmp/loja.json)
           export APP_NAME=$(jq -r '.nomeDoApp' /tmp/loja.json)
           export IOS_BUNDLE_ID=$(jq -r '.bundleIdIos // empty' /tmp/loja.json)
           export ANDROID_PACKAGE=$(jq -r '.packageAndroid // empty' /tmp/loja.json)

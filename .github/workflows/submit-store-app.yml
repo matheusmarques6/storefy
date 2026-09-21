@@ -101,6 +101,7 @@ jobs:
         id: envio
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+          EXPO_OWNER: ${{ secrets.EXPO_OWNER }}
           PLATFORM: ${{ steps.dados.outputs.platform }}
           PROFILE: ${{ steps.dados.outputs.profile }}
           EAS_BUILD_ID: ${{ steps.dados.outputs.eas_build_id }}
@@ -115,6 +116,8 @@ jobs:
           export EXPO_APPLE_TEAM_ID=$(jq -r '.credenciais.appleTeamId // empty' /tmp/submit.json)
           export EXPO_GOOGLE_SERVICE_ACCOUNT_PATH=/tmp/cred/google.json
           export EAS_PROJECT_ID=$(jq -r '.expoProjectId // empty' /tmp/submit.json)
+          # O slug é por loja, e o EAS o confere contra o do projeto.
+          export APP_SLUG=$(jq -r '.slug' /tmp/submit.json)
           export APP_NAME=$(jq -r '.nomeDoApp' /tmp/submit.json)
           export IOS_BUNDLE_ID=$(jq -r '.bundleIdIos // empty' /tmp/submit.json)
           export ANDROID_PACKAGE=$(jq -r '.packageAndroid // empty' /tmp/submit.json)

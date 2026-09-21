@@ -6,6 +6,7 @@ import {
   autorizarWorkflow,
   canalDaLoja,
   podeBuscarCredenciais,
+  slugDoProjeto,
 } from '@/lib/build-interno';
 
 const CHAVE = Buffer.alloc(32, 17).toString('base64');
@@ -159,6 +160,29 @@ describe('canalDaLoja', () => {
 
   it('separa também por perfil', () => {
     expect(canalDaLoja('loja-1', 'preview')).not.toBe(canalDaLoja('loja-1', 'production'));
+  });
+});
+
+describe('slugDoProjeto', () => {
+  /*
+   * O EAS acha o projeto pelo par dono + slug, e `app.config.ts` é um só para
+   * todas as lojas. Um slug fixo faria a segunda loja a publicar entrar no
+   * projeto EAS da primeira, e as duas dividiriam o canal de update: uma
+   * correção OTA de uma chegaria no app da outra. Este teste é o que
+   * transforma isso num vermelho em vez de num incidente.
+   */
+  it('dá um slug diferente para cada loja', () => {
+    expect(slugDoProjeto('loja-1')).not.toBe(slugDoProjeto('loja-2'));
+  });
+
+  it('é estável: a mesma loja publica sempre no mesmo projeto', () => {
+    expect(slugDoProjeto('loja-1')).toBe(slugDoProjeto('loja-1'));
+  });
+
+  /* O Expo só aceita letra minúscula, número, hífen e sublinhado no slug. */
+  it('cabe no que o Expo aceita como slug', () => {
+    const slug = slugDoProjeto('3f1b9c22-9a0e-4c4a-9d61-2f7c1e5a8b40');
+    expect(slug).toMatch(/^[a-z0-9][a-z0-9_-]{0,99}$/);
   });
 });
 

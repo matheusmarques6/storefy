@@ -12,6 +12,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest';
 import { NextRequest } from 'next/server';
 import { criptografar } from '@/lib/cripto';
+import { slugDoProjeto } from '@/lib/build-interno';
 
 const CHAVE = Buffer.alloc(32, 7).toString('base64');
 const SEGREDO = 'segredo-do-build-de-teste';
@@ -199,11 +200,28 @@ describe('POST /api/internal/build — etapa de envio', () => {
       'packageAndroid',
       'platform',
       'profile',
+      'slug',
       'storeId',
     ]);
     expect(dados).not.toHaveProperty('config');
     expect(dados).not.toHaveProperty('deviceSecret');
     expect(dados).not.toHaveProperty('urlDoIcone');
+  });
+
+  /*
+   * O `eas submit` carrega o `app.config.ts`, e o EAS confere o slug do config
+   * contra o do projeto. Sem o slug desta loja na resposta, o envio usaria o
+   * slug padrão de desenvolvimento — e seria recusado, ou pior, aceito no
+   * projeto de outra loja.
+   */
+  it('a etapa submit leva o slug do projeto desta loja', async () => {
+    const resposta = await postarBuild(
+      requisicao('/api/internal/build', { buildId: BUILD, etapa: 'submit' }),
+    );
+    const dados = (await resposta.json()) as { slug: string; storeId: string };
+
+    expect(dados.slug).toBe(slugDoProjeto(LOJA));
+    expect(dados.slug).toContain(dados.storeId);
   });
 
   it('a etapa submit abre as credenciais da organização', async () => {
@@ -230,6 +248,26 @@ describe('POST /api/internal/build — etapa de envio', () => {
       requisicao('/api/internal/build', { buildId: BUILD, etapa: 'submit' }),
     );
     expect(resposta.status).toBe(404);
+  });
+
+  /*
+   * É esta resposta que decide em QUAL projeto EAS a loja publica: o workflow
+   * exporta o slug daqui antes do `eas init`. Sem ele, todas as lojas cairiam
+   * no slug padrão de desenvolvimento e a segunda a publicar entraria no
+   * projeto da primeira — as duas dividindo o canal de update.
+   */
+  it('a etapa de geração leva o slug e o canal desta loja', async () => {
+    statusDoBuild = 'queued';
+    const resposta = await postarBuild(requisicao('/api/internal/build', { buildId: BUILD }));
+    expect(resposta.status).toBe(200);
+
+    const dados = (await resposta.json()) as { slug: string; canal: string; storeId: string };
+
+    expect(dados.storeId).toBe(LOJA);
+    expect(dados.slug).toBe(slugDoProjeto(LOJA));
+    // Slug e canal carregam o id da loja: é o que separa um projeto do outro.
+    expect(dados.slug).toContain(LOJA);
+    expect(dados.canal).toContain(LOJA);
   });
 
   it('a etapa de geração não serve um build que já terminou', async () => {

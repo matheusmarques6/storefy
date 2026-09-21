@@ -25,6 +25,7 @@ import {
   autorizarWorkflow,
   canalDaLoja,
   podeBuscarCredenciais,
+  slugDoProjeto,
   type CredenciaisDoBuild,
   type DadosParaOBuild,
   type DadosParaOEnvio,
@@ -156,6 +157,7 @@ async function montar(buildId: string): Promise<DadosParaOBuild | null> {
     bundleIdIos: app.bundle_id_ios,
     packageAndroid: app.package_android,
     expoProjectId: app.expo_project_id,
+    slug: slugDoProjeto(loja.id),
     oneSignalAppId: app.onesignal_app_id,
     deviceSecret: abrirOuNulo(app.device_secret_enc, descriptografar),
     canal: canalDaLoja(loja.id, build.profile),
@@ -218,6 +220,7 @@ async function montarEnvio(buildId: string): Promise<DadosParaOEnvio | null> {
     bundleIdIos: app.bundle_id_ios,
     packageAndroid: app.package_android,
     expoProjectId: app.expo_project_id,
+    slug: slugDoProjeto(loja.id),
     nomeDoApp: app.display_name,
     credenciais: lerCredenciais(contas ?? []),
   };

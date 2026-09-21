@@ -11,6 +11,15 @@ próprio projeto no Expo: slug, `projectId`, canal de update e credenciais
 separados. Misturar duas lojas num projeto só faria um update OTA de uma cair no
 app da outra.
 
+O slug do projeto é derivado do id da loja, por `slugDoProjeto`
+(`apps/web/lib/build-interno.ts`), e chega ao runner pela rota interna do
+build. Ele não é configuração de ninguém: um slug fixo faria a segunda loja a
+publicar entrar no projeto EAS da primeira.
+
+O webhook de status do EAS também é por projeto, e quem o registra no projeto
+novo é o próprio workflow, com o `EAS_WEBHOOK_SECRET` dos segredos do
+repositório. Um projeto sem webhook gera o binário e nunca avisa.
+
 Na Fase 4 o workflow `build-store-app.yml` cria o projeto e injeta as variáveis.
 Até lá, para levantar um app à mão:
 
@@ -22,6 +31,7 @@ export EXPO_TOKEN=...
 export EXPO_OWNER=...            # conta ou organização dona do projeto
 export EAS_PROJECT_ID=...        # UUID que o painel do Expo mostra
 export APP_SLUG=...              # o slug do projeto no Expo, igual ao do painel
+                                 # (no build por loja: `storefy-<id da loja>`)
 
 # 3. identidade da loja
 export STORE_ID=oakvintage
