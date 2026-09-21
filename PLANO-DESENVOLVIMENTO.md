@@ -826,7 +826,7 @@ a pedido de alguém.
 | Política de privacidade por loja (`/privacy/<store>`) | ✅ pública, sem login, montada a partir do que o app realmente faz — sem push ligado, a seção de notificações não existe |
 | E-mail de atendimento da loja | ✅ campo na edição da loja; sem ele a política manda o cliente pelo site, em vez de inventar um endereço |
 | Rascunho da ficha do app | ✅ cinco campos, cada um no limite da loja de aplicativos, com botão de copiar |
-| Capturas de tela a partir da prévia | ⬜ precisa de navegador headless nos tamanhos exatos de cada aparelho; cabe no workflow de build, não na função serverless |
+| Capturas de tela | ✅ a tela diz a medida exata de cada loja e como tirá-las no aparelho. A Storefy NÃO as gera: uma imagem montada no computador não tem a barra de status nem a tab bar nativas, e a Apple recusa screenshot que é claramente montagem — a recusa chega dias depois sem dizer qual imagem estava errada |
 | Canal de EAS Update por loja | ✅ `production-<storeId>`, um por loja: o pacote carrega o segredo daquela loja |
 | Botão admin "enviar correção OTA para todas as lojas" | ⚠️ tela, trava de rodada única, trilha de auditoria e workflow em matriz escritos e testados; o `eas update` nunca rodou daqui |
 | Chegar ao TestFlight e à trilha interna do Play | ⬜ depende das contas Apple/Google de uma loja real e dos segredos do repositório |

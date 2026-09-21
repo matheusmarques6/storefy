@@ -13,8 +13,9 @@
  * que o app realmente faz.
  */
 import { useState } from 'react';
-import { Check, Copy, ExternalLink } from 'lucide-react';
+import { Check, Copy, ExternalLink, Image as Imagem } from 'lucide-react';
 import type { CampoDaFicha } from '@/lib/ficha-da-loja';
+import { CAPTURAS, ondeTirar } from '@/lib/capturas-da-loja';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 
@@ -22,11 +23,14 @@ export function FichaDaLoja({
   campos,
   urlDaPolitica,
   temContato,
+  jaPublicado,
 }: {
   campos: readonly CampoDaFicha[];
   urlDaPolitica: string;
   /** A loja preencheu o e-mail de atendimento? */
   temContato: boolean;
+  /** O app da loja já está numa loja de aplicativos? */
+  jaPublicado: boolean;
 }) {
   return (
     <div className="space-y-4">
@@ -92,6 +96,47 @@ export function FichaDaLoja({
               <LinhaCopiavel valor={campo.valor} />
             </div>
           ))}
+        </CardContent>
+      </Card>
+
+      {/*
+        As capturas são o último item que trava a publicação, e a Storefy NÃO
+        as gera: uma imagem feita de um navegador estreito não é o app — falta
+        a barra de status do aparelho, a tab bar nativa e o recorte da tela, e
+        a Apple recusa screenshot que é claramente montagem. Dizer isso aqui,
+        com a medida exata, é o que evita uma recusa que chega dias depois.
+      */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-base">
+            <Imagem className="size-4" aria-hidden />
+            Capturas de tela
+          </CardTitle>
+          <CardDescription>
+            As duas lojas exigem capturas do app rodando. Elas precisam sair de um celular de
+            verdade: uma imagem montada no computador é recusada na revisão.
+          </CardDescription>
+        </CardHeader>
+
+        <CardContent className="space-y-4">
+          <p className="text-sm">{ondeTirar(jaPublicado)}</p>
+
+          <ul className="space-y-3">
+            {CAPTURAS.map((captura) => (
+              <li key={captura.loja} className="space-y-0.5 border-l-2 pl-3">
+                <div className="flex flex-wrap items-baseline gap-x-2">
+                  <span className="text-sm font-medium">{captura.loja}</span>
+                  <span className="text-muted-foreground text-xs">
+                    {captura.nome} · {captura.medida}
+                  </span>
+                </div>
+                <p className="text-muted-foreground text-sm">
+                  Pelo menos {captura.minimo} {captura.minimo === 1 ? 'captura' : 'capturas'}.{' '}
+                  {captura.comoTirar}
+                </p>
+              </li>
+            ))}
+          </ul>
         </CardContent>
       </Card>
     </div>

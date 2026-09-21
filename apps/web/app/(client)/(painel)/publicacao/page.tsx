@@ -80,6 +80,9 @@ export default async function PaginaDePublicacao() {
         })}
         urlDaPolitica={`${urlDoSite()}/privacy/${lojaAtiva.id}`}
         temContato={dados.loja.temContato}
+        jaPublicado={dados.builds.some(
+          (build) => build.status === 'approved' || build.status === 'submitted',
+        )}
       />
 
       <HistoricoDeBuilds builds={dados.builds} />
