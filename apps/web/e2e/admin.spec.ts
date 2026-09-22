@@ -1,4 +1,4 @@
-/** A01 e a guarda do painel admin. */
+/** A01, A02 e a guarda do painel admin. */
 import { expect, test } from '@playwright/test';
 import {
   MOTIVO_PULO,
@@ -52,7 +52,23 @@ test('platform admin enxerga organizações e lojas de todos os clientes', async
   await tornarPlatformAdmin(idAdmin);
 
   await entrar(paginaAdmin, emailAdmin);
+
+  /*
+   * A02 primeiro: `/admin` é a visão geral, e a lista de organizações mudou
+   * para `/admin/organizacoes`. O cliente criado acima nasce `trialing`, então
+   * a plataforma não está vazia e o panorama aparece com "Em teste" contando
+   * pelo menos ele.
+   */
   await paginaAdmin.goto('/admin');
+  await expect(paginaAdmin.getByRole('heading', { name: 'Visão geral' })).toBeVisible();
+  await expect(paginaAdmin.getByRole('heading', { name: 'A plataforma hoje' })).toBeVisible();
+  // Faturamento não é inventado: a tela diz que ele chega na Fase 7.
+  await expect(paginaAdmin.getByText(/Faturamento e MRR ainda não aparecem/)).toBeVisible();
+
+  // E daqui se chega à lista pelo menu.
+  await paginaAdmin.getByRole('link', { name: 'Organizações' }).first().click();
+  await expect(paginaAdmin).toHaveURL(/\/admin\/organizacoes/);
+
   await paginaAdmin.getByRole('searchbox').fill(empresa);
   await paginaAdmin.getByRole('button', { name: 'Buscar' }).click();
   await expect(paginaAdmin.getByRole('cell', { name: empresa })).toBeVisible();

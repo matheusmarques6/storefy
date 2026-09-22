@@ -3855,6 +3855,96 @@ select tests.ok('conexao',
   'desconectar apaga token, escopos, credenciais e prazo de uma vez');
 
 
+-- ============================== grupo: A02 — o resumo do admin
+--
+-- Duas perguntas, e a segunda é a que importa. A primeira é quem pode chamar.
+-- A segunda é se o número é VERDADE: `resumo_do_admin` é `security invoker`,
+-- então cada contagem passa pela RLS, e ela só devolve o total real porque
+-- toda policy de leitura destas tabelas termina em `or is_platform_admin()`.
+-- No dia em que uma tabela nova esquecer essa cláusula, o cartão da tela vai
+-- mostrar zero sem reclamar de nada — e é esta asserção que cai primeiro.
+
+reset role;
+select tests.logout();
+
+/*
+ * CADA CATEGORIA PRECISA DE UMA LINHA DE VERDADE, e isto não é preciosismo.
+ * A primeira versão destas asserções comparava os números da função com os
+ * números reais sem plantar dado nenhum — e os fixtures davam zero em todas as
+ * categorias. `0 = 0` passa, e passa também quando a função está errada: a
+ * mutação que trocou `live` por `paused` não ficou vermelha, porque não havia
+ * loja em nenhum dos dois estados. Um teste que não sabe falhar não é um teste.
+ */
+update public.organizations set status = 'active' where id = (select org_a from tests.ids);
+update public.stores set status = 'live' where id = (select loja_a from tests.lojas);
+update public.stores set status = 'in_review' where id = (select loja_b from tests.lojas);
+
+insert into public.builds (app_id, platform, profile, status)
+select app_a, 'ios', 'production', 'queued' from tests.lojas;
+insert into public.builds (app_id, platform, profile, status)
+select app_a, 'android', 'production', 'building' from tests.lojas;
+
+-- org_a já tem a conta Apple (`verified`) lá em cima; a Google fica livre, e a
+-- unicidade é por (org_id, platform).
+insert into public.developer_accounts (org_id, platform, status)
+select org_a, 'google', 'error' from tests.ids;
+
+-- A verdade, medida sem RLS no caminho, para comparar com o que a função
+-- devolve por dentro dela.
+drop table if exists tests.verdade;
+create table tests.verdade as
+select
+  (select count(*) from public.organizations where status = 'active')::integer as orgs_ativas,
+  (select count(*) from public.stores where status = 'live')::integer as lojas_live,
+  (select count(*) from public.builds where status in ('queued', 'building'))::integer
+    as builds_na_fila,
+  (select count(*) from public.developer_accounts where status = 'error')::integer
+    as contas_dev_com_erro;
+
+grant select on tests.verdade to authenticated;
+
+select tests.login('forasteiro@teste.local');
+set role authenticated;
+
+select tests.ok('admin',
+  tests.erro('select * from public.resumo_do_admin()'),
+  'usuário comum NÃO lê o resumo do admin');
+
+reset role;
+select tests.login('equipe@teste.local');
+set role authenticated;
+
+select tests.ok('admin',
+  (select orgs_ativas from public.resumo_do_admin())
+    = (select orgs_ativas from tests.verdade)
+  and (select orgs_ativas from tests.verdade) > 0,
+  'o resumo conta as organizações que EXISTEM, e não as que a RLS deixa ver');
+
+select tests.ok('admin',
+  (select lojas_live from public.resumo_do_admin())
+    = (select lojas_live from tests.verdade)
+  and (select lojas_live from tests.verdade) > 0,
+  'o resumo conta as lojas de todas as organizações');
+
+select tests.ok('admin',
+  (select builds_na_fila from public.resumo_do_admin())
+    = (select builds_na_fila from tests.verdade)
+  and (select builds_na_fila from tests.verdade) > 0,
+  'o resumo conta os builds de todas as organizações');
+
+-- `developer_accounts` é a tabela mais fechada do banco — as colunas `_enc`
+-- são invisíveis até para o dono da organização. Contar o STATUS dela pela
+-- sessão do admin prova que a leitura por coluna basta, e que a função não
+-- precisou de `definer` para chegar ao número.
+select tests.ok('admin',
+  (select contas_dev_com_erro from public.resumo_do_admin())
+    = (select contas_dev_com_erro from tests.verdade)
+  and (select contas_dev_com_erro from tests.verdade) > 0,
+  'o resumo conta as contas de desenvolvedor com erro, sem ler segredo nenhum');
+
+reset role;
+select tests.logout();
+
 \echo ''
 \echo 'Falhas:'
 select grupo, descricao from tests.resultados where not passou order by id;

@@ -846,7 +846,7 @@ a pedido de alguém.
 ### Fase 5 — Shopify app + analytics (5–7 dias)
 **Tarefas**
 - OAuth Shopify, webhooks (incluindo os de GDPR), Theme App Extension (banner do app + snippet do bridge).
-- **Conexão pelo app do próprio lojista** (`grant_type=client_credentials`), ao lado do OAuth: o lojista cria um app na conta Shopify dele e cola Client ID + Client Secret. Não passa por revisão da Shopify, então é o caminho que funciona ANTES da aprovação do app público — e continua valendo depois, para quem preferir. Muda três coisas: o token vence em 24h e é renovado no ponto de uso (sem job — token só serve para chamada nossa, e renovar o de uma loja parada seria gasto à toa); o webhook passa a ser assinado pelo segredo DAQUELA loja, e não por um segredo único da Storefy; e um domínio Shopify só pode estar conectado a uma loja do painel por vez, por índice único parcial — duas deixariam o webhook sem dono.
+- **Conexão pelo app do próprio lojista** (`grant_type=client_credentials`), ao lado do OAuth. **ATENÇÃO — esta linha nasceu errada, e a correção custou uma sessão inteira:** ela dizia que este era "o caminho que funciona ANTES da aprovação do app público". Não é. A documentação da Shopify é explícita: *every option except the client credentials grant works on any merchant's stores, including your clients'*. `client_credentials` só funciona quando o app e a loja estão na MESMA organização da Shopify — ser dono da loja não basta, e instalar o app nela também não. Na loja real de um lojista a resposta é `shop_not_permitted`, sempre. O caminho manual serve, então, a dois casos e só a eles: **loja de teste da nossa organização**, e **app antigo criado dentro do admin da loja**, que vem com um token `shpat_` pronto (a Shopify não deixa mais CRIAR um desses, mas os existentes seguem valendo). Quem conecta a loja real do lojista é o **OAuth**, e é por isso que ele vem primeiro na tela. Muda três coisas: o token vence em 24h e é renovado no ponto de uso (sem job — token só serve para chamada nossa, e renovar o de uma loja parada seria gasto à toa); o webhook passa a ser assinado pelo segredo DAQUELA loja, e não por um segredo único da Storefy; e um domínio Shopify só pode estar conectado a uma loja do painel por vez, por índice único parcial — duas deixariam o webhook sem dono.
 - Seletor de produto/coleção no composer de push (pela Admin API, e não pela Storefront: o token do Admin já está guardado desde o OAuth e o escopo `read_products` já cobre a busca — a Storefront exigiria um token a mais, outra tela de configuração e outra coisa para o lojista errar).
 - Atribuição de pedidos: `ORDER_COMPLETED` do bridge e webhook `orders/create` com a marca `source=app` (via atributo de carrinho `_storefy=1` injetado pelo bridge com `/cart/update.js`).
 - `analytics_daily` + tela C11 + cards do dashboard C05.
@@ -860,6 +860,10 @@ a pedido de alguém.
 |---|---|
 | OAuth da Shopify (`/api/shopify/install` e `/callback`) | ⚠️ as quatro conferências do retorno (assinatura, domínio, `state` em cookie e loja de origem) escritas e testadas; nunca rodou contra a Shopify de verdade, porque falta o app no Partner Dashboard |
 | Tela C14 — Integrações, com conectar, reconectar e desconectar | ✅ conferida no navegador em 1280 e 390 px nos seis estados, com o POST e a validação do domínio |
+| Ordem dos dois caminhos na C14 | ✅ o OAuth vem primeiro quando existe, e o manual virou plano B. Estava invertido: a tela oferecia primeiro o único caminho que não podia funcionar na loja do lojista |
+| `shop_not_permitted` traduzido | ✅ mensagem própria, antes do ramo genérico de 401 — a Shopify manda esse erro COM 401, e cair no ramo de baixo mandava conferir uma credencial que já estava correta |
+| Token `shpat_` do app do admin da loja | ✅ campo opcional, conferido por `access_scopes.json`; `shopify_token_expires_at` nulo significa "não vence" e impede renovação impossível |
+| `NEXT_PUBLIC_SITE_URL` sem esquema | ✅ `urlDoSite` normaliza. Sem isso o `redirect_uri` ia sem `https://` e a Shopify recusava — e os webhooks eram registrados errado em silêncio |
 | Webhooks, incluindo os três de privacidade da Shopify | ⚠️ uma rota para todos os tópicos, com assinatura base64 sobre o corpo cru; tópico desconhecido responde 200 de propósito, porque uma cadeia de 4xx faz a Shopify DESATIVAR o webhook da loja |
 | Atribuição de pedido pelo atributo de carrinho `_storefy` | ⚠️ a corrente inteira existe: o app grava o atributo, a Shopify carrega até o pedido e `orders/create` o lê sem duplicar na reentrega. Nunca rodou contra uma loja de verdade |
 | `shop_orders` e `analytics_daily` com RLS | ✅ leitura só para membros da organização; quem escreve é o webhook e o job, com a service role |
@@ -892,6 +896,29 @@ a pedido de alguém.
 ### Fase 6 — Painel Admin completo (4–6 dias)
 - Telas A02–A13, impersonação com auditoria, presets por tema (A10), feature flags e reexecução de builds.
 - Reaproveitar do admin Convertfy os padrões de tabela, filtros, página de detalhe com abas e notas internas.
+
+**Progresso (22/09/2026)**
+
+| Item | Situação |
+|---|---|
+| A01 — Login do admin | ✅ `exigirPlatformAdmin()` a cada request; quem não está em `platform_admins` vai para /admin/sem-acesso |
+| **A02 — Visão geral** | ✅ dez números numa chamada só (`resumo_do_admin`), separados em "precisa de você" (só o que é > 0) e "a plataforma hoje" (aparece zerado, porque ali zero é informação). `/admin` passou a ser esta tela |
+| A03 — Organizações (lista) | ✅ saiu de `/admin` para `/admin/organizacoes`, com busca e paginação |
+| A04 — Cliente (detalhe) | ⚠️ existe com lojas e membros; faltam as abas de app/config, builds, push, cobrança, notas e o "entrar como cliente" |
+| A12 — Logs de auditoria | ✅ |
+| A05, A06, A07, A08, A09, A10, A11, A13 | ⬜ ainda não |
+
+> **Faturamento não aparece na A02 de propósito.** Não existe tabela de cobrança (Fase 7), e
+> a regra 1 do CLAUDE.md proíbe número inventado — ainda mais em tela de dinheiro, onde ninguém
+> confere o que já parece plausível. A tela mostra um aviso dizendo o que falta e para onde ir
+> enquanto isso.
+
+> **`resumo_do_admin` é `security invoker`, e isso foi uma correção.** A primeira versão era
+> `definer`, com o argumento de que um `count` sob RLS devolveria o que o usuário enxerga e não
+> o que existe. O argumento é bom e estava errado aqui: toda policy de leitura dessas tabelas já
+> termina em `or is_platform_admin()`, conferido no `pg_policies`. Invoker não abre porta
+> paralela à RLS, e a asserção "conta o que existe" no `rls.test.sql` pega o dia em que uma
+> tabela nova esquecer essa cláusula.
 
 ### Fase 7 — Cobrança, planos e limites (3–5 dias)
 - Asaas/Stripe (ou Shopify Billing, se a distribuição for pela App Store da Shopify), webhooks de assinatura, trial de 14 dias e bloqueio suave (o app continua funcionando e o push/editor ficam limitados).

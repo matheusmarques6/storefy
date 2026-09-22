@@ -5,7 +5,8 @@ import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils';
 
 const ITENS = [
-  { href: '/admin', rotulo: 'Organizações' },
+  { href: '/admin', rotulo: 'Visão geral' },
+  { href: '/admin/organizacoes', rotulo: 'Organizações' },
   { href: '/admin/lojas', rotulo: 'Lojas' },
   { href: '/admin/logs', rotulo: 'Auditoria' },
   { href: '/admin/ota', rotulo: 'Correção OTA' },
@@ -17,10 +18,9 @@ export function NavegacaoAdmin() {
   return (
     <nav aria-label="Navegação do admin" className="flex gap-1">
       {ITENS.map(({ href, rotulo }) => {
-        const ativo =
-          href === '/admin'
-            ? caminho === '/admin' || caminho.startsWith('/admin/organizacoes')
-            : caminho.startsWith(href);
+        // `/admin` é prefixo de todas as outras rotas, então só acende no
+        // caminho exato; as demais acendem também nas suas subrotas.
+        const ativo = href === '/admin' ? caminho === '/admin' : caminho.startsWith(href);
         return (
           <Link
             key={href}

@@ -54,7 +54,7 @@ export default async function PaginaOrganizacao({ params }: { params: Promise<{ 
   return (
     <div className="space-y-6">
       <Link
-        href="/admin"
+        href="/admin/organizacoes"
         className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1 text-sm"
       >
         <ArrowLeft className="size-4" aria-hidden />

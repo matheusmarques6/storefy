@@ -228,6 +228,8 @@ async function main(): Promise<void> {
   /** RPCs sem o prefixo `admin_` que o painel chama. */
   const RPCS = [
     'publicar_config',
+    // A02 — os números da visão geral do admin, numa chamada só.
+    'resumo_do_admin',
     'restaurar_config',
     'abrir_previa',
     'registrar_aparelho',

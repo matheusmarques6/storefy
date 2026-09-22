@@ -1136,6 +1136,10 @@ export type Database = {
         Args: { p_app_id: string; p_version: number };
         Returns: number;
       };
+      resumo_do_admin: {
+        Args: Record<string, never>;
+        Returns: { orgs_ativas: number | null; orgs_em_trial: number | null; trials_vencendo_7d: number | null; orgs_inadimplentes: number | null; lojas_live: number | null; lojas_em_revisao: number | null; builds_na_fila: number | null; builds_com_erro_7d: number | null; builds_rejeitados_7d: number | null; contas_dev_com_erro: number | null }[];
+      };
     };
     Enums: {
       app_config_status: "draft" | "published" | "archived";
