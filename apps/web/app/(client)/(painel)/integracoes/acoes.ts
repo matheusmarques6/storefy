@@ -59,6 +59,7 @@ export async function conectarShopifyManual(
       dominio: texto(dados.get('dominio')),
       clientId: texto(dados.get('clientId')),
       clientSecret: texto(dados.get('clientSecret')),
+      token: texto(dados.get('token')),
     },
     `${urlDoSite()}/api/webhooks/shopify`,
   );

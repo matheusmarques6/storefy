@@ -12,6 +12,9 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
   FOLGA_DA_RENOVACAO_MS,
+  codigoDoErro,
+  conferirTokenDeAcesso,
+  lerEscopos,
   lerResposta,
   precisaRenovar,
   trocarCredenciaisPorToken,
@@ -55,7 +58,7 @@ describe('trocarCredenciaisPorToken', () => {
     expect(troca.valor.escopos).toEqual(ESCOPOS.split(','));
 
     // 86399 segundos à frente, com folga para o tempo que o teste levou.
-    const prazo = Date.parse(troca.valor.venceEm);
+    const prazo = Date.parse(troca.valor.venceEm ?? '');
     expect(prazo).toBeGreaterThanOrEqual(antes + 86_399_000);
     expect(prazo).toBeLessThan(antes + 86_399_000 + 5000);
 
@@ -157,7 +160,7 @@ describe('lerResposta', () => {
 
       expect(lido.ok, String(expires)).toBe(true);
       if (!lido.ok) continue;
-      expect(Date.parse(lido.valor.venceEm), String(expires)).toBeGreaterThan(Date.now());
+      expect(Date.parse(lido.valor.venceEm ?? ''), String(expires)).toBeGreaterThan(Date.now());
     }
   });
 
@@ -166,7 +169,7 @@ describe('lerResposta', () => {
 
     expect(lido.ok).toBe(true);
     if (lido.ok) {
-      expect(Date.parse(lido.valor.venceEm)).toBeGreaterThan(Date.now() + 86_000_000);
+      expect(Date.parse(lido.valor.venceEm ?? '')).toBeGreaterThan(Date.now() + 86_000_000);
     }
   });
 
@@ -208,5 +211,144 @@ describe('precisaRenovar', () => {
   /* Renovar à toa custa uma chamada; não renovar custa a integração parada. */
   it('data ilegível é tratada como vencida', () => {
     expect(precisaRenovar('amanhã de manhã', agora)).toBe(true);
+  });
+});
+
+describe('conferirTokenDeAcesso', () => {
+  function redeDeEscopos(corpo: unknown, status = 200) {
+    const chamadas: { url: string; token: string | null }[] = [];
+
+    const buscador = vi.fn((url: string | URL | Request, init?: RequestInit) => {
+      chamadas.push({
+        url: urlDe(url),
+        token: new Headers(init?.headers).get('X-Shopify-Access-Token'),
+      });
+      return Promise.resolve(
+        new Response(typeof corpo === 'string' ? corpo : JSON.stringify(corpo), { status }),
+      );
+    });
+
+    return { buscador: buscador as unknown as typeof fetch, chamadas };
+  }
+
+  const CONCEDIDOS = {
+    access_scopes: [
+      { handle: 'read_products' },
+      { handle: 'read_orders' },
+      { handle: 'read_customers' },
+      { handle: 'read_fulfillments' },
+    ],
+  };
+
+  /*
+   * A MESMA chamada prova que o token vale e diz o que ele abre. Conferir só
+   * a validade deixaria passar um app sem `read_orders`, que conecta sem erro
+   * e nunca traz pedido.
+   */
+  it('confere o token e devolve os escopos que ele abre', async () => {
+    const { buscador, chamadas } = redeDeEscopos(CONCEDIDOS);
+
+    const troca = await conferirTokenDeAcesso(LOJA, 'shpat_do_teste', buscador);
+
+    expect(troca.ok).toBe(true);
+    if (!troca.ok) return;
+
+    expect(troca.valor.token).toBe('shpat_do_teste');
+    expect(troca.valor.escopos).toEqual([
+      'read_products',
+      'read_orders',
+      'read_customers',
+      'read_fulfillments',
+    ]);
+
+    expect(chamadas[0]?.url).toBe(`https://${LOJA}/admin/oauth/access_scopes.json`);
+    expect(chamadas[0]?.token).toBe('shpat_do_teste');
+  });
+
+  /*
+   * ESTE TOKEN NÃO VENCE, e `null` é o que diz isso ao resto do código:
+   * `precisaRenovar` devolve false e ninguém tenta renovar o que não tem como.
+   */
+  it('não inventa prazo para um token que não vence', async () => {
+    const { buscador } = redeDeEscopos(CONCEDIDOS);
+
+    const troca = await conferirTokenDeAcesso(LOJA, 'shpat_x', buscador);
+
+    expect(troca.ok).toBe(true);
+    if (troca.ok) {
+      expect(troca.valor.venceEm).toBeNull();
+      expect(precisaRenovar(troca.valor.venceEm)).toBe(false);
+    }
+  });
+
+  it('token recusado manda copiar de novo, e explica que ele aparece uma vez só', async () => {
+    const { buscador } = redeDeEscopos({ errors: '[API] Invalid API key or access token' }, 401);
+
+    const troca = await conferirTokenDeAcesso(LOJA, 'shpat_errado', buscador);
+
+    expect(troca.ok).toBe(false);
+    if (!troca.ok) expect(troca.motivo).toContain('uma vez só');
+  });
+
+  it('domínio que não é de loja Shopify não vira chamada nenhuma', async () => {
+    const { buscador, chamadas } = redeDeEscopos(CONCEDIDOS);
+
+    expect((await conferirTokenDeAcesso('evil.com', 'shpat_x', buscador)).ok).toBe(false);
+    expect(chamadas).toEqual([]);
+  });
+
+  it('token em branco não vira chamada nenhuma', async () => {
+    const { buscador, chamadas } = redeDeEscopos(CONCEDIDOS);
+
+    expect((await conferirTokenDeAcesso(LOJA, '   ', buscador)).ok).toBe(false);
+    expect(chamadas).toEqual([]);
+  });
+
+  it('rede fora do ar não estoura', async () => {
+    const buscador = vi.fn(() => Promise.reject(new Error('sem rede')));
+
+    expect((await conferirTokenDeAcesso(LOJA, 'shpat_x', buscador)).ok).toBe(false);
+  });
+});
+
+describe('lerEscopos', () => {
+  it('lê os handles', () => {
+    expect(lerEscopos({ access_scopes: [{ handle: 'read_orders' }] })).toEqual(['read_orders']);
+  });
+
+  /* Formato estranho vira lista vazia, e a conferência de escopos recusa. */
+  it('formato inesperado vira lista vazia em vez de estourar', () => {
+    for (const corpo of [
+      null,
+      'texto',
+      {},
+      { access_scopes: 'nao é lista' },
+      { access_scopes: [1, null] },
+    ]) {
+      expect(lerEscopos(corpo), JSON.stringify(corpo)).toEqual([]);
+    }
+  });
+});
+
+describe('codigoDoErro', () => {
+  /*
+   * O código é de um vocabulário fechado e não carrega segredo; é ele que
+   * transforma "não funcionou" em algo que o suporte procura.
+   */
+  it('acha o código quando o corpo é o JSON de OAuth', () => {
+    expect(codigoDoErro('{"error":"invalid_client"}')).toBe('invalid_client');
+    expect(codigoDoErro('{"error": "unsupported_grant_type", "error_description": "x"}')).toBe(
+      'unsupported_grant_type',
+    );
+  });
+
+  /*
+   * O `error_description` é texto livre e já veio com valor de credencial
+   * dentro. Só o `error`, e só se parecer um código.
+   */
+  it('não pega texto livre nem valor de credencial', () => {
+    expect(codigoDoErro('{"error_description":"client_secret=abc123 inválido"}')).toBeNull();
+    expect(codigoDoErro('{"error":"o segredo abc123 não confere"}')).toBeNull();
+    expect(codigoDoErro('não é json')).toBeNull();
   });
 });

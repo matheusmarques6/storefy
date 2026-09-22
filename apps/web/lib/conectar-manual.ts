@@ -26,7 +26,7 @@ import type { Database } from '@storefy/db';
 import { criptografar } from '@/lib/cripto';
 import { normalizarDominio } from '@/lib/shopify';
 import { escoposPedidos, registrarWebhooks } from '@/lib/shopify-servidor';
-import { trocarCredenciaisPorToken } from '@/lib/shopify-credenciais';
+import { conferirTokenDeAcesso, trocarCredenciaisPorToken } from '@/lib/shopify-credenciais';
 
 type Client = SupabaseClient<Database>;
 
@@ -35,6 +35,23 @@ export interface PedidoDeConexao {
   dominio: string;
   clientId: string;
   clientSecret: string;
+  /**
+   * Token de acesso da Admin API, quando o app do lojista já mostra um.
+   *
+   * Existem dois tipos de app personalizado, e o lojista não sabe qual criou:
+   *
+   *   o do painel de desenvolvedor (dev.shopify.com) não mostra token nenhum,
+   *   e entrega um por `client_credentials`, válido por 24 horas;
+   *
+   *   o de dentro do admin da loja (Configurações › Apps › Desenvolver apps)
+   *   mostra um token pronto, que não vence, e NÃO aceita
+   *   `client_credentials` — tentar dá `unsupported_grant_type`.
+   *
+   * Aceitar os dois é o que evita mandar o lojista refazer o app no lugar
+   * certo. O Client Secret continua obrigatório nos dois casos: é ele que
+   * confere a assinatura dos webhooks desta loja.
+   */
+  token?: string;
 }
 
 export type ResultadoDaConexao =
@@ -69,6 +86,7 @@ export async function conectarPeloAppDoLojista(
 
   const clientId = pedido.clientId.trim();
   const clientSecret = pedido.clientSecret.trim();
+  const token = (pedido.token ?? '').trim();
 
   if (clientId === '' || clientSecret === '') {
     return { ok: false, motivo: 'Cole o Client ID e o Client Secret do app.' };
@@ -95,7 +113,16 @@ export async function conectarPeloAppDoLojista(
     };
   }
 
-  const troca = await trocarCredenciaisPorToken(dominio, clientId, clientSecret, buscador);
+  /*
+   * Com token na mão, é ele que vale — e a troca por credenciais nem é
+   * tentada. O app que mostra token é justamente o que recusa a troca, então
+   * tentar primeiro só gastaria uma chamada para receber um erro conhecido.
+   */
+  const troca =
+    token === ''
+      ? await trocarCredenciaisPorToken(dominio, clientId, clientSecret, buscador)
+      : await conferirTokenDeAcesso(dominio, token, buscador);
+
   if (!troca.ok) return { ok: false, motivo: troca.motivo };
 
   const faltando = escoposFaltando(troca.valor.escopos);

@@ -56,16 +56,51 @@ export const env = {
   hostAdmin: process.env.NEXT_PUBLIC_ADMIN_HOST ?? '',
 } as const;
 
-/** URL pública da aplicação, usada nos redirects de e-mail do Supabase Auth. */
+/**
+ * URL pública da aplicação.
+ *
+ * É daqui que saem o endereço de retorno do OAuth da Shopify, a URL dos
+ * webhooks e os links de confirmação de e-mail do Supabase. Os três precisam
+ * de uma URL ABSOLUTA — com esquema.
+ *
+ * `NEXT_PUBLIC_SITE_URL` é colada à mão num painel, e a forma que a Vercel
+ * mostra o domínio é sem esquema (`minha-app.vercel.app`). Colar exatamente o
+ * que está lá é o caminho natural, e produzia
+ * `redirect_uri=minha-app.vercel.app/api/shopify/callback` — que a Shopify
+ * recusa com "The redirect_uri is not whitelisted", sem dizer que o problema
+ * é a falta do `https://`. O mesmo valor ia para o registro dos webhooks, e
+ * ali o erro era ainda mais silencioso: a Shopify recusava cada tópico e a
+ * loja ficava conectada sem receber nada.
+ *
+ * Normalizar aqui é melhor do que validar na hora de usar: são cinco lugares
+ * usando, e a primeira coisa que qualquer um deles faz é montar uma URL.
+ */
 export function urlDoSite(): string {
   const explicita = process.env.NEXT_PUBLIC_SITE_URL;
-  if (explicita != null && explicita !== '') return explicita.replace(/\/$/, '');
+  if (explicita != null && explicita.trim() !== '') return comEsquema(explicita.trim());
 
   // Preview da Vercel: o domínio muda a cada deploy.
   const vercel = process.env.VERCEL_URL;
   if (vercel != null && vercel !== '') return `https://${vercel}`;
 
   return 'http://app.localhost:3000';
+}
+
+/**
+ * Garante o esquema, sem mexer em quem já o tem.
+ *
+ * `localhost` fica em `http`: forçar `https` num ambiente de desenvolvimento
+ * quebraria o login local, que é onde isto mais roda.
+ */
+function comEsquema(bruto: string): string {
+  const semBarra = bruto.replace(/\/+$/, '');
+  if (/^https?:\/\//i.test(semBarra)) return semBarra;
+
+  const local =
+    /^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/i.test(semBarra) ||
+    /^[a-z0-9-]+\.localhost(:\d+)?$/i.test(semBarra);
+
+  return `${local ? 'http' : 'https'}://${semBarra}`;
 }
 
 /**

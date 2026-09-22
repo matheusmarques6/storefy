@@ -3562,7 +3562,39 @@ select tests.ok('automacao',
  * passar um `reservar_envios_de_automacao` que ignora o link do envio e manda
  * todo mundo para a home — que é o bug que este par de asserções existe para
  * pegar.
+ *
+ * O FUSO DA LOJA É FIXADO ANTES, e isso não é conveniência. `avisar_de_volta`
+ * agenda com `fora_do_silencio`, e `reservar_envios_de_automacao` reagenda de
+ * novo quem cair na madrugada — então, entre 22h e 8h do fuso da loja, o envio
+ * é empurrado para as 8h e o despacho não o devolve. A subconsulta daria NULL
+ * e a asserção falharia. Era um teste que passava o dia inteiro e reprovava a
+ * madrugada: escondia o que deveria provar justamente quando ninguém está
+ * olhando, e só apareceu porque uma execução caiu às 22h54 de São Paulo.
+ *
+ * O fuso é escolhido pela hora UTC de agora, para o relógio local da loja
+ * cair ao meio-dia em qualquer horário de execução. `Etc/GMT-3` é UTC+3: o
+ * sinal é invertido nessas zonas, e é por isso que a conta abaixo o inverte.
+ * O horário de silêncio tem asserção própria; aqui o que está sob prova é o
+ * LINK que o despacho entrega.
  */
+do $$
+declare
+  v_desvio integer := 12 - extract(hour from now() at time zone 'UTC')::integer;
+begin
+  update public.stores
+     set timezone = case
+           when v_desvio = 0 then 'UTC'
+           when v_desvio > 0 then 'Etc/GMT-' || v_desvio
+           else 'Etc/GMT+' || abs(v_desvio)
+         end
+   where id = (select loja_a from tests.lojas);
+
+  update public.automation_runs
+     set scheduled_for = now() - interval '1 minute'
+   where trigger_ref = '4412345';
+end
+$$;
+
 select tests.ok('automacao',
   (select deep_link = '/products/jaqueta?variant=4412345'
      from public.reservar_envios_de_automacao(100)

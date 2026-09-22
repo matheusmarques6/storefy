@@ -125,6 +125,21 @@ export function ConectarManual({
           />
         </Campo>
 
+        <Campo
+          id="token"
+          rotulo="Token de acesso da Admin API (só se o seu app mostrar um)"
+          dica="O app criado dentro do admin da loja mostra um token que começa com shpat_. O criado no painel de desenvolvedor não mostra nenhum — nesse caso, deixe em branco."
+        >
+          <Input
+            {...propsDoCampo('token', undefined, true)}
+            type="password"
+            placeholder="Deixe em branco se não tiver"
+            autoComplete="off"
+            spellCheck={false}
+            className="font-mono text-sm"
+          />
+        </Campo>
+
         {/*
          * O erro fica na tela ALÉM do toast: o toast some sozinho, e a
          * mensagem daqui costuma ser uma instrução ("faltam permissões no
@@ -185,6 +200,14 @@ function Passos() {
       <li>
         Ainda em <strong>Configurações</strong>, copie o <strong>Client ID</strong> e o{' '}
         <strong>Client Secret</strong> e cole nos campos abaixo.
+      </li>
+      <li>
+        <strong>Se você criou o app por dentro do admin da loja</strong> (Configurações › Apps e
+        canais de venda › Desenvolver apps), ele mostra também um{' '}
+        <strong>token de acesso da Admin API</strong>, começando com{' '}
+        <code className="bg-muted text-foreground rounded px-1 py-0.5 text-xs">shpat_</code>. Cole
+        esse token no terceiro campo — esse tipo de app precisa dele. O Client ID e o Client Secret
+        continuam sendo necessários, e ficam em <strong>Credenciais da API</strong>, na mesma tela.
       </li>
     </ol>
   );

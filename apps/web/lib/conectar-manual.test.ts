@@ -85,6 +85,17 @@ function redeFalsa(opcoes: OpcoesDaRede = {}) {
     const alvo = urlDe(url);
     chamadas.push(alvo);
 
+    if (alvo.includes('/admin/oauth/access_scopes.json')) {
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({
+            access_scopes: (opcoes.escopos ?? ESCOPOS).split(',').map((h) => ({ handle: h })),
+          }),
+          { status: opcoes.status ?? 200 },
+        ),
+      );
+    }
+
     if (alvo.includes('/admin/oauth/access_token')) {
       return Promise.resolve(
         new Response(
@@ -298,5 +309,67 @@ describe('escoposFaltando', () => {
   it('nada falta quando o app tem tudo — e sobrar não é problema', () => {
     expect(escoposFaltando(ESCOPOS.split(','))).toEqual([]);
     expect(escoposFaltando([...ESCOPOS.split(','), 'write_products'])).toEqual([]);
+  });
+});
+
+/*
+ * O outro tipo de app personalizado: o criado DENTRO do admin da loja. Ele
+ * mostra um token pronto e recusa `client_credentials`. Aceitá-lo é o que
+ * evita mandar o lojista refazer o app no lugar certo.
+ */
+describe('conectarPeloAppDoLojista, com token de acesso em mãos', () => {
+  const COM_TOKEN = { ...PEDIDO, token: 'shpat_do_admin' };
+
+  it('usa o token e NÃO tenta a troca por credenciais', async () => {
+    const { servico, gravado } = bancoFalso();
+    const { buscador, chamadas } = redeFalsa();
+
+    const resultado = await conectarPeloAppDoLojista(servico, COM_TOKEN, WEBHOOK, buscador);
+
+    expect(resultado.ok).toBe(true);
+
+    // A troca nem é tentada: o app que mostra token é o que a recusa.
+    expect(chamadas.some((url) => url.includes('/admin/oauth/access_token'))).toBe(false);
+    expect(chamadas[0]).toContain('/admin/oauth/access_scopes.json');
+
+    expect(descriptografar(String(gravado[0]?.shopify_access_token_enc))).toBe('shpat_do_admin');
+  });
+
+  /* Este token não vence: prazo nulo é o que impede a renovação inútil. */
+  it('grava sem prazo de validade', async () => {
+    const { servico, gravado } = bancoFalso();
+    const { buscador } = redeFalsa();
+
+    await conectarPeloAppDoLojista(servico, COM_TOKEN, WEBHOOK, buscador);
+
+    expect(gravado[0]?.shopify_token_expires_at).toBeNull();
+  });
+
+  /* O Client Secret continua obrigatório: é ele que assina os webhooks. */
+  it('ainda exige o Client Secret, que é quem confere o webhook', async () => {
+    const { servico, gravado } = bancoFalso();
+    const { buscador, chamadas } = redeFalsa();
+
+    const resultado = await conectarPeloAppDoLojista(
+      servico,
+      { ...COM_TOKEN, clientSecret: '' },
+      WEBHOOK,
+      buscador,
+    );
+
+    expect(resultado.ok).toBe(false);
+    expect(chamadas).toEqual([]);
+    expect(gravado).toEqual([]);
+  });
+
+  it('escopo faltando recusa também por este caminho', async () => {
+    const { servico, gravado } = bancoFalso();
+    const { buscador } = redeFalsa({ escopos: 'read_products' });
+
+    const resultado = await conectarPeloAppDoLojista(servico, COM_TOKEN, WEBHOOK, buscador);
+
+    expect(resultado.ok).toBe(false);
+    if (!resultado.ok) expect(resultado.motivo).toContain('read_orders');
+    expect(gravado).toEqual([]);
   });
 });
