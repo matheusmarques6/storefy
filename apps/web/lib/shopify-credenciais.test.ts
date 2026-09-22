@@ -117,6 +117,33 @@ describe('trocarCredenciaisPorToken', () => {
     if (!troca.ok) expect(troca.motivo).toContain('instalado');
   });
 
+  /*
+   * O erro que a loja REAL do lojista devolve, e o mais caro de traduzir
+   * errado: a credencial está certa, então "confira o Client Secret" manda a
+   * pessoa copiar de novo, para sempre, algo que já estava correto. Foi o que
+   * aconteceu de verdade antes desta tradução existir.
+   *
+   * O 401 aqui não é detalhe: a Shopify manda `shop_not_permitted` COM 401, e
+   * o ramo genérico de 401 fica logo abaixo. Se alguém reordenar os `if`, este
+   * teste cai — que é exatamente o serviço que ele presta.
+   */
+  it('loja fora da organização do app manda trocar de caminho, e não conferir credencial', async () => {
+    const { buscador } = rede(
+      {
+        error: 'shop_not_permitted',
+        error_description: 'Client credentials cannot be performed on this shop.',
+      },
+      401,
+    );
+    const troca = await trocarCredenciaisPorToken(LOJA, 'id', 'segredo', buscador);
+
+    expect(troca.ok).toBe(false);
+    if (!troca.ok) {
+      expect(troca.motivo).toContain('Conectar com a Shopify');
+      expect(troca.motivo).not.toContain('não conferem');
+    }
+  });
+
   it('a Shopify fora do ar vira "tente de novo", e não "confira a credencial"', async () => {
     const { buscador } = rede('', 503);
     const troca = await trocarCredenciaisPorToken(LOJA, 'id', 'segredo', buscador);

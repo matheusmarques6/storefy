@@ -1,17 +1,29 @@
 'use client';
 
 /**
- * Conectar pelo app que o lojista cria na conta Shopify dele (C14).
+ * Conectar pelo app da própria loja (C14).
  *
- * Este é o caminho que funciona HOJE: o app público da Storefy depende de uma
- * revisão da Shopify que leva semanas, e sem ela nenhuma loja conectaria.
+ * PARA QUEM ISTO SERVE — e não é para todo mundo, o que a tela precisa dizer
+ * em voz alta, porque já não dizia:
+ *
+ *   quem tem um app antigo criado dentro do admin da loja, com um token
+ *   `shpat_` à mão. A Shopify não deixa mais criar um desses, mas os que
+ *   existem continuam valendo;
+ *
+ *   quem conecta uma loja de teste que vive na MESMA organização da Shopify
+ *   que o app.
+ *
+ * Para a loja real de um lojista, `client_credentials` responde
+ * `shop_not_permitted` por mais certas que estejam as credenciais. Quem
+ * conecta essa loja é o OAuth, e por isso ele vem antes na tela quando existe.
  *
  * O PASSO A PASSO É PARTE DO PRODUTO, e não enfeite. O lojista que chega aqui
  * não sabe o que é Client ID, e mandá-lo "criar um app personalizado" sem
  * dizer onde é a diferença entre conectar em cinco minutos e abrir um chamado
- * no suporte. Os passos estão abertos por padrão enquanto ele não conectou, e
- * fechados depois — quem já conectou volta aqui para reconectar, não para ler
- * de novo.
+ * no suporte. Os passos abrem sozinhos só quando este é o caminho principal e
+ * a loja ainda não conectou: embaixo de um botão que funciona, ou para quem já
+ * conectou e só voltou para reconectar, um passo a passo aberto é ruído em
+ * cima de uma decisão já tomada.
  */
 import { useActionState, useState } from 'react';
 import { useRouter } from 'next/navigation';
@@ -29,14 +41,17 @@ const ESCOPOS = ['read_products', 'read_orders', 'read_customers', 'read_fulfill
 export function ConectarManual({
   situacao,
   conectada,
+  alternativo,
 }: {
   situacao: SituacaoDaShopify;
   conectada: boolean;
+  /** O OAuth está na tela e veio antes, então este aqui é o plano B. */
+  alternativo: boolean;
 }) {
   const router = useRouter();
   const [dominio, setDominio] = useState(situacao.dominio);
   const [erroDoDominio, setErroDoDominio] = useState<string | undefined>(undefined);
-  const [passosAbertos, setPassosAbertos] = useState(!conectada);
+  const [passosAbertos, setPassosAbertos] = useState(!conectada && !alternativo);
 
   const [estado, enviar, enviando] = useActionState<EstadoDaIntegracao, FormData>(
     async (anterior, dados) => {
@@ -54,7 +69,14 @@ export function ConectarManual({
   );
 
   return (
-    <div className="space-y-4">
+    <div className={alternativo ? 'space-y-4 border-t pt-4' : 'space-y-4'}>
+      {alternativo ? (
+        <p className="text-muted-foreground text-sm">
+          Ou conecte pelo app da sua própria loja. Serve em dois casos: se você já tem um app com
+          token de acesso da Admin API, ou se esta é uma loja de teste da mesma organização do app.
+        </p>
+      ) : null}
+
       <div className="border-input rounded-lg border">
         <button
           type="button"
@@ -64,7 +86,7 @@ export function ConectarManual({
           aria-expanded={passosAbertos}
           className="flex w-full items-center justify-between gap-2 p-3 text-left text-sm font-medium"
         >
-          Como pegar o Client ID e o Client Secret
+          Quando usar este caminho, e onde achar as credenciais
           <ChevronDown
             className={`size-4 shrink-0 transition-transform ${passosAbertos ? 'rotate-180' : ''}`}
             aria-hidden
@@ -162,22 +184,62 @@ export function ConectarManual({
 
 function Passos() {
   return (
-    <ol className="text-muted-foreground list-decimal space-y-3 border-t p-3 pl-7 text-sm">
-      <li>
-        Entre no{' '}
-        <a
-          href="https://dev.shopify.com/dashboard"
-          target="_blank"
-          rel="noreferrer"
-          className="text-foreground inline-flex items-center gap-1 underline underline-offset-2"
-        >
-          painel de apps da Shopify
-          <ExternalLink className="size-3" aria-hidden />
-        </a>{' '}
-        com a conta da sua loja e crie um app. O nome pode ser <strong>Storefy</strong>.
-      </li>
-      <li>
-        Em <strong>Configuração</strong>, marque estas permissões de leitura:
+    <div className="text-muted-foreground space-y-4 border-t p-3 text-sm">
+      <p>
+        Este caminho serve a <strong>dois casos</strong>. Se nenhum for o seu, use o botão{' '}
+        <strong>Conectar com a Shopify</strong> — ele funciona em qualquer loja e não exige criar
+        nada.
+      </p>
+
+      <div>
+        <p className="text-foreground font-medium">
+          1. Você já tem um app criado dentro do admin da loja
+        </p>
+        <p className="mt-1">
+          Em <strong>Configurações › Apps e canais de venda › Desenvolver apps</strong>. Abra o app
+          e, em <strong>Credenciais da API</strong>, copie as três coisas: o{' '}
+          <strong>token de acesso da Admin API</strong> (começa com{' '}
+          <code className="bg-muted text-foreground rounded px-1 py-0.5 text-xs">shpat_</code>), o{' '}
+          <strong>Client ID</strong> e o <strong>Client Secret</strong>. Neste caso os três campos
+          abaixo são necessários.
+        </p>
+        <p className="mt-1">
+          A Shopify não deixa mais criar apps assim. Os que já existem continuam valendo, mas se
+          você não tem um, este caso não é o seu.
+        </p>
+      </div>
+
+      <div>
+        <p className="text-foreground font-medium">
+          2. Esta é uma loja de teste, da mesma organização do app
+        </p>
+        <p className="mt-1">
+          App criado no{' '}
+          <a
+            href="https://dev.shopify.com/dashboard"
+            target="_blank"
+            rel="noreferrer"
+            className="text-foreground inline-flex items-center gap-1 underline underline-offset-2"
+          >
+            painel de apps da Shopify
+            <ExternalLink className="size-3" aria-hidden />
+          </a>
+          , com a loja aparecendo em <strong>Dev stores</strong>, na barra lateral da mesma
+          organização. Aqui bastam o <strong>Client ID</strong> e o <strong>Client Secret</strong>;
+          deixe o token em branco.
+        </p>
+        <p className="mt-1">
+          Se a loja não estiver nessa lista, a Shopify recusa com{' '}
+          <code className="bg-muted text-foreground rounded px-1 py-0.5 text-xs">
+            shop_not_permitted
+          </code>
+          , por mais certas que as credenciais estejam — ser dono da loja não a coloca na
+          organização, e instalar o app nela também não.
+        </p>
+      </div>
+
+      <div>
+        <p className="text-foreground font-medium">Permissões, nos dois casos</p>
         <ul className="mt-2 flex flex-wrap gap-1">
           {ESCOPOS.map((escopo) => (
             <li
@@ -188,27 +250,11 @@ function Passos() {
             </li>
           ))}
         </ul>
-        <span className="mt-2 block">
+        <p className="mt-2">
           Em português aparecem como: {ESCOPOS.map(rotuloDoEscopo).join(', ')}. Não precisa de
           nenhuma permissão de escrita.
-        </span>
-      </li>
-      <li>
-        Clique em <strong>Instalar app</strong> e escolha a sua loja. Sem instalar, as credenciais
-        existem mas não abrem nada.
-      </li>
-      <li>
-        Ainda em <strong>Configurações</strong>, copie o <strong>Client ID</strong> e o{' '}
-        <strong>Client Secret</strong> e cole nos campos abaixo.
-      </li>
-      <li>
-        <strong>Se você criou o app por dentro do admin da loja</strong> (Configurações › Apps e
-        canais de venda › Desenvolver apps), ele mostra também um{' '}
-        <strong>token de acesso da Admin API</strong>, começando com{' '}
-        <code className="bg-muted text-foreground rounded px-1 py-0.5 text-xs">shpat_</code>. Cole
-        esse token no terceiro campo — esse tipo de app precisa dele. O Client ID e o Client Secret
-        continuam sendo necessários, e ficam em <strong>Credenciais da API</strong>, na mesma tela.
-      </li>
-    </ol>
+        </p>
+      </div>
+    </div>
   );
 }

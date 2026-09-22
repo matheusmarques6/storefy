@@ -3,15 +3,22 @@
 /**
  * O cartão da Shopify na tela de Integrações (C14).
  *
- * DOIS CAMINHOS PARA A MESMA COISA, e a ordem em que aparecem não é estética:
+ * DOIS CAMINHOS PARA A MESMA COISA, e a ordem em que aparecem não é estética.
+ * Ela já esteve invertida, com uma premissa errada escrita aqui para
+ * justificá-la — a de que o app da própria loja "funciona em qualquer loja":
  *
- *   o app da própria loja funciona HOJE, em qualquer loja, sem depender de
- *   ninguém. Vem primeiro por isso;
+ *   o app público da Storefy (OAuth) é o único que conecta a loja REAL de um
+ *   lojista. Vem primeiro sempre que existe;
  *
- *   o app público da Storefy é um clique só para o lojista, mas depende de
- *   uma revisão da Shopify que leva semanas. Enquanto ela não sai, o botão
- *   nem aparece — oferecer um caminho que não funciona é pior do que não
- *   oferecer, porque manda a pessoa tentar e falhar.
+ *   o app da própria loja alcança só a loja que está na MESMA organização da
+ *   Shopify que ele, ou um app antigo do admin da loja, que já vem com token
+ *   pronto. Na loja real do lojista a Shopify responde `shop_not_permitted`,
+ *   e foi assim que isto apareceu: a tela oferecia primeiro o único caminho
+ *   que não tinha como funcionar ali.
+ *
+ * Enquanto o app público não está aprovado, o botão não aparece e o caminho
+ * manual fica sendo o único — oferecer um caminho que não funciona é pior do
+ * que não oferecer, porque manda a pessoa tentar e falhar.
  *
  * O formulário do OAuth é um POST de verdade para `/api/shopify/install`: sem
  * JavaScript ele continua funcionando, e o servidor confere o domínio de novo.
@@ -80,11 +87,14 @@ export function CartaoShopify({
 
             {podeEscrever ? (
               <>
-                <ConectarManual situacao={situacao} conectada={conectada} />
-
                 {situacao.oauthDisponivel ? (
-                  <Formulario situacao={situacao} conectada={conectada} />
-                ) : null}
+                  <>
+                    <Formulario situacao={situacao} conectada={conectada} />
+                    <ConectarManual situacao={situacao} conectada={conectada} alternativo />
+                  </>
+                ) : (
+                  <ConectarManual situacao={situacao} conectada={conectada} alternativo={false} />
+                )}
 
                 {conectada ? <Desconectar /> : null}
               </>
@@ -180,11 +190,12 @@ function Faltando({ escopos }: { escopos: string[] }) {
 }
 
 /**
- * O caminho do app público da Storefy (OAuth).
+ * O caminho do app público da Storefy (OAuth), e o principal.
  *
  * Só aparece quando o app está aprovado: sem isso, o botão mandaria o lojista
  * a uma tela da Shopify que responde com erro, e ele leria isso como "a
- * Storefy está quebrada" em vez de "este caminho ainda não existe".
+ * Storefy está quebrada" em vez de "este caminho ainda não existe". Quando
+ * aparece, vem antes de tudo — é o único que conecta a loja real dele.
  */
 function Formulario({ situacao, conectada }: { situacao: SituacaoDaShopify; conectada: boolean }) {
   const [dominio, setDominio] = useState(situacao.dominio);
@@ -194,7 +205,7 @@ function Formulario({ situacao, conectada }: { situacao: SituacaoDaShopify; cone
     <form
       method="post"
       action="/api/shopify/install"
-      className="space-y-4 border-t pt-4"
+      className="space-y-4"
       noValidate
       onSubmit={(evento) => {
         const conferido = conferirDominioDigitado(dominio);
@@ -207,7 +218,8 @@ function Formulario({ situacao, conectada }: { situacao: SituacaoDaShopify; cone
       }}
     >
       <p className="text-muted-foreground text-sm">
-        Ou conecte pelo app da Storefy, sem precisar criar nada na Shopify.
+        Você autoriza na própria Shopify e pronto — não precisa criar nada lá. É o caminho que
+        funciona em qualquer loja.
       </p>
 
       <Campo

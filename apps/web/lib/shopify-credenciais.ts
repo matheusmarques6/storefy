@@ -3,10 +3,21 @@ import 'server-only';
 /**
  * O app personalizado do lojista, trocado por um token de acesso.
  *
- * O caminho é `grant_type=client_credentials`: o lojista cria um app na conta
- * Shopify DELE, instala na própria loja e nos entrega Client ID e Client
- * Secret. Trocamos os dois por um token, sem passar por revisão da Shopify e
- * sem o lojista precisar aprovar nada numa tela nossa.
+ * O caminho é `grant_type=client_credentials`: o app troca o próprio Client ID
+ * e Client Secret por um token, sem redirecionar ninguém e sem revisão da
+ * Shopify.
+ *
+ * PARA QUEM ELE SERVE, E PARA QUEM NÃO SERVE — a parte que custou uma sessão
+ * inteira para descobrir. `client_credentials` só funciona quando o app e a
+ * loja estão na MESMA organização da Shopify. Ser dono da loja não basta, e
+ * instalar o app nela também não: a documentação da Shopify diz, com todas as
+ * letras, que todo caminho MENOS este serve para a loja de um cliente. Na loja
+ * real de um lojista a resposta é `shop_not_permitted`, sempre.
+ *
+ * Ou seja: este arquivo atende a loja de teste dentro da nossa organização e o
+ * app antigo do admin da loja (por `conferirTokenDeAcesso`, lá embaixo). Quem
+ * conecta a loja real de um lojista é o OAUTH, e é ele que a tela oferece
+ * primeiro.
  *
  * O QUE MUDA EM RELAÇÃO AO OAUTH, e é a razão de este arquivo existir:
  *
@@ -16,9 +27,10 @@ import 'server-only';
  *   o segredo que assina os webhooks passa a ser o Client Secret DESTE app,
  *   e não o `SHOPIFY_API_SECRET` da Storefy. Cada loja tem o seu.
  *
- * Desde janeiro de 2026 o app personalizado não mostra mais um token pronto
- * no admin da Shopify: o Client Secret é o que o lojista tem para dar, e a
- * troca aqui é o único jeito de chegar no token.
+ * SOBRE O APP DO ADMIN DA LOJA: a Shopify não deixa mais CRIAR um, mas os que
+ * já existem continuam valendo, e é por isso que `conferirTokenDeAcesso` não
+ * é código morto. Quem tem um deles tem um token `shpat_` em mãos; quem não
+ * tem, não consegue mais fazer um, e vai pelo OAuth.
  */
 import { ehDominioDeLoja } from '@/lib/shopify';
 
@@ -146,6 +158,20 @@ async function traduzirFalha(resposta: Response): Promise<string> {
 
   if (/application_cannot_be_found/i.test(texto)) {
     return 'Não achamos esse app na loja. Confira o Client ID e veja se o app está instalado nela.';
+  }
+
+  /*
+   * O app existe e a credencial confere — e mesmo assim a loja está fora do
+   * alcance dele. É o `client_credentials` batendo no limite da organização,
+   * descrito no cabeçalho deste arquivo.
+   *
+   * A mensagem NÃO manda conferir credencial, porque não há o que conferir: a
+   * credencial está certa e o caminho é que está errado. Mandar conferir foi
+   * exatamente o que aconteceu na primeira tentativa real, e rendeu uma volta
+   * inteira copiando de novo um Client Secret que já estava correto.
+   */
+  if (/shop_not_permitted/i.test(texto)) {
+    return 'Esse app não alcança esta loja. A conexão por Client ID e Client Secret só funciona quando o app e a loja estão na mesma organização da Shopify — serve para loja de teste, não para a loja real. Use o botão "Conectar com a Shopify" aqui embaixo, que funciona em qualquer loja. Se o seu app mostra um token começando com shpat_, cole-o no campo de token.';
   }
 
   /*
