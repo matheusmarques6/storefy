@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { totalDePaginas } from '@/lib/listagem';
+import { montarUrlDePagina, totalDePaginas } from '@/lib/listagem';
 
 // A leitura e a sanitização dos parâmetros vivem em `@/lib/listagem`, que tem
 // testes próprios. Aqui fica só o que desenha.
@@ -13,22 +13,19 @@ export function Paginacao({
   total,
   base,
   busca,
+  extras,
 }: {
   pagina: number;
   total: number;
   base: string;
   busca: string;
+  /** Filtros que precisam sobreviver à troca de página (o recorte da A05). */
+  extras?: Record<string, string>;
 }) {
   const ultimaPagina = totalDePaginas(total);
   if (ultimaPagina <= 1) return null;
 
-  const montar = (p: number) => {
-    const params = new URLSearchParams();
-    if (busca !== '') params.set('q', busca);
-    if (p > 1) params.set('pagina', String(p));
-    const query = params.toString();
-    return query === '' ? base : `${base}?${query}`;
-  };
+  const montar = (p: number) => montarUrlDePagina(base, { busca, pagina: p, extras });
 
   return (
     <nav aria-label="Paginação" className="flex items-center justify-between gap-4 pt-2">

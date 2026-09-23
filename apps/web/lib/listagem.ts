@@ -66,3 +66,44 @@ export function termoParaIlike(busca: string): string {
 export function totalDePaginas(total: number): number {
   return Math.max(1, Math.ceil(total / POR_PAGINA));
 }
+
+/**
+ * A URL de uma página da listagem.
+ *
+ * Mora aqui, e não dentro do componente, porque ela já errou: o componente
+ * montava `${base}?${query}` na mão, e qualquer tela que passasse um `base`
+ * com filtro — `/admin/builds?filtro=problema` — gerava
+ * `/admin/builds?filtro=problema?pagina=2`, com DOIS pontos de interrogação.
+ * O navegador lê isso como um filtro chamado `problema?pagina`, e a página 2
+ * volta para a 1 sem dizer nada.
+ *
+ * `extras` são os filtros que precisam sobreviver à troca de página. Vêm antes
+ * de `pagina` na query só para a URL ficar legível para quem a lê no chat do
+ * suporte.
+ */
+export function montarUrlDePagina(
+  base: string,
+  {
+    busca = '',
+    pagina = 1,
+    extras = {},
+  }: { busca?: string; pagina?: number; extras?: Record<string, string> },
+): string {
+  // `base` pode vir com query — é o caso que quebrava. Separar e reaproveitar
+  // é melhor do que proibir, porque a proibição só apareceria em produção.
+  const [caminho, queryDaBase = ''] = base.split('?');
+  const params = new URLSearchParams(queryDaBase);
+
+  for (const [chave, valor] of Object.entries(extras)) {
+    if (valor !== '') params.set(chave, valor);
+  }
+  if (busca !== '') params.set('q', busca);
+
+  // Página 1 não entra na URL: é o padrão, e um `?pagina=1` pendurado faz duas
+  // URLs diferentes mostrarem a mesma coisa.
+  if (pagina > 1) params.set('pagina', String(pagina));
+  else params.delete('pagina');
+
+  const query = params.toString();
+  return query === '' ? (caminho ?? base) : `${caminho ?? base}?${query}`;
+}

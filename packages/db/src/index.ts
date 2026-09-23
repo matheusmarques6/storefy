@@ -73,6 +73,7 @@ export type StoreStatus = Enum<'store_status'>;
 export type StorePlatform = Enum<'store_platform'>;
 export type AppConfigStatus = Enum<'app_config_status'>;
 export type AuditAction = Enum<'audit_action'>;
+export type BuildStatus = Enum<'build_status'>;
 export type DevicePlatform = Enum<'device_platform'>;
 export type PushCampaignStatus = Enum<'push_campaign_status'>;
 export type PushAutomationType = Enum<'push_automation_type'>;
@@ -119,6 +120,27 @@ export const ROTULO_STATUS_ORG: Record<OrgStatus, string> = {
   active: 'Ativa',
   past_due: 'Pagamento pendente',
   canceled: 'Cancelada',
+};
+
+/**
+ * O status de um build, em palavras que o lojista entende.
+ *
+ * Mora aqui, e não na tela, porque duas telas mostram os mesmos nove estados:
+ * a publicação do cliente (C12) e a fila do admin (A05). Duas cópias divergem
+ * na primeira vez que alguém renomear um estado só de um lado — e aí o suporte
+ * e o cliente passam a falar de "Falhou" e "Com erro" achando que são coisas
+ * diferentes.
+ */
+export const ROTULO_STATUS_BUILD: Record<BuildStatus, string> = {
+  queued: 'Na fila',
+  building: 'Gerando',
+  finished: 'Gerado',
+  errored: 'Falhou',
+  submitted: 'Enviado para a loja',
+  in_review: 'Em revisão',
+  approved: 'Aprovado',
+  rejected: 'Rejeitado',
+  canceled: 'Cancelado',
 };
 
 export const ROTULO_ACAO_AUDITORIA: Record<AuditAction, string> = {

@@ -1,4 +1,4 @@
-/** Criar loja. */
+/** C02 — Criar loja (onboarding 1: a URL da loja). */
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';

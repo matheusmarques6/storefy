@@ -7,25 +7,13 @@
  */
 import { Download, History } from 'lucide-react';
 import type { BuildNaLista } from '@/lib/publicacao-servidor';
-import type { Database } from '@storefy/db';
+import { ROTULO_STATUS_BUILD, type Database } from '@storefy/db';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
 import { EstadoVazio } from '@/components/estado-vazio';
 import { PassoManual } from './passo-manual';
 
 type Status = Database['public']['Enums']['build_status'];
-
-const ROTULO: Record<Status, string> = {
-  queued: 'Na fila',
-  building: 'Gerando',
-  finished: 'Gerado',
-  errored: 'Falhou',
-  submitted: 'Enviado para a loja',
-  in_review: 'Em revisão',
-  approved: 'Aprovado',
-  rejected: 'Rejeitado',
-  canceled: 'Cancelado',
-};
 
 const EXPLICACAO: Record<Status, string> = {
   queued: 'Esperando a vez. Costuma começar em poucos minutos.',
@@ -92,7 +80,7 @@ export function HistoricoDeBuilds({ builds }: { builds: readonly BuildNaLista[] 
                   <span className="font-medium">
                     {build.platform === 'ios' ? 'App Store' : 'Play Store'}
                   </span>
-                  <Badge variant={COR[build.status]}>{ROTULO[build.status]}</Badge>
+                  <Badge variant={COR[build.status]}>{ROTULO_STATUS_BUILD[build.status]}</Badge>
                   {build.version === null ? null : (
                     <span className="text-muted-foreground text-xs">
                       versão {build.version}

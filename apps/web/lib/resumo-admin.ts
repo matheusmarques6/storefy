@@ -77,18 +77,21 @@ export function pendencias(bruto: ResumoBruto): NumeroDoResumo[] {
       rotulo: 'Builds com erro',
       valor: numero(bruto.builds_com_erro_7d),
       ajuda: 'Quebraram nos últimos 7 dias.',
+      href: '/admin/builds?filtro=problema',
     },
     {
       chave: 'builds_rejeitados',
       rotulo: 'Rejeitados na loja',
       valor: numero(bruto.builds_rejeitados_7d),
       ajuda: 'Apple ou Google recusaram nos últimos 7 dias.',
+      href: '/admin/revisoes',
     },
     {
       chave: 'contas_dev',
       rotulo: 'Contas de desenvolvedor com erro',
       valor: numero(bruto.contas_dev_com_erro),
       ajuda: 'Credencial inválida ou expirada: o cliente não consegue publicar.',
+      href: '/admin/contas',
     },
   ];
 
@@ -124,13 +127,14 @@ export function panorama(bruto: ResumoBruto): NumeroDoResumo[] {
       rotulo: 'Em revisão',
       valor: numero(bruto.lojas_em_revisao),
       ajuda: 'Esperando decisão da Apple ou da Google.',
-      href: '/admin/lojas',
+      href: '/admin/revisoes',
     },
     {
       chave: 'builds_fila',
       rotulo: 'Builds rodando',
       valor: numero(bruto.builds_na_fila),
       ajuda: 'Na fila ou compilando agora.',
+      href: '/admin/builds?filtro=andamento',
     },
   ];
 }

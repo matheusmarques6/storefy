@@ -76,16 +76,28 @@ describe('pendencias', () => {
     }
   });
 
-  /* Pendência não leva a lugar nenhum se a tela ainda não existe (A05). */
-  it('pendência só aponta para tela que existe', () => {
+  /*
+   * Com a A05 e a A06 no ar, TODA pendência passou a ter destino. Enquanto a
+   * fila de builds não existia, o cartão de build quebrado era texto morto: o
+   * admin lia "3 builds com erro" e não tinha para onde ir. Um número que
+   * aponta um problema sem oferecer o caminho é meia informação.
+   */
+  it('toda pendência leva a algum lugar', () => {
     const lista = pendencias({
       ...ZERADO,
       orgs_inadimplentes: 1,
+      trials_vencendo_7d: 1,
       builds_com_erro_7d: 1,
+      builds_rejeitados_7d: 1,
+      contas_dev_com_erro: 1,
     });
 
-    expect(lista.find((i) => i.chave === 'inadimplentes')?.href).toBe('/admin/organizacoes');
-    expect(lista.find((i) => i.chave === 'builds_com_erro')?.href).toBeUndefined();
+    for (const item of lista) {
+      expect(item.href, `${item.chave} sem destino`).toBeTypeOf('string');
+    }
+    expect(lista.find((i) => i.chave === 'builds_com_erro')?.href).toBe(
+      '/admin/builds?filtro=problema',
+    );
   });
 });
 

@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { POR_PAGINA, lerParams, normalizarBusca, termoParaIlike, totalDePaginas } from './listagem';
+import {
+  POR_PAGINA,
+  lerParams,
+  montarUrlDePagina,
+  normalizarBusca,
+  termoParaIlike,
+  totalDePaginas,
+} from './listagem';
 
 describe('lerParams', () => {
   it('usa a primeira página quando nada é informado', () => {
@@ -83,5 +90,44 @@ describe('totalDePaginas', () => {
   it('arredonda para cima', () => {
     expect(totalDePaginas(POR_PAGINA)).toBe(1);
     expect(totalDePaginas(POR_PAGINA + 1)).toBe(2);
+  });
+});
+
+describe('montarUrlDePagina', () => {
+  it('página 1 não aparece na URL', () => {
+    expect(montarUrlDePagina('/admin/lojas', { pagina: 1 })).toBe('/admin/lojas');
+  });
+
+  it('leva a busca e a página juntas', () => {
+    const url = montarUrlDePagina('/admin/lojas', { busca: 'acme', pagina: 3 });
+    expect(url).toBe('/admin/lojas?q=acme&pagina=3');
+  });
+
+  /*
+   * O bug que motivou extrair esta função do componente: um `base` que já
+   * trazia filtro virava `/admin/builds?filtro=problema?pagina=2`, com dois
+   * pontos de interrogação. O navegador lê o segundo como parte do VALOR do
+   * primeiro, e a página 2 volta calada para a 1.
+   */
+  it('base que já tem query não ganha um segundo "?"', () => {
+    const url = montarUrlDePagina('/admin/builds?filtro=problema', { pagina: 2 });
+    expect(url.match(/\?/g)).toHaveLength(1);
+    expect(url).toBe('/admin/builds?filtro=problema&pagina=2');
+  });
+
+  it('o filtro sobrevive à troca de página', () => {
+    const url = montarUrlDePagina('/admin/builds', { pagina: 2, extras: { filtro: 'andamento' } });
+    expect(url).toContain('filtro=andamento');
+    expect(url).toContain('pagina=2');
+  });
+
+  it('extra vazio não polui a URL', () => {
+    expect(montarUrlDePagina('/admin/builds', { extras: { filtro: '' } })).toBe('/admin/builds');
+  });
+
+  /* Voltar para a página 1 tem que TIRAR o `pagina` que veio no base. */
+  it('voltar para a primeira página remove o parâmetro antigo', () => {
+    const url = montarUrlDePagina('/admin/builds?filtro=todos&pagina=5', { pagina: 1 });
+    expect(url).toBe('/admin/builds?filtro=todos');
   });
 });

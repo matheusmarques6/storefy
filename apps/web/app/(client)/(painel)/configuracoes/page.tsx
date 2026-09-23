@@ -1,4 +1,4 @@
-/** Configurações da organização. */
+/** C16 — Configurações da organização. */
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { ROTULO_PAPEL, ROTULO_STATUS_ORG, podeEscrever } from '@storefy/db';

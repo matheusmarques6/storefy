@@ -893,6 +893,29 @@ a pedido de alguém.
 > em vez de mostrar um botão que leva a erro, e o webhook responde 503 — e não 200 —, para a
 > Shopify reentregar quando o ambiente existir, em vez de dar o evento por entregue.
 
+### Auditoria do que já existe (23/09/2026)
+
+O que foi conferido RODANDO, e não só lido:
+
+| Verificação | Resultado |
+|---|---|
+| A aplicação sobe a partir do build de produção e responde | ✅ `next start` + requisições reais |
+| Rotas públicas são mesmo públicas | ✅ `privacy/[loja]` e o banner do tema respondem sem sessão; o matcher do proxy exclui `privacy/` |
+| Guardas de sessão | ✅ painel e admin redirecionam para o login; as rotas novas da Fase 6 também |
+| Webhook da Shopify sem segredo configurado | ✅ responde 503, e não 200 — a Shopify reentrega em vez de dar o evento por entregue |
+| Os quatro jobs do cron estão agendados | ✅ `vercel.json` cobre dispatch-push, push-stats, review-status e analytics |
+| `NEXT_PUBLIC_SITE_URL` passa por um único funil | ✅ só `lib/env.ts` lê a variável crua |
+| `.env.example` x o que o código lê | ✅ completo (conferido por `grep process.env`) |
+| `catch` que engole erro | ✅ nenhum na nossa lógica; os que existem estão em script injetado na página do lojista, onde estourar quebraria a loja dele |
+| RPC declarada e nunca chamada | ✅ nenhuma; `contar_abertura` e `dia_da_loja` são chamadas de dentro de outras funções SQL |
+
+O que **não** deu para conferir aqui, e continua em aberto:
+
+- **e2e (Playwright)**: precisa de um Supabase alcançável, e este ambiente não tem Docker para
+  `supabase start`. Os specs foram atualizados para as rotas novas, mas não rodaram.
+- **O ponta a ponta com a Shopify, a EAS, a Apple e a Google**: continua dependendo das contas
+  reais, como a Fase 5 já registrava.
+
 ### Fase 6 — Painel Admin completo (4–6 dias)
 - Telas A02–A13, impersonação com auditoria, presets por tema (A10), feature flags e reexecução de builds.
 - Reaproveitar do admin Convertfy os padrões de tabela, filtros, página de detalhe com abas e notas internas.
@@ -905,8 +928,15 @@ a pedido de alguém.
 | **A02 — Visão geral** | ✅ dez números numa chamada só (`resumo_do_admin`), separados em "precisa de você" (só o que é > 0) e "a plataforma hoje" (aparece zerado, porque ali zero é informação). `/admin` passou a ser esta tela |
 | A03 — Organizações (lista) | ✅ saiu de `/admin` para `/admin/organizacoes`, com busca e paginação |
 | A04 — Cliente (detalhe) | ⚠️ existe com lojas e membros; faltam as abas de app/config, builds, push, cobrança, notas e o "entrar como cliente" |
+| **A05 — Fila de builds** | ✅ recortes por situação na URL, abrindo no que quebrou; erro da EAS na própria linha; link dos logs; reexecutar com confirmação, travado para build que ainda roda ou que está com a loja |
+| **A06 — Revisões das lojas** | ✅ ordenada do mais ANTIGO para o mais novo (aqui o interessante é o que está parado), com alerta a partir de 7 dias e o motivo da recusa na linha |
+| **A07 — Contas de desenvolvedor** | ✅ estado e identificadores públicos (Team ID, Key ID) de cada cliente. Nenhuma coluna `_enc` é lida: o segredo não passa pela tela |
 | A12 — Logs de auditoria | ✅ |
-| A05, A06, A07, A08, A09, A10, A11, A13 | ⬜ ainda não |
+| A08, A09, A10, A11, A13 | ⬜ ainda não |
+
+> **Todo número da A02 leva a algum lugar.** Enquanto a A05/A06/A07 não existiam, três cartões
+> apontavam um problema sem oferecer caminho — meia informação. O teste
+> `toda pendência leva a algum lugar` agora falha se alguém acrescentar uma pendência sem destino.
 
 > **Faturamento não aparece na A02 de propósito.** Não existe tabela de cobrança (Fase 7), e
 > a regra 1 do CLAUDE.md proíbe número inventado — ainda mais em tela de dinheiro, onde ninguém
@@ -991,6 +1021,10 @@ pela WebView.
 
 ## 12. Variáveis de ambiente
 
+> A lista que vale é a do `.env.example`, conferida contra o que o código lê de
+> verdade (`grep process.env`). Esta seção é o resumo; quando as duas
+> divergirem, o `.env.example` está certo.
+
 ```
 # Web (Vercel)
 NEXT_PUBLIC_SUPABASE_URL=            NEXT_PUBLIC_SUPABASE_ANON_KEY=
@@ -1000,8 +1034,18 @@ GITHUB_DISPATCH_TOKEN=               GITHUB_REPO=
 EXPO_TOKEN=                          EAS_WEBHOOK_SECRET=
 CRON_SECRET=                         APP_HMAC_SECRET=
 SHOPIFY_API_KEY=                     SHOPIFY_API_SECRET=      SHOPIFY_SCOPES=
-ASAAS_API_KEY= / STRIPE_SECRET_KEY=  RESEND_API_KEY=
-SENTRY_DSN=
+ASAAS_API_KEY= / STRIPE_SECRET_KEY=  RESEND_API_KEY=          EMAIL_REMETENTE=
+SENTRY_DSN=                          BUILD_API_SECRET=
+
+# Precisa de https:// na frente. A Vercel mostra o domínio sem o esquema, e
+# colar exatamente o que ela mostra derruba o OAuth da Shopify e registra os
+# webhooks errado, EM SILÊNCIO. Aconteceu.
+NEXT_PUBLIC_SITE_URL=https://app.storefy.com.br
+
+# Domínios próprios do painel e do admin. Vazios, tudo roda em /admin no
+# mesmo domínio — é o que vale até o DNS existir.
+NEXT_PUBLIC_CLIENT_HOST=             NEXT_PUBLIC_ADMIN_HOST=
+NEXT_PUBLIC_GOOGLE_OAUTH_ENABLED=
 
 # Mobile (injetado no build)
 STORE_ID= STOREFY_APP_ID= API_BASE= APP_NAME= APP_SLUG= APP_SCHEME=
