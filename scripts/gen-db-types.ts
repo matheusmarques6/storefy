@@ -230,6 +230,12 @@ async function main(): Promise<void> {
     'publicar_config',
     // A02 — os números da visão geral do admin, numa chamada só.
     'resumo_do_admin',
+    // A08 — push e aparelhos ativos por app, em todas as lojas.
+    'push_do_admin',
+    // A11 — a equipe da plataforma, e as travas de quem pode mexer nela.
+    'admin_equipe',
+    'outros_superadmins',
+    'admin_usuario_por_email',
     'restaurar_config',
     'abrir_previa',
     'registrar_aparelho',

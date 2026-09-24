@@ -931,8 +931,27 @@ O que **não** deu para conferir aqui, e continua em aberto:
 | **A05 — Fila de builds** | ✅ recortes por situação na URL, abrindo no que quebrou; erro da EAS na própria linha; link dos logs; reexecutar com confirmação, travado para build que ainda roda ou que está com a loja |
 | **A06 — Revisões das lojas** | ✅ ordenada do mais ANTIGO para o mais novo (aqui o interessante é o que está parado), com alerta a partir de 7 dias e o motivo da recusa na linha |
 | **A07 — Contas de desenvolvedor** | ✅ estado e identificadores públicos (Team ID, Key ID) de cada cliente. Nenhuma coluna `_enc` é lida: o segredo não passa pela tela |
+| **A08 — Push global** | ✅ envios, falhas e aparelhos ativos por app, ordenado por ativos (é o que a OneSignal cobra). "App com problema" é RAZÃO com piso de volume, não contagem: 1 falha em 1 envio não acusa ninguém |
+| **A11 — Equipe interna** | ✅ convidar, trocar papel e remover, com três travas — só superadmin mexe, ninguém altera a si mesmo, e o último superadmin não sai. Conferidas de novo no servidor, com a contagem vinda do banco |
 | A12 — Logs de auditoria | ✅ |
-| A08, A09, A10, A11, A13 | ⬜ ainda não |
+| A09, A10, A13 | ⬜ ainda não |
+
+> **Até a A11 existir, somar um colega à equipe exigia rodar `pnpm bootstrap:admin` com acesso
+> ao banco de produção.** Uma tarefa de trinta segundos dependia de quem tinha a chave.
+
+> **O custo em reais não aparece na A08**, pelo mesmo motivo do MRR na A02: converter aparelho
+> ativo em dinheiro depende da tabela de preços do plano contratado, que é Fase 7. A tela mostra
+> o número de ativos — que é o que a OneSignal cobra — e diz o que falta.
+
+> **`push_do_admin` trata o `stats` da OneSignal como hostil.** Um cast direto
+> (`(stats->>'entregues')::bigint`) derruba a consulta INTEIRA quando um único app tem lixo ali,
+> e a tela do admin some por causa de um cliente. A asserção de RLS planta uma campanha com
+> `"entregues": "n/d"` de propósito; com o cast direto no lugar da guarda, a suíte não falha —
+> ESTOURA, que é o que se quer impedir.
+
+> **`admin_equipe` é `security definer`, e dessa vez com razão.** O e-mail mora em `auth.users`,
+> que não é nossa e não tem policy para o `authenticated`: não há RLS a respeitar, há um schema
+> fora de alcance. Diferente do caso do `resumo_do_admin`, onde definer era desnecessário.
 
 > **Todo número da A02 leva a algum lugar.** Enquanto a A05/A06/A07 não existiam, três cartões
 > apontavam um problema sem oferecer caminho — meia informação. O teste

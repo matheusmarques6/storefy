@@ -992,9 +992,17 @@ export type Database = {
         Args: { p_user_id: string };
         Returns: string;
       };
+      admin_equipe: {
+        Args: Record<string, never>;
+        Returns: { user_id: string | null; email: string | null; role: Database["public"]["Enums"]["platform_admin_role"] | null; created_at: string | null }[];
+      };
       admin_membros_da_org: {
         Args: { p_org_id: string };
         Returns: { user_id: string | null; email: string | null; role: Database["public"]["Enums"]["membership_role"] | null; created_at: string | null; ultimo_acesso: string | null }[];
+      };
+      admin_usuario_por_email: {
+        Args: { p_email: string };
+        Returns: string;
       };
       agendar_pedido_enviado: {
         Args: { p_app_id: string; p_shopify_order_id: string };
@@ -1104,9 +1112,17 @@ export type Database = {
         Args: Record<string, never>;
         Returns: { store_id: string | null; app_id: string | null; nome: string | null }[];
       };
+      outros_superadmins: {
+        Args: { p_exceto: string };
+        Returns: number;
+      };
       publicar_config: {
         Args: { p_app_id: string };
         Returns: number;
+      };
+      push_do_admin: {
+        Args: { p_dias?: number };
+        Returns: { app_id: string | null; loja: string | null; organizacao: string | null; campanhas_enviadas: number | null; campanhas_falhas: number | null; entregues: number | null; abertos: number | null; automacoes_enviadas: number | null; automacoes_falhas: number | null; aparelhos: number | null; ativos: number | null }[];
       };
       registrar_aparelho: {
         Args: { p_app_id: string; p_subscription: string; p_platform: Database["public"]["Enums"]["device_platform"]; p_app_version?: string; p_external_id?: string; p_email_hash?: string };

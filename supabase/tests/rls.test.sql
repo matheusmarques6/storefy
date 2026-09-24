@@ -3945,6 +3945,184 @@ select tests.ok('admin',
 reset role;
 select tests.logout();
 
+-- ============================== grupo: A08 — o push global do admin
+--
+-- Três coisas sob prova, e a terceira é a que nasceu de um bug real em outra
+-- função: `stats` é JSON que veio da OneSignal, e um valor que não seja
+-- inteiro NÃO pode derrubar a consulta. Um cast direto estoura a query inteira
+-- por causa do lixo de um único app — e a tela do admin some por causa de um
+-- cliente.
+
+reset role;
+select tests.logout();
+
+/*
+ * TUDO AQUI USA A LOJA B, e isso não é escolha estética: a loja A acumula
+ * campanhas de meia dúzia de grupos anteriores deste mesmo arquivo. A primeira
+ * versão destas asserções usava a A e afirmava "2 campanhas enviadas" — a
+ * função devolveu 6, e as corretas eram as 6. O teste estava errado, não o
+ * código. Um arquivo de asserções com estado compartilhado precisa de um
+ * cantinho limpo para contar, e a loja B é o dela.
+ *
+ * Dado de verdade em cada coluna que as asserções conferem: sem isso a
+ * comparação vira `0 = 0`, que passa mesmo com a função errada.
+ */
+insert into public.push_campaigns (app_id, title, body, status, sent_at, stats)
+select app_b, 'Campanha boa', 'corpo', 'sent', now() - interval '2 days',
+       '{"enviados": 100, "entregues": 90, "abertos": 30}'::jsonb
+  from tests.lojas;
+
+/*
+ * A campanha com `stats` podre. `entregues` veio texto e `abertos` veio
+ * objeto — as duas formas que a OneSignal já mandou de verdade quando a
+ * notificação foi recusada. A função tem que somar ZERO aqui e seguir viva.
+ */
+insert into public.push_campaigns (app_id, title, body, status, sent_at, stats)
+select app_b, 'Campanha com lixo', 'corpo', 'sent', now() - interval '1 day',
+       '{"enviados": "muitos", "entregues": "n/d", "abertos": {"erro": true}}'::jsonb
+  from tests.lojas;
+
+insert into public.push_campaigns (app_id, title, body, status, stats)
+select app_b, 'Campanha que falhou', 'corpo', 'failed', '{}'::jsonb from tests.lojas;
+
+select tests.login('forasteiro@teste.local');
+set role authenticated;
+
+select tests.ok('admin',
+  tests.erro('select * from public.push_do_admin(30)'),
+  'usuário comum NÃO lê o push global');
+
+reset role;
+select tests.login('equipe@teste.local');
+set role authenticated;
+
+select tests.ok('admin',
+  (select campanhas_enviadas from public.push_do_admin(30)
+    where app_id = (select app_b from tests.lojas)) = 2,
+  'conta as campanhas enviadas no período');
+
+select tests.ok('admin',
+  (select campanhas_falhas from public.push_do_admin(30)
+    where app_id = (select app_b from tests.lojas)) = 1,
+  'conta as campanhas que falharam');
+
+/*
+ * A asserção que importa: 90 da campanha boa + 0 da podre. Se alguém trocar o
+ * `~ '^[0-9]+$'` por um cast direto, isto não falha — ESTOURA, que é
+ * exatamente o que se quer impedir.
+ */
+select tests.ok('admin',
+  (select entregues from public.push_do_admin(30)
+    where app_id = (select app_b from tests.lojas)) = 90,
+  'stats podre soma zero em vez de derrubar a consulta');
+
+select tests.ok('admin',
+  (select abertos from public.push_do_admin(30)
+    where app_id = (select app_b from tests.lojas)) = 30,
+  'o mesmo vale para aberturas: objeto onde devia haver número vira zero');
+
+/*
+ * O recorte de tempo precisa recortar. Uma campanha de 40 dias atrás não pode
+ * aparecer num período de 30 — senão o número nunca baixa e a tela deixa de
+ * dizer alguma coisa sobre AGORA.
+ */
+reset role;
+insert into public.push_campaigns (app_id, title, body, status, sent_at, stats)
+select app_b, 'Campanha antiga', 'corpo', 'sent', now() - interval '40 days',
+       '{"entregues": 5000}'::jsonb from tests.lojas;
+
+select tests.login('equipe@teste.local');
+set role authenticated;
+
+select tests.ok('admin',
+  (select entregues from public.push_do_admin(30)
+    where app_id = (select app_b from tests.lojas)) = 90,
+  'campanha fora do período não entra na soma');
+
+select tests.ok('admin',
+  (select entregues from public.push_do_admin(90)
+    where app_id = (select app_b from tests.lojas)) = 5090,
+  'e entra quando o período alcança ela');
+
+reset role;
+select tests.logout();
+
+-- ============================== grupo: A11 — a equipe da plataforma
+--
+-- Três funções com TRÊS ALCANCES DIFERENTES, e a diferença é o ponto:
+--
+--   `admin_equipe` é para a tela: o admin logado chama e vê a equipe;
+--   `outros_superadmins` e `admin_usuario_por_email` são só service_role.
+--
+-- As duas últimas são `security definer` e leem `auth.users` ou contam quem
+-- manda na plataforma. Deixá-las ao alcance da sessão do navegador daria a
+-- qualquer admin logado um jeito de descobrir se um e-mail tem conta — e o
+-- único motivo de elas existirem é servir a uma ação do servidor.
+
+reset role;
+select tests.logout();
+select tests.login('forasteiro@teste.local');
+set role authenticated;
+
+select tests.ok('admin',
+  tests.erro('select * from public.admin_equipe()'),
+  'usuário comum NÃO lê a equipe da plataforma');
+
+reset role;
+select tests.login('equipe@teste.local');
+set role authenticated;
+
+select tests.ok('admin',
+  tests.contar('select count(*) from public.admin_equipe()') >= 1,
+  'o admin lê a equipe, com e-mail vindo de auth.users');
+
+select tests.ok('admin',
+  (select role from public.admin_equipe()
+    where user_id = (select u_equipe from tests.ids)) = 'superadmin',
+  'e o papel de cada um vem junto');
+
+/*
+ * As duas de service_role. `tests.erro` aqui prova o GRANT, não a RLS: sem
+ * permissão de execução o Postgres recusa antes de rodar uma linha da função.
+ */
+select tests.ok('admin',
+  tests.erro(format('select public.outros_superadmins(%L)', (select u_equipe from tests.ids))),
+  'nem o admin logado conta superadmins pelo navegador: é só do servidor');
+
+select tests.ok('admin',
+  tests.erro($q$select public.admin_usuario_por_email('equipe@teste.local')$q$),
+  'nem descobre id por e-mail pelo navegador: é só do servidor');
+
+reset role;
+set role service_role;
+
+select tests.ok('admin',
+  (select public.admin_usuario_por_email('equipe@teste.local'))
+    = (select u_equipe from tests.ids),
+  'o servidor acha o usuário pelo e-mail');
+
+/* Caixa e espaço não podem impedir de achar quem existe. */
+select tests.ok('admin',
+  (select public.admin_usuario_por_email('  EQUIPE@Teste.Local  '))
+    = (select u_equipe from tests.ids),
+  'e acha mesmo com maiúscula e espaço sobrando');
+
+select tests.ok('admin',
+  (select public.admin_usuario_por_email('ninguem@lugar-nenhum.local')) is null,
+  'e-mail sem conta devolve nulo, não exceção');
+
+/*
+ * A trava do último superadmin. Só existe um na base de teste, então
+ * "outros além dele" tem que ser zero — é esse zero que faz a ação do
+ * servidor recusar a remoção.
+ */
+select tests.ok('admin',
+  (select public.outros_superadmins((select u_equipe from tests.ids))) = 0,
+  'sem outro superadmin, a conta dá zero e a remoção do último é barrada');
+
+reset role;
+select tests.logout();
+
 \echo ''
 \echo 'Falhas:'
 select grupo, descricao from tests.resultados where not passou order by id;

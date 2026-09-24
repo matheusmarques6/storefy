@@ -17,6 +17,7 @@ import {
   type LojaVisivel,
   type MembershipRole,
   type Organization,
+  type PlatformAdminRole,
 } from '@storefy/db';
 import { criarClientServidor } from '@/lib/supabase/server';
 
@@ -124,6 +125,22 @@ export async function exigirContextoCliente(): Promise<ContextoCliente> {
  * nem por claim: o único lugar que decide quem é da equipe é a tabela.
  */
 export async function exigirPlatformAdmin(): Promise<User> {
+  return (await exigirPlatformAdminComPapel()).usuario;
+}
+
+/**
+ * O mesmo crivo, devolvendo também o PAPEL.
+ *
+ * O papel já era lido aqui e jogado fora. A A11 precisa dele: `support` lê a
+ * equipe, `superadmin` mexe nela. Uma função separada em vez de mudar o
+ * retorno de `exigirPlatformAdmin` porque os dez chamadores existentes não
+ * precisam do papel, e trocar o tipo de todos para ganhar um campo que nove
+ * ignoram é barulho no diff de quem vier depois.
+ */
+export async function exigirPlatformAdminComPapel(): Promise<{
+  usuario: User;
+  papel: PlatformAdminRole;
+}> {
   const supabase = await criarClientServidor();
   const {
     data: { user },
@@ -142,7 +159,7 @@ export async function exigirPlatformAdmin(): Promise<User> {
   }
   if (registro == null) redirect('/admin/sem-acesso');
 
-  return user;
+  return { usuario: user, papel: registro.role };
 }
 
 /** True se o usuário pertence à equipe Storefy. Usado para exibir o atalho do admin. */
