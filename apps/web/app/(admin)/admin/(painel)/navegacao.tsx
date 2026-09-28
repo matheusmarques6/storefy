@@ -15,6 +15,7 @@ const ITENS = [
   { href: '/admin/equipe', rotulo: 'Equipe' },
   { href: '/admin/logs', rotulo: 'Auditoria' },
   { href: '/admin/ota', rotulo: 'Correção OTA' },
+  { href: '/admin/sistema', rotulo: 'Sistema' },
 ] as const;
 
 export function NavegacaoAdmin() {

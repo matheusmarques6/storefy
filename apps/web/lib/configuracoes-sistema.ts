@@ -1,0 +1,162 @@
+/**
+ * A13 — o que o deploy tem configurado, e o que quebra sem cada peça.
+ *
+ * ESTA TELA EXISTE POR CAUSA DE UM PREJUÍZO REAL. `NEXT_PUBLIC_SITE_URL` foi
+ * colada sem o `https://`, e o efeito não foi um erro na tela: foi o OAuth da
+ * Shopify recusando o retorno e os webhooks sendo registrados errado EM
+ * SILÊNCIO — a loja conectava e nenhum pedido chegava. Levou dias para
+ * aparecer, e o que faltava era alguém poder olhar numa tela e ver o estado de
+ * cada integração.
+ *
+ * O QUE A LISTA GUARDA NÃO É O VALOR, é o nome e a CONSEQUÊNCIA. Saber que
+ * uma chave falta não ajuda um atacante; saber qual é ela, sim — então daqui
+ * só sai booleano. E a consequência é o que transforma "ONESIGNAL_ORG_API_KEY
+ * ausente" em "nenhum push sai", que é a frase que faz alguém agir.
+ *
+ * A LISTA NÃO PODE ENVELHECER, e é por isso que existe um teste que varre o
+ * código atrás de `process.env.X` e falha quando acha uma variável que não
+ * está aqui. A seção 12 do plano já envelheceu desse jeito — perdeu seis
+ * variáveis, entre elas justamente a do `https://`.
+ */
+
+export interface Integracao {
+  chave: string;
+  nome: string;
+  /** Os nomes das variáveis. Só nomes: valor nenhum passa por aqui. */
+  variaveis: string[];
+  /** O que para de funcionar sem ela, em pt-BR e concreto. */
+  oQueQuebra: string;
+  /**
+   * Sem ela o painel não sobe. Distinto de "importante": a diferença é entre
+   * um produto quebrado e um recurso indisponível, e a tela separa os dois.
+   */
+  essencial: boolean;
+}
+
+export const INTEGRACOES: Integracao[] = [
+  {
+    chave: 'supabase',
+    nome: 'Supabase',
+    variaveis: [
+      'NEXT_PUBLIC_SUPABASE_URL',
+      'NEXT_PUBLIC_SUPABASE_ANON_KEY',
+      'SUPABASE_SERVICE_ROLE_KEY',
+    ],
+    oQueQuebra: 'Ninguém entra no painel. É o banco, a autenticação e o armazenamento.',
+    essencial: true,
+  },
+  {
+    chave: 'cripto',
+    nome: 'Chave de criptografia',
+    variaveis: ['ENCRYPTION_KEY'],
+    oQueQuebra:
+      'As credenciais dos clientes (Shopify, Apple, Google) não são lidas nem gravadas. Trocar esta chave torna ilegível tudo que já foi guardado.',
+    essencial: true,
+  },
+  {
+    chave: 'site',
+    nome: 'Endereço do site',
+    variaveis: ['NEXT_PUBLIC_SITE_URL'],
+    oQueQuebra:
+      'O OAuth da Shopify é recusado e os webhooks são registrados com endereço errado, sem avisar. Precisa começar com https://.',
+    essencial: true,
+  },
+  {
+    chave: 'shopify',
+    nome: 'App público da Shopify',
+    variaveis: ['SHOPIFY_API_KEY', 'SHOPIFY_API_SECRET', 'SHOPIFY_SCOPES'],
+    oQueQuebra:
+      'O botão "Conectar com a Shopify" não aparece, e o webhook responde 503 para a Shopify reentregar depois.',
+    essencial: false,
+  },
+  {
+    chave: 'onesignal',
+    nome: 'OneSignal',
+    variaveis: ['ONESIGNAL_ORG_API_KEY'],
+    oQueQuebra: 'Nenhum push sai: nem campanha, nem carrinho abandonado, nem volta ao estoque.',
+    essencial: false,
+  },
+  {
+    chave: 'build',
+    nome: 'Geração de apps',
+    variaveis: ['GITHUB_DISPATCH_TOKEN', 'GITHUB_REPO', 'BUILD_API_SECRET', 'EAS_WEBHOOK_SECRET'],
+    oQueQuebra:
+      'Nenhum cliente consegue publicar: o build não é disparado, e a EAS não consegue avisar quando termina.',
+    essencial: false,
+  },
+  {
+    chave: 'cron',
+    nome: 'Segredo dos jobs',
+    variaveis: ['CRON_SECRET'],
+    oQueQuebra:
+      'Os quatro jobs agendados recusam a própria Vercel: push não é despachado, e os números do painel param de ser recalculados.',
+    essencial: false,
+  },
+  {
+    chave: 'email',
+    nome: 'E-mail',
+    variaveis: ['RESEND_API_KEY', 'EMAIL_REMETENTE'],
+    oQueQuebra: 'Convites e avisos por e-mail não são enviados.',
+    essencial: false,
+  },
+  {
+    chave: 'google',
+    nome: 'Entrar com o Google',
+    variaveis: ['NEXT_PUBLIC_GOOGLE_OAUTH_ENABLED'],
+    oQueQuebra: 'O botão do Google não aparece no login. O e-mail e senha continuam funcionando.',
+    essencial: false,
+  },
+  {
+    chave: 'dominios',
+    nome: 'Domínios próprios',
+    variaveis: ['NEXT_PUBLIC_CLIENT_HOST', 'NEXT_PUBLIC_ADMIN_HOST'],
+    oQueQuebra:
+      'Nada quebra: sem eles o painel e o admin convivem no mesmo domínio, o admin em /admin.',
+    essencial: false,
+  },
+];
+
+export interface IntegracaoConferida extends Integracao {
+  /** Todas as variáveis presentes. */
+  completa: boolean;
+  /** As que faltam, pelo nome. */
+  faltando: string[];
+}
+
+/**
+ * Confere cada integração contra o que o ambiente tem.
+ *
+ * `presentes` é um mapa de NOME para booleano, montado no servidor. A função
+ * nunca vê um valor — é o que permite testá-la sem inventar segredo nenhum, e
+ * o que garante que nada vaze para a tela por descuido.
+ *
+ * Uma integração com três variáveis e duas preenchidas conta como INCOMPLETA,
+ * não como meio configurada: na prática ela não funciona, e "2 de 3" na tela
+ * daria a impressão de estar quase lá quando está tão parada quanto zero.
+ */
+export function conferir(presentes: Record<string, boolean>): IntegracaoConferida[] {
+  return INTEGRACOES.map((integracao) => {
+    const faltando = integracao.variaveis.filter((nome) => presentes[nome] !== true);
+    return { ...integracao, completa: faltando.length === 0, faltando };
+  });
+}
+
+export interface ResumoDaConfiguracao {
+  completas: number;
+  total: number;
+  /** Essenciais faltando. Enquanto for > 0, o produto não funciona. */
+  essenciaisFaltando: number;
+}
+
+export function resumo(conferidas: IntegracaoConferida[]): ResumoDaConfiguracao {
+  return {
+    completas: conferidas.filter((i) => i.completa).length,
+    total: conferidas.length,
+    essenciaisFaltando: conferidas.filter((i) => i.essencial && !i.completa).length,
+  };
+}
+
+/** Todos os nomes de variável que a lista cobre, sem repetição. */
+export function variaveisCobertas(): string[] {
+  return [...new Set(INTEGRACOES.flatMap((i) => i.variaveis))].sort();
+}

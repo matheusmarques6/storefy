@@ -934,7 +934,37 @@ O que **não** deu para conferir aqui, e continua em aberto:
 | **A08 — Push global** | ✅ envios, falhas e aparelhos ativos por app, ordenado por ativos (é o que a OneSignal cobra). "App com problema" é RAZÃO com piso de volume, não contagem: 1 falha em 1 envio não acusa ninguém |
 | **A11 — Equipe interna** | ✅ convidar, trocar papel e remover, com três travas — só superadmin mexe, ninguém altera a si mesmo, e o último superadmin não sai. Conferidas de novo no servidor, com a contagem vinda do banco |
 | A12 — Logs de auditoria | ✅ |
-| A09, A10, A13 | ⬜ ainda não |
+| **A13 — Configurações do sistema** | ⚠️ o bloco de CHAVES está pronto: as 19 variáveis que a aplicação lê, agrupadas pelo que quebra sem cada uma, com um teste que varre o código e falha quando alguém soma uma variável sem descrevê-la. Feature flags e versão mínima ainda não |
+| A09, A10 | ⬜ ainda não |
+
+> **DEFEITO ENCONTRADO, e não corrigido nesta sessão: a atualização obrigatória não tem como
+> ser acionada.** `minSupportedBuild` existe na `AppConfig` com `default(1)`, e
+> `apps/mobile/src/config/decisao.ts` a respeita — manda o usuário atualizar quando o build
+> instalado é menor. Mas NENHUMA tela grava esse campo: nem o editor do cliente (C06) nem o
+> admin. É funcionalidade implementada e inalcançável.
+>
+> Não foi corrigida aqui porque o conserto certo mexe no versionamento da config publicada: o
+> `publicar_config` promove o RASCUNHO, e o admin não pode publicar o rascunho do cliente (iria
+> junto o que ele estava editando). O caminho é uma RPC própria que altere a config PUBLICADA e
+> o `version` de dentro do JSON — que é o que o app compara com o cache —, sem tocar no
+> rascunho. É preciso verificar contra um app de verdade que o número novo chega ao aparelho, e
+> não há como fazer isso neste ambiente.
+>
+> **Não é urgente**, e essa é a razão de ter sido registrada em vez de apressada: para o caso de
+> emergência existe a correção OTA (A-OTA), que já funciona e alcança todos os apps na próxima
+> abertura. `minSupportedBuild` serve para forçar atualização NATIVA, que é lenta por natureza.
+
+> **A A13 nasceu de um prejuízo real.** `NEXT_PUBLIC_SITE_URL` foi colada sem o `https://`, e o
+> efeito não foi erro na tela: foi o OAuth da Shopify recusando o retorno e os webhooks sendo
+> registrados errado em silêncio — a loja conectava e nenhum pedido chegava. O que faltava era
+> poder olhar numa tela e ver o estado de cada integração. Daqui só sai booleano: o nome do que
+> falta e o que quebra sem aquilo, nunca o valor.
+
+> **O teste que impede a lista de envelhecer.** Ele varre os arquivos atrás de `process.env.X`
+> (ignorando comentários, que citam o mecanismo em prosa) e falha nomeando a variável que o
+> código lê e a tela não descreve — e também o contrário, uma variável descrita que ninguém lê.
+> A seção 12 deste plano já envelheceu desse jeito: perdeu seis variáveis, entre elas
+> justamente a do `https://`.
 
 > **Até a A11 existir, somar um colega à equipe exigia rodar `pnpm bootstrap:admin` com acesso
 > ao banco de produção.** Uma tarefa de trinta segundos dependia de quem tinha a chave.
