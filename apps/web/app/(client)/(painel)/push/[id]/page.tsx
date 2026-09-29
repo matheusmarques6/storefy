@@ -5,21 +5,15 @@ import { notFound } from 'next/navigation';
 import { ChevronLeft, ExternalLink } from 'lucide-react';
 import { exigirContextoCliente } from '@/lib/contexto';
 import { criarClientServidor } from '@/lib/supabase/server';
-import { appDaLoja, buscarCampanha } from '@/lib/push-servidor';
+import { appDaLoja, buscarCampanha, vendasDasCampanhas } from '@/lib/push-servidor';
+import { funilDaCampanha, vendasVisiveis } from '@/lib/vendas-do-push';
 import { formatarDataHora } from '@/lib/fuso';
-import {
-  EXPLICACAO_DO_STATUS,
-  ROTULO_DO_STATUS,
-  lerMetricas,
-  numeroOuTraco,
-  podeEditar,
-  porcentagemOuTraco,
-} from '@/lib/campanha';
+import { EXPLICACAO_DO_STATUS, ROTULO_DO_STATUS, lerMetricas, podeEditar } from '@/lib/campanha';
 import { descricaoDoPublico } from '@/lib/publico-do-push';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
 import { PreviaDaNotificacao } from '../previa-da-notificacao';
+import { FunilDaCampanha } from './funil';
 
 export const metadata: Metadata = { title: 'Campanha' };
 
@@ -38,6 +32,13 @@ export default async function PaginaDaCampanha({ params }: { params: Promise<{ i
   const metricas = lerMetricas(campanha.stats);
   const semEstatistica = metricas.entregues === null && metricas.abertos === null;
   const podeEscrever = papel === 'owner' || papel === 'admin';
+
+  const comVendas = vendasVisiveis(lojaAtiva);
+  const enviada = campanha.status === 'sent';
+  const vendas =
+    comVendas && enviada
+      ? (await vendasDasCampanhas(supabase, [campanha.id])).get(campanha.id)
+      : undefined;
 
   return (
     <div className="space-y-6">
@@ -60,26 +61,25 @@ export default async function PaginaDaCampanha({ params }: { params: Promise<{ i
 
       <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_320px]">
         <div className="space-y-6">
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <Metrica rotulo="Enviados" valor={numeroOuTraco(metricas.enviados)} />
-            <Metrica rotulo="Entregues" valor={numeroOuTraco(metricas.entregues)} />
-            <Metrica rotulo="Aberturas" valor={numeroOuTraco(metricas.abertos)} />
-            <Metrica
-              rotulo="Taxa de abertura"
-              valor={porcentagemOuTraco(metricas.taxaDeAbertura)}
-            />
-          </div>
-
           {/*
             Nada de gráfico com zeros enquanto o número não chega. A regra 1 do
             CLAUDE.md: estado vazio explicando, nunca número inventado.
           */}
           {semEstatistica ? (
             <p className="text-muted-foreground rounded-lg border border-dashed p-4 text-sm">
-              {campanha.status === 'sent'
+              {enviada
                 ? 'As estatísticas chegam algumas horas depois do envio. Volte mais tarde.'
                 : 'Os números aparecem depois que a campanha for enviada.'}
             </p>
+          ) : null}
+
+          {enviada ? (
+            <FunilDaCampanha
+              etapas={funilDaCampanha(metricas, vendas, comVendas)}
+              vendas={vendas}
+              vendasVisiveis={comVendas}
+              podeConectar={podeEscrever}
+            />
           ) : null}
 
           <dl className="grid gap-4 text-sm sm:grid-cols-2">
@@ -115,17 +115,6 @@ export default async function PaginaDaCampanha({ params }: { params: Promise<{ i
         </aside>
       </div>
     </div>
-  );
-}
-
-function Metrica({ rotulo, valor }: { rotulo: string; valor: string }) {
-  return (
-    <Card>
-      <CardContent className="space-y-1 p-4">
-        <p className="text-muted-foreground text-xs">{rotulo}</p>
-        <p className="text-xl font-semibold tabular-nums">{valor}</p>
-      </CardContent>
-    </Card>
   );
 }
 

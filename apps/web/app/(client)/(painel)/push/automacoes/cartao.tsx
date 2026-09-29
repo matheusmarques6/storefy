@@ -17,8 +17,15 @@ import {
   DESCRICAO_DO_TIPO,
   type TipoDeAutomacao,
 } from '@/lib/automacao';
-import { MAXIMO_DO_CORPO, MAXIMO_DO_TITULO, type ProblemaNoFormulario } from '@/lib/campanha';
-import type { AutomacaoSalva, ChaveDoWebhook } from '@/lib/push-servidor';
+import { comoReais } from '@/lib/analytics';
+import {
+  MAXIMO_DO_CORPO,
+  MAXIMO_DO_TITULO,
+  numeroOuTraco,
+  type ProblemaNoFormulario,
+} from '@/lib/campanha';
+import type { AutomacaoSalva, ChaveDoWebhook, ResultadoDaAutomacao } from '@/lib/push-servidor';
+import { JANELA_DAS_VENDAS_EM_DIAS, MOTIVO_SEM_VENDAS } from '@/lib/vendas-do-push';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -36,6 +43,10 @@ interface Props {
   nomeDoApp: string;
   podeEscrever: boolean;
   fuso: string;
+  /** Envios, pedidos e receita nos últimos 30 dias. `null` sem linha no banco. */
+  resultado: ResultadoDaAutomacao | null;
+  /** A loja manda os pedidos (Shopify conectada)? Sem isso, pedido e receita são traço. */
+  vendasVisiveis: boolean;
   /** Só no card do webhook: o endereço que a ferramenta chama e a chave em uso. */
   webhook?: { endereco: string; chave: ChaveDoWebhook | null };
 }
@@ -47,6 +58,8 @@ export function CartaoDaAutomacao({
   nomeDoApp,
   podeEscrever,
   fuso,
+  resultado,
+  vendasVisiveis,
   webhook,
 }: Props) {
   const descricao = DESCRICAO_DO_TIPO[tipo];
@@ -125,6 +138,10 @@ export function CartaoDaAutomacao({
       </CardHeader>
 
       <CardContent className="space-y-4">
+        {salva === null ? null : (
+          <ResultadoNaJanela resultado={resultado} vendasVisiveis={vendasVisiveis} tipo={tipo} />
+        )}
+
         <Button
           type="button"
           variant="outline"
@@ -247,5 +264,56 @@ export function CartaoDaAutomacao({
         )}
       </CardContent>
     </Card>
+  );
+}
+
+/**
+ * O que a automação fez nos últimos 30 dias (C09 e C10): quantas notificações
+ * saíram e o que elas venderam.
+ *
+ * Só aparece para automação que existe no banco — sugestão nunca salva não
+ * tem histórico, e três zeros ali afirmariam um desempenho que não existiu.
+ */
+function ResultadoNaJanela({
+  resultado,
+  vendasVisiveis,
+  tipo,
+}: {
+  resultado: ResultadoDaAutomacao | null;
+  vendasVisiveis: boolean;
+  tipo: TipoDeAutomacao;
+}) {
+  const vendas = vendasVisiveis && resultado !== null;
+  return (
+    <section aria-labelledby={`resultado-${tipo}`} className="space-y-2">
+      <h3 id={`resultado-${tipo}`} className="text-muted-foreground text-xs font-medium">
+        Últimos {JANELA_DAS_VENDAS_EM_DIAS} dias
+      </h3>
+      <dl className="grid grid-cols-3 gap-2 rounded-lg border p-3">
+        <div>
+          <dt className="text-muted-foreground text-xs">Enviadas</dt>
+          <dd className="text-sm font-semibold tabular-nums">
+            {numeroOuTraco(resultado?.envios ?? null)}
+          </dd>
+        </div>
+        <div>
+          <dt className="text-muted-foreground text-xs">Pedidos</dt>
+          <dd className="text-sm font-semibold tabular-nums">
+            {vendas ? numeroOuTraco(resultado.pedidos) : '—'}
+          </dd>
+        </div>
+        <div>
+          <dt className="text-muted-foreground text-xs">Receita</dt>
+          <dd className="text-sm font-semibold tabular-nums">
+            {vendas ? comoReais(resultado.receitaCents) : '—'}
+          </dd>
+        </div>
+      </dl>
+      <p className="text-muted-foreground text-xs">
+        {vendasVisiveis
+          ? 'Conta a compra feita até 3 dias depois de o cliente tocar na notificação.'
+          : MOTIVO_SEM_VENDAS}
+      </p>
+    </section>
   );
 }

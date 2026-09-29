@@ -16,7 +16,7 @@
 import { gerarApiDaPagina, gerarInjecao } from '@storefy/bridge';
 import type { AppConfig } from '@storefy/config-schema';
 import { gerarObservadorDeCarrinho } from './carrinho';
-import { gerarMarcaDoApp } from './atribuicao';
+import { gerarAtualizacaoDoPush, gerarMarcaDoApp, type MarcaDoPush } from './atribuicao';
 import { gerarIdentificacaoDoCliente } from './cliente';
 
 export interface ContextoDoApp {
@@ -69,8 +69,16 @@ export function marcaOCarrinho(config: AppConfig): boolean {
   return config.store.platform === 'shopify';
 }
 
-/** `injectedJavaScript`: só código nosso. */
-export function scriptDepoisDoConteudo(config: AppConfig): string {
+/**
+ * `injectedJavaScript`: só código nosso.
+ *
+ * `marcaDoPush` é o toque na notificação que ainda responde pela compra, e vai
+ * para a página antes da marca, que o lê na hora de gravar o carrinho.
+ */
+export function scriptDepoisDoConteudo(
+  config: AppConfig,
+  marcaDoPush: MarcaDoPush | null = null,
+): string {
   const partes = [gerarApiDaPagina()];
 
   /*
@@ -79,7 +87,7 @@ export function scriptDepoisDoConteudo(config: AppConfig): string {
    * marca usa o `fetch` de verdade e o observador não a vê — ao contrário, a
    * marcação dispararia uma leitura de `/cart.js` a mais, toda vez.
    */
-  if (marcaOCarrinho(config)) partes.push(gerarMarcaDoApp());
+  if (marcaOCarrinho(config)) partes.push(gerarAtualizacaoDoPush(marcaDoPush), gerarMarcaDoApp());
   if (observaCarrinho(config)) partes.push(gerarObservadorDeCarrinho());
   // Quem é o cliente: só a Shopify põe o id dele na página.
   if (config.store.platform === 'shopify') partes.push(gerarIdentificacaoDoCliente());

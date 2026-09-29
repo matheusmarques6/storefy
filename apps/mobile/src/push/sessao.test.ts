@@ -288,6 +288,42 @@ describe('ouvirToques', () => {
     registro.aoTocar[0]?.({ additionalData: { deep_link: 'https://site-falso.com/entrar' } });
     expect(destinos).toEqual([{ destino: 'abrir' }]);
   });
+
+  /*
+   * A origem sai ANTES da navegação: a página que o toque abre é onde o
+   * cliente põe no carrinho o que a notificação anunciou, e ela já precisa
+   * saber de onde ele veio.
+   */
+  it('guarda a campanha da notificação antes de navegar', () => {
+    const { notificador, registro } = fingirNotificador();
+    const passos: string[] = [];
+    ouvirToques(
+      notificador,
+      loja,
+      () => passos.push('navegou'),
+      (origem) => passos.push(`${origem.tipo}:${origem.id}`),
+    );
+
+    registro.aoTocar[0]?.({
+      additionalData: { deep_link: '/promocoes', campanha: CREDENCIAIS.appId },
+    });
+    expect(passos).toEqual([`campanha:${CREDENCIAIS.appId}`, 'navegou']);
+  });
+
+  it('notificação sem origem nossa (teste, painel da OneSignal) não guarda nada', () => {
+    const { notificador, registro } = fingirNotificador();
+    const origens: unknown[] = [];
+    ouvirToques(
+      notificador,
+      loja,
+      () => undefined,
+      (origem) => origens.push(origem),
+    );
+
+    registro.aoTocar[0]?.({ additionalData: { deep_link: '/x' } });
+    registro.aoTocar[0]?.({ additionalData: { campanha: 'não-é-uuid' } });
+    expect(origens).toEqual([]);
+  });
 });
 
 describe('carrinhoMudou', () => {

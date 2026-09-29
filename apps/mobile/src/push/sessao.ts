@@ -15,6 +15,7 @@ import { registrarAparelho, enviarEventoDeCarrinho, pedirAvisoDeVolta } from './
 import type { PermissaoDoSistema } from './permissao.ts';
 import { tagsDaCompra, tagsDoApp, tagsDoCarrinho, type CarrinhoParaTag } from './tags.ts';
 import { destinoDoPush, linkDaNotificacao, type DestinoDoPush } from './deep-link.ts';
+import { origemDaNotificacao, type OrigemDoPush } from '@storefy/config-schema';
 
 export interface DependenciasDaSessao {
   notificador: Notificador;
@@ -135,13 +136,20 @@ export function registrarQuandoAssinar(
  * `urlDaLoja` e `dominios` vêm da config, e é por eles que um link de fora
  * vira "só abrir o app" em vez de uma WebView sem barra de endereço com a
  * cara da loja.
+ *
+ * A origem (a campanha ou a automação da notificação) sai ANTES de navegar:
+ * a página que o toque abre já precisa dela, porque é ali que o cliente põe
+ * no carrinho o que a notificação anunciou.
  */
 export function ouvirToques(
   notificador: Notificador,
   loja: { urlDaLoja: string; dominios: readonly string[] },
   navegar: (destino: DestinoDoPush) => void,
+  guardarOrigem?: (origem: OrigemDoPush) => void,
 ): void {
   notificador.aoTocar((notificacao) => {
+    const origem = origemDaNotificacao(notificacao.additionalData);
+    if (origem !== null) guardarOrigem?.(origem);
     navegar(destinoDoPush(linkDaNotificacao(notificacao), loja.urlDaLoja, loja.dominios));
   });
 }

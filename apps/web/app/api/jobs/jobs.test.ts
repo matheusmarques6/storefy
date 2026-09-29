@@ -206,6 +206,8 @@ describe('GET /api/jobs/dispatch-push', () => {
       p_notification_id: 'notificacao-1',
       p_stats: { enviados: 42 },
     });
+    // O id da campanha vai nos dados: é por ele que o pedido chega à receita.
+    expect(corposDaOneSignal[0]).toMatchObject({ data: { campanha: CAMPANHA } });
   });
 
   it('a imagem e o público da campanha vão para a OneSignal', async () => {
@@ -312,7 +314,7 @@ describe('GET /api/jobs/dispatch-push', () => {
 
     expect(corpos[0]).toMatchObject({
       include_subscription_ids: ['sub-do-cliente'],
-      data: { deep_link: '/cart' },
+      data: { deep_link: '/cart', automacao: 'auto-1' },
     });
     // E não para todo mundo, que seria o desastre silencioso desta rota.
     expect(corpos[0]).not.toHaveProperty('included_segments');

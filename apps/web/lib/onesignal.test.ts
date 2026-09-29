@@ -44,6 +44,30 @@ describe('corpoDaNotificacao', () => {
     expect(corpo).not.toHaveProperty('url');
   });
 
+  /*
+   * A origem é o que liga o pedido feito depois do toque à receita da
+   * campanha. Sem ela, o C07 e o C10 mostrariam receita zero para sempre.
+   */
+  it('a origem vai nos dados, junto com o caminho', () => {
+    const campanha = '11111111-1111-4111-8111-111111111111';
+    expect(
+      corpoDaNotificacao(CREDENCIAIS, {
+        title: 'a',
+        body: 'b',
+        deepLink: '/promocoes',
+        origem: { tipo: 'campanha', id: campanha },
+      }).data,
+    ).toEqual({ deep_link: '/promocoes', campanha });
+    expect(
+      corpoDaNotificacao(CREDENCIAIS, {
+        title: 'a',
+        body: 'b',
+        deepLink: null,
+        origem: { tipo: 'automacao', id: campanha },
+      }).data,
+    ).toEqual({ automacao: campanha });
+  });
+
   it('sem caminho, não manda data vazio', () => {
     const corpo = corpoDaNotificacao(CREDENCIAIS, { title: 'a', body: 'b', deepLink: '' });
     expect(corpo).not.toHaveProperty('data');

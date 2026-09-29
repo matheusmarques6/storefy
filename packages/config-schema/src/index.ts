@@ -217,3 +217,15 @@ export function tokenDoCarrinhoSemChave(token: string): string | undefined {
   const puro = token.split('?', 1)[0]?.trim() ?? '';
   return puro === '' ? undefined : puro;
 }
+
+export {
+  ATRIBUTO_DO_PUSH,
+  FOLGA_DO_RELOGIO_MS,
+  JANELA_DO_PUSH_MS,
+  dadosDaOrigem,
+  lerAtributoDoPush,
+  origemDaNotificacao,
+  toqueAindaVale,
+  valorDoAtributoDoPush,
+} from './atribuicao-do-push';
+export type { OrigemDoPush, ToqueNoPush } from './atribuicao-do-push';

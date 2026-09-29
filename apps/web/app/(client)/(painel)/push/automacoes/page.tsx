@@ -6,7 +6,13 @@ import { exigirContextoCliente } from '@/lib/contexto';
 import { criarClientServidor } from '@/lib/supabase/server';
 import { criarClientServiceRole } from '@/lib/supabase/admin';
 import { estadoDasNotificacoes } from '@/lib/ativar-push';
-import { appDaLoja, chaveDoWebhook, listarAutomacoes } from '@/lib/push-servidor';
+import {
+  appDaLoja,
+  chaveDoWebhook,
+  listarAutomacoes,
+  resultadoDasAutomacoes,
+} from '@/lib/push-servidor';
+import { JANELA_DAS_VENDAS_EM_DIAS, vendasVisiveis } from '@/lib/vendas-do-push';
 import { urlDoSite } from '@/lib/env';
 import { TIPOS_DE_AUTOMACAO } from '@/lib/automacao';
 import { EstadoVazio } from '@/components/estado-vazio';
@@ -47,11 +53,13 @@ export default async function PaginaDeAutomacoes() {
     );
   }
 
-  const [salvas, notificacoes, chave] = await Promise.all([
+  const [salvas, notificacoes, chave, resultados] = await Promise.all([
     listarAutomacoes(supabase, app.id),
     estadoDasNotificacoes(criarClientServiceRole(), lojaAtiva.id),
     chaveDoWebhook(supabase, app.id),
+    resultadoDasAutomacoes(supabase, app.id, JANELA_DAS_VENDAS_EM_DIAS),
   ]);
+  const comVendas = vendasVisiveis(lojaAtiva);
   const podeEscrever = papel === 'owner' || papel === 'admin';
 
   return (
@@ -70,20 +78,25 @@ export default async function PaginaDeAutomacoes() {
       <AbasDoPush atual="automacoes" />
 
       <div className="grid gap-4">
-        {TIPOS_DE_AUTOMACAO.map((tipo) => (
-          <CartaoDaAutomacao
-            key={tipo}
-            tipo={tipo}
-            salva={salvas.find((automacao) => automacao.type === tipo) ?? null}
-            urlDaLoja={lojaAtiva.primary_url}
-            nomeDoApp={lojaAtiva.name}
-            podeEscrever={podeEscrever}
-            fuso={lojaAtiva.timezone}
-            {...(tipo === 'custom_webhook'
-              ? { webhook: { endereco: `${urlDoSite()}/api/webhooks/automacao`, chave } }
-              : {})}
-          />
-        ))}
+        {TIPOS_DE_AUTOMACAO.map((tipo) => {
+          const salva = salvas.find((automacao) => automacao.type === tipo) ?? null;
+          return (
+            <CartaoDaAutomacao
+              key={tipo}
+              tipo={tipo}
+              salva={salva}
+              resultado={salva === null ? null : (resultados.get(salva.id) ?? null)}
+              vendasVisiveis={comVendas}
+              urlDaLoja={lojaAtiva.primary_url}
+              nomeDoApp={lojaAtiva.name}
+              podeEscrever={podeEscrever}
+              fuso={lojaAtiva.timezone}
+              {...(tipo === 'custom_webhook'
+                ? { webhook: { endereco: `${urlDoSite()}/api/webhooks/automacao`, chave } }
+                : {})}
+            />
+          );
+        })}
       </div>
     </div>
   );

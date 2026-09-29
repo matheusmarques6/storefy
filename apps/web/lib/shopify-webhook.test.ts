@@ -1,10 +1,93 @@
 import { describe, expect, it } from 'vitest';
+import { ATRIBUTO_DO_PUSH, valorDoAtributoDoPush } from '@storefy/config-schema';
 import {
   ATRIBUTO_DO_CARRINHO,
   centavosDoPedido,
   origemDoPedido,
+  toqueDoPedido,
   variantesDisponiveis,
 } from '@/lib/shopify-webhook';
+
+const CAMPANHA = '11111111-1111-4111-8111-111111111111';
+const AUTOMACAO = '22222222-2222-4222-8222-222222222222';
+/** 19/09/2026 12:00 em Brasília. */
+const TOQUE_MS = Date.parse('2026-09-19T12:00:00-03:00');
+const HORA = 60 * 60 * 1000;
+
+function pedidoComPush(
+  atributoDoPush: string,
+  opcoes: { criadoEm?: string; doApp?: boolean } = {},
+): Record<string, unknown> {
+  return {
+    ...(opcoes.criadoEm === undefined ? {} : { created_at: opcoes.criadoEm }),
+    note_attributes: [
+      ...(opcoes.doApp === false ? [] : [{ name: ATRIBUTO_DO_CARRINHO, value: '1' }]),
+      { name: ATRIBUTO_DO_PUSH, value: atributoDoPush },
+    ],
+  };
+}
+
+describe('toqueDoPedido', () => {
+  const daCampanha = valorDoAtributoDoPush({
+    origem: { tipo: 'campanha', id: CAMPANHA },
+    tocadaEmMs: TOQUE_MS,
+  });
+
+  it('o pedido feito dentro dos três dias leva o toque', () => {
+    const doisDiasDepois = new Date(TOQUE_MS + 48 * HORA).toISOString();
+    expect(toqueDoPedido(pedidoComPush(daCampanha, { criadoEm: doisDiasDepois }))).toEqual({
+      origem: { tipo: 'campanha', id: CAMPANHA },
+      tocadaEmMs: TOQUE_MS,
+    });
+
+    const daAutomacao = valorDoAtributoDoPush({
+      origem: { tipo: 'automacao', id: AUTOMACAO },
+      tocadaEmMs: TOQUE_MS,
+    });
+    expect(
+      toqueDoPedido(pedidoComPush(daAutomacao, { criadoEm: '2026-09-19T12:30:00-03:00' }))?.origem,
+    ).toEqual({ tipo: 'automacao', id: AUTOMACAO });
+  });
+
+  /*
+   * O carrinho guarda o atributo enquanto existir. A compra feita nele um mês
+   * depois não é mérito da notificação de hoje.
+   */
+  it('o carrinho parado que vira pedido depois da janela não leva o crédito', () => {
+    const quatroDiasDepois = new Date(TOQUE_MS + 96 * HORA).toISOString();
+    expect(toqueDoPedido(pedidoComPush(daCampanha, { criadoEm: quatroDiasDepois }))).toBeNull();
+  });
+
+  it('o relógio do celular adiantado alguns minutos não tira o crédito', () => {
+    const logoAntes = new Date(TOQUE_MS - 10 * 60 * 1000).toISOString();
+    expect(toqueDoPedido(pedidoComPush(daCampanha, { criadoEm: logoAntes }))).not.toBeNull();
+  });
+
+  it('pedido do site com o atributo do push não leva o crédito', () => {
+    expect(
+      toqueDoPedido(
+        pedidoComPush(daCampanha, { criadoEm: '2026-09-19T13:00:00-03:00', doApp: false }),
+      ),
+    ).toBeNull();
+  });
+
+  it('atributo forjado ou sem a hora do toque não é push', () => {
+    for (const valor of ['1', `c:${CAMPANHA}`, `c:${CAMPANHA}:abc`, `z:${CAMPANHA}:1790000000`]) {
+      expect(
+        toqueDoPedido(pedidoComPush(valor, { criadoEm: '2026-09-19T13:00:00-03:00' })),
+      ).toBeNull();
+    }
+    expect(
+      toqueDoPedido({ note_attributes: [{ name: ATRIBUTO_DO_CARRINHO, value: '1' }] }),
+    ).toBeNull();
+    expect(toqueDoPedido(null)).toBeNull();
+  });
+
+  it('sem a data do pedido, confere contra a hora em que o webhook chegou', () => {
+    expect(toqueDoPedido(pedidoComPush(daCampanha), TOQUE_MS + HORA)).not.toBeNull();
+    expect(toqueDoPedido(pedidoComPush(daCampanha), TOQUE_MS + 30 * 24 * HORA)).toBeNull();
+  });
+});
 
 describe('origemDoPedido', () => {
   const comAtributo = (valor: string): unknown => ({
@@ -237,6 +320,32 @@ describe('aplicarWebhook', () => {
       p_currency: 'BRL',
       p_cart_token: 'token-abc',
     });
+  });
+
+  it('o pedido que veio de um toque leva a campanha para registrar_pedido', async () => {
+    const { aplicarWebhook } = await import('@/lib/shopify-webhook');
+    const { cliente, chamadas } = falso();
+
+    const pedido = JSON.stringify({
+      id: 777,
+      total_price: '89.90',
+      created_at: '2026-09-19T15:00:00-03:00',
+      ...pedidoComPush(
+        valorDoAtributoDoPush({ origem: { tipo: 'campanha', id: CAMPANHA }, tocadaEmMs: TOQUE_MS }),
+      ),
+    });
+
+    await aplicarWebhook(cliente as never, 'orders/create', 'x.myshopify.com', pedido);
+
+    const args = chamadas.find((c) => c.nome === 'registrar_pedido')?.args as
+      Record<string, unknown> | undefined;
+    expect(args).toMatchObject({
+      p_source: 'app',
+      p_total_cents: 8990,
+      p_push_campaign_id: CAMPANHA,
+    });
+    // Um toque, um crédito: a automação vai vazia, e a função usa o default.
+    expect(args?.p_push_automation_id).toBeUndefined();
   });
 
   it('pedido sem id ou com JSON quebrado não estoura', async () => {

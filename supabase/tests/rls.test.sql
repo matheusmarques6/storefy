@@ -7736,6 +7736,183 @@ select tests.ok('push',
 reset role;
 select tests.logout();
 
+-- ============================== grupo: C07/C09/C10 — a receita do push (migration 57)
+--
+-- A origem do push chega num atributo de carrinho, que qualquer um escreve:
+-- o pedido só leva o crédito de uma campanha (ou automação) do MESMO app, e
+-- só se o pedido for do app. E a soma passa pela RLS: ninguém soma a receita
+-- de outra loja, nem sabendo o id da campanha.
+
+reset role;
+select tests.logout();
+
+insert into auth.users (email, raw_user_meta_data, email_confirmed_at) values
+  ('rec-dono@teste.local',  '{"company_name":"Rec Dono"}'::jsonb,  now()),
+  ('rec-outro@teste.local', '{"company_name":"Rec Outro"}'::jsonb, now());
+
+drop table if exists tests.rec;
+create table tests.rec as
+select
+  (select m.org_id from public.memberships m
+     join auth.users u on u.id = m.user_id where u.email = 'rec-dono@teste.local')  as org_dono,
+  (select m.org_id from public.memberships m
+     join auth.users u on u.id = m.user_id where u.email = 'rec-outro@teste.local') as org_outro;
+
+insert into public.stores (org_id, name, primary_url)
+select org_dono, 'Loja Rec', 'https://loja-rec.com.br' from tests.rec;
+insert into public.stores (org_id, name, primary_url)
+select org_outro, 'Loja Rec Outra', 'https://loja-rec-outra.com.br' from tests.rec;
+
+alter table tests.rec
+  add column app uuid, add column app_outro uuid, add column aparelho uuid,
+  add column campanha uuid, add column campanha_outra uuid, add column automacao uuid;
+update tests.rec set
+  app = (select a.id from public.apps a join public.stores s on s.id = a.store_id
+          where s.name = 'Loja Rec'),
+  app_outro = (select a.id from public.apps a join public.stores s on s.id = a.store_id
+                where s.name = 'Loja Rec Outra');
+
+insert into public.push_campaigns (app_id, title, body, status)
+select app, 'Campanha que vende', 'Texto', 'sent' from tests.rec;
+insert into public.push_campaigns (app_id, title, body, status)
+select app_outro, 'Campanha da outra loja', 'Texto', 'sent' from tests.rec;
+insert into public.push_automations (app_id, type, enabled, title, body)
+select app, 'abandoned_cart', true, 'Esqueceu algo?', 'Seu carrinho' from tests.rec;
+insert into public.devices (app_id, onesignal_subscription_id, platform)
+select app, 'rec-aparelho', 'ios' from tests.rec;
+
+update tests.rec set
+  campanha = (select id from public.push_campaigns where title = 'Campanha que vende'),
+  campanha_outra = (select id from public.push_campaigns where title = 'Campanha da outra loja'),
+  automacao = (select id from public.push_automations where app_id = tests.rec.app),
+  aparelho = (select id from public.devices where onesignal_subscription_id = 'rec-aparelho');
+grant select on tests.rec to anon, authenticated, service_role;
+
+-- Dois envios da automação: um na janela de 30 dias, outro de dois meses atrás.
+insert into public.automation_runs (automation_id, device_id, status, scheduled_for, sent_at)
+select automacao, aparelho, 'sent'::public.automation_run_status,
+       now() - interval '2 days', now() - interval '2 days' from tests.rec
+union all
+select automacao, aparelho, 'sent'::public.automation_run_status,
+       now() - interval '60 days', now() - interval '60 days' from tests.rec;
+
+set role service_role;
+
+select tests.ok('receita do push',
+  (select public.registrar_pedido(app, 'rec-1', 'app', 15000, now(), '#1001', 'BRL', null,
+                                  campanha, null) from tests.rec)
+  and (select public.registrar_pedido(app, 'rec-2', 'app', 5000, now(), '#1002', 'BRL', null,
+                                      campanha, null) from tests.rec)
+  and (select public.registrar_pedido(app, 'rec-3', 'app', 7000, now(), '#1003', 'BRL', null,
+                                      null, automacao) from tests.rec)
+  and (select public.registrar_pedido(app, 'rec-velho', 'app', 3000, now() - interval '45 days',
+                                      '#0900', 'BRL', null, null, automacao) from tests.rec),
+  'o pedido registra a campanha ou a automação que trouxe o cliente');
+
+-- A conferência vai numa instrução à parte: dentro da mesma, a leitura não
+-- enxerga o que a função acabou de gravar.
+select tests.ok('receita do push',
+  (select count(*) = 2 from public.shop_orders
+    where push_campaign_id = (select campanha from tests.rec))
+  and (select count(*) = 2 from public.shop_orders
+        where push_automation_id = (select automacao from tests.rec)),
+  'e o crédito fica gravado no pedido');
+
+select public.registrar_pedido(app, 'rec-4', 'app', 99900, now(), '#1004', 'BRL', null,
+                               campanha_outra, null) from tests.rec;
+select public.registrar_pedido(app, 'rec-5', 'app', 1000, now(), '#1005', 'BRL', null,
+                               extensions.gen_random_uuid(), null) from tests.rec;
+select public.registrar_pedido(app, 'rec-6', 'site', 4000, now(), '#1006', 'BRL', null,
+                               campanha, null) from tests.rec;
+
+select tests.ok('receita do push',
+  (select push_campaign_id is null from public.shop_orders where shopify_order_id = 'rec-4'),
+  'campanha de OUTRA loja no atributo forjado: o pedido entra, mas sem o crédito');
+
+select tests.ok('receita do push',
+  (select push_campaign_id is null from public.shop_orders where shopify_order_id = 'rec-5'),
+  'campanha que não existe também não leva crédito');
+
+select tests.ok('receita do push',
+  (select push_campaign_id is null and source = 'site'
+     from public.shop_orders where shopify_order_id = 'rec-6'),
+  'pedido do site não leva o crédito do push, mesmo com a campanha certa');
+
+select tests.ok('receita do push',
+  not (select public.registrar_pedido(app, 'rec-1', 'app', 15000, now(), '#1001', 'BRL', null,
+                                      campanha, null) from tests.rec),
+  'a reentrega do mesmo pedido continua sem duplicar');
+
+reset role;
+
+select tests.ok('receita do push',
+  tests.bloqueado($q$insert into public.shop_orders
+      (app_id, shopify_order_id, source, ordered_at, push_campaign_id, push_automation_id)
+    select app, 'rec-dupla', 'app', now(), campanha, automacao from tests.rec$q$),
+  'um pedido não leva o crédito de uma campanha E de uma automação ao mesmo tempo');
+
+select tests.ok('receita do push',
+  tests.bloqueado($q$insert into public.shop_orders
+      (app_id, shopify_order_id, source, ordered_at, push_campaign_id)
+    select app, 'rec-site', 'site', now(), campanha from tests.rec$q$),
+  'e o banco recusa receita de push em pedido do site, por onde quer que entre');
+
+select tests.login('rec-dono@teste.local');
+set role authenticated;
+
+select tests.ok('receita do push',
+  (select pedidos = 2 and receita_cents = 20000
+     from public.receita_das_campanhas(array[(select campanha from tests.rec)])),
+  'o dono soma os pedidos e a receita da campanha');
+
+select tests.ok('receita do push',
+  (select envios = 1 and pedidos = 1 and receita_cents = 7000
+     from public.resultado_das_automacoes((select app from tests.rec), 30)
+    where automacao_id = (select automacao from tests.rec)),
+  'e o resultado da automação só dentro da janela: o envio e o pedido antigos ficam de fora');
+
+select tests.ok('receita do push',
+  (select pedidos = 3 and receita_cents = 27000
+     from public.receita_do_push((select app from tests.rec), 30)),
+  'o total do topo soma campanhas e automações da janela, e nada do site');
+
+select tests.ok('receita do push',
+  tests.bloqueado($q$update public.shop_orders set push_campaign_id = null
+    where shopify_order_id = 'rec-1'$q$),
+  'o lojista não mexe no crédito dos pedidos pela API');
+
+reset role;
+select tests.login('rec-outro@teste.local');
+set role authenticated;
+
+select tests.ok('isolamento',
+  tests.contar($q$select count(*) from public.receita_das_campanhas(
+    array[(select campanha from tests.rec)])$q$) = 0,
+  'outra organização não soma a receita da campanha alheia, nem sabendo o id');
+
+select tests.ok('isolamento',
+  tests.contar($q$select count(*) from public.resultado_das_automacoes(
+    (select app from tests.rec), 30)$q$) = 0,
+  'nem o resultado das automações de outra loja');
+
+select tests.ok('isolamento',
+  (select pedidos = 0 and receita_cents = 0
+     from public.receita_do_push((select app from tests.rec), 30)),
+  'e o total do topo de outra loja volta zerado');
+
+reset role;
+select tests.logout();
+set role anon;
+
+select tests.ok('receita do push',
+  tests.erro($q$select * from public.receita_das_campanhas(array[]::uuid[])$q$)
+  and tests.erro($q$select * from public.resultado_das_automacoes(extensions.gen_random_uuid(), 30)$q$)
+  and tests.erro($q$select * from public.receita_do_push(extensions.gen_random_uuid(), 30)$q$),
+  'anon não chama a soma da receita');
+
+reset role;
+select tests.logout();
+
 -- ============================== grupo: varredura de segurança (Fase 8)
 --
 -- Duas travas que valem para o schema inteiro, e não para uma tabela: uma

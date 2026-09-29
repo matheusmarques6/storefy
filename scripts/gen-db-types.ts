@@ -267,6 +267,10 @@ async function main(): Promise<void> {
     'dados_da_ota',
     'contar_ota',
     'registrar_pedido',
+    // C07, C09 e C10 — a receita que cada push trouxe.
+    'receita_das_campanhas',
+    'resultado_das_automacoes',
+    'receita_do_push',
     'consolidar_analytics',
     'ativos_no_periodo',
     'agendar_pedido_enviado',

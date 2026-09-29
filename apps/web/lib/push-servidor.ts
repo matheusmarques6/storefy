@@ -13,6 +13,7 @@ import { ehTipoDeAutomacao, type TipoDeAutomacao } from '@/lib/automacao';
 import type { StatusDaCampanha } from '@/lib/campanha';
 import { urlDaImagemDoPush } from '@/lib/imagem-do-push';
 import { publicoDoSegmento, type Publico } from '@/lib/publico-do-push';
+import type { Vendas } from '@/lib/vendas-do-push';
 
 type Client = SupabaseClient<Database>;
 
@@ -168,6 +169,90 @@ export async function listarAutomacoes(supabase: Client, appId: string): Promise
       body: linha.body,
       deepLink: linha.deep_link,
     }));
+}
+
+/**
+ * O que as notificações venderam: os pedidos feitos até três dias depois de o
+ * cliente tocar numa delas, e a receita desses pedidos (C07, C09 e C10). O
+ * formato mora em `vendas-do-push`, que a tela do navegador também importa.
+ *
+ * A soma é do banco, pela RLS de `shop_orders`: o lojista só soma pedido das
+ * próprias lojas, e um id de campanha de outra loja volta sem nada.
+ */
+export type VendasDoPush = Vendas;
+
+/** Uma automação na janela: quantas notificações saíram e o que venderam. */
+export interface ResultadoDaAutomacao extends Vendas {
+  envios: number;
+}
+
+const SEM_VENDAS: VendasDoPush = { pedidos: 0, receitaCents: 0 };
+
+/**
+ * As vendas de cada campanha pedida.
+ *
+ * A campanha que não vendeu não volta do banco, e aqui ela vira zero de
+ * propósito: para uma campanha enviada numa loja com a Shopify conectada,
+ * "nenhum pedido" é a resposta verdadeira. Quem decide se a tela pode afirmar
+ * isso — a loja pode nem ter a Shopify ligada — é a tela.
+ */
+export async function vendasDasCampanhas(
+  supabase: Client,
+  ids: readonly string[],
+): Promise<Map<string, VendasDoPush>> {
+  const vendas = new Map<string, VendasDoPush>(ids.map((id) => [id, SEM_VENDAS]));
+  if (ids.length === 0) return vendas;
+
+  const { data, error } = await supabase.rpc('receita_das_campanhas', { p_ids: [...ids] });
+  falhouAoLer('as vendas das campanhas', error);
+
+  for (const linha of data ?? []) {
+    if (linha.campanha_id === null) continue;
+    vendas.set(linha.campanha_id, {
+      pedidos: linha.pedidos ?? 0,
+      receitaCents: linha.receita_cents ?? 0,
+    });
+  }
+  return vendas;
+}
+
+/** Envios, pedidos e receita de cada automação do app nos últimos `dias`. */
+export async function resultadoDasAutomacoes(
+  supabase: Client,
+  appId: string,
+  dias = 30,
+): Promise<Map<string, ResultadoDaAutomacao>> {
+  const { data, error } = await supabase.rpc('resultado_das_automacoes', {
+    p_app_id: appId,
+    p_dias: dias,
+  });
+  falhouAoLer('o resultado das automações', error);
+
+  const resultado = new Map<string, ResultadoDaAutomacao>();
+  for (const linha of data ?? []) {
+    if (linha.automacao_id === null) continue;
+    resultado.set(linha.automacao_id, {
+      envios: linha.envios ?? 0,
+      pedidos: linha.pedidos ?? 0,
+      receitaCents: linha.receita_cents ?? 0,
+    });
+  }
+  return resultado;
+}
+
+/** O total das notificações do app nos últimos `dias`, campanhas e automações. */
+export async function vendasDoPush(
+  supabase: Client,
+  appId: string,
+  dias = 30,
+): Promise<VendasDoPush> {
+  const { data, error } = await supabase.rpc('receita_do_push', { p_app_id: appId, p_dias: dias });
+  falhouAoLer('as vendas das notificações', error);
+
+  const [linha] = data ?? [];
+  return linha === undefined
+    ? SEM_VENDAS
+    : { pedidos: linha.pedidos ?? 0, receitaCents: linha.receita_cents ?? 0 };
 }
 
 /** A chave do webhook de automação, como a tela pode mostrar (nunca o hash). */

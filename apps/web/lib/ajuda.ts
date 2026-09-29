@@ -111,7 +111,7 @@ export const ARTIGOS: readonly Artigo[] = [
       {
         titulo: 'O que a conexão faz',
         paragrafos: [
-          'Com a Shopify conectada, o painel separa o que o app vendeu do que o site vendeu (em Analytics), as automações de carrinho abandonado, pedido enviado e de volta ao estoque passam a funcionar, e o composer de notificações busca produtos e coleções da loja para o link.',
+          'Com a Shopify conectada, o painel separa o que o app vendeu do que o site vendeu (em Analytics) e mostra quanto cada notificação vendeu, as automações de carrinho abandonado, pedido enviado e de volta ao estoque passam a funcionar, e o composer de notificações busca produtos e coleções da loja para o link.',
         ],
       },
       {
@@ -135,7 +135,8 @@ export const ARTIGOS: readonly Artigo[] = [
   {
     slug: 'notificacoes',
     titulo: 'Notificações: campanhas e automações',
-    resumo: 'Como mandar uma campanha, agendar no horário da loja e ligar as automações.',
+    resumo:
+      'Como mandar uma campanha, agendar no horário da loja, ligar as automações e ver quanto cada uma vendeu.',
     atalhos: [
       { rotulo: 'Nova campanha', href: '/push/nova' },
       { rotulo: 'Automações', href: '/push/automacoes' },
@@ -154,6 +155,13 @@ export const ARTIGOS: readonly Artigo[] = [
         paragrafos: [
           'Boas-vindas: para quem instala o app e aceita notificações. Carrinho abandonado: para quem deixou produto no carrinho — cancelada sozinha se a compra acontecer antes, e no máximo uma por dia para a mesma pessoa. De volta ao estoque: para quem pediu para ser avisado de um produto. Pedido enviado: quando você marca o pedido como enviado na Shopify.',
           'Para não acordar ninguém, as automações não disparam entre 22h e 8h no horário da loja: ficam para as 8h. As campanhas saem na hora que você escolher.',
+        ],
+      },
+      {
+        titulo: 'Quanto cada notificação vendeu',
+        paragrafos: [
+          'Quando o cliente toca numa notificação, o app guarda de qual campanha (ou automação) ela veio. Se ele comprar pelo app até 3 dias depois do toque, o pedido conta para ela. O número vem do próprio pedido da Shopify, e não de uma estimativa por horário.',
+          'A lista de campanhas mostra a receita de cada uma; o detalhe mostra o caminho do envio à venda (enviados, entregues, aberturas e pedidos); e cada automação mostra o que fez nos últimos 30 dias. A receita depende da Shopify conectada: sem ela, a tela mostra um traço em vez de zero.',
         ],
       },
       {

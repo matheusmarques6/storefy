@@ -35,12 +35,59 @@
  * renomeasse uma delas — e o sintoma seria todo pedido do app aparecendo como
  * pedido do site, sem erro em lugar nenhum.
  */
-import { ATRIBUTO_DO_CARRINHO, VALOR_DO_ATRIBUTO } from '@storefy/config-schema';
+import {
+  ATRIBUTO_DO_CARRINHO,
+  ATRIBUTO_DO_PUSH,
+  JANELA_DO_PUSH_MS,
+  VALOR_DO_ATRIBUTO,
+  valorDoAtributoDoPush,
+  type ToqueNoPush,
+} from '@storefy/config-schema';
 
-export { ATRIBUTO_DO_CARRINHO, VALOR_DO_ATRIBUTO };
+export { ATRIBUTO_DO_CARRINHO, ATRIBUTO_DO_PUSH, VALOR_DO_ATRIBUTO };
 
 /** Marca no `window` que impede injeção dupla a cada navegação. */
 export const MARCA_DE_INJECAO = '__STOREFY_ATRIBUICAO__';
+
+/**
+ * Onde a página encontra o toque na notificação: `window.__STOREFY_PUSH__`.
+ *
+ * Uma variável da página, e não um valor fixo dentro do script, porque o
+ * toque acontece com a loja JÁ aberta: o app atualiza a variável em cada aba
+ * carregada, e a próxima mudança de carrinho já sai com a origem nova. Com o
+ * valor fixo no script, uma aba aberta antes do toque gravaria por cima a
+ * origem velha — e a venda iria para a notificação errada.
+ */
+export const GLOBAL_DO_PUSH = '__STOREFY_PUSH__';
+
+/** O que a página precisa saber do toque: o valor do atributo e até quando ele vale. */
+export interface MarcaDoPush {
+  valor: string;
+  /** Epoch em ms. Depois disso, a página para de gravar o atributo. */
+  expiraEm: number;
+}
+
+/**
+ * O toque, pronto para a página. `null` sem toque ou com o toque vencido.
+ *
+ * A janela é conferida aqui e de novo na página, na hora de gravar: a aba
+ * pode ficar aberta dias, e o toque vence com ela aberta.
+ */
+export function marcaDoToque(toque: ToqueNoPush | null, agoraMs: number): MarcaDoPush | null {
+  if (toque === null) return null;
+  const expiraEm = toque.tocadaEmMs + JANELA_DO_PUSH_MS;
+  if (agoraMs > expiraEm) return null;
+  return { valor: valorDoAtributoDoPush(toque), expiraEm };
+}
+
+/**
+ * A linha que põe o toque na página. Vai no começo do script injetado a cada
+ * carga e, quando o cliente toca numa notificação com a loja aberta, sozinha,
+ * em cada aba já carregada.
+ */
+export function gerarAtualizacaoDoPush(marca: MarcaDoPush | null): string {
+  return `try{window.${GLOBAL_DO_PUSH}=${JSON.stringify(marca)};}catch(e){}true;`;
+}
 
 /**
  * A página é a do carrinho?
@@ -68,7 +115,7 @@ export interface OpcoesDaMarca {
   /**
    * Espera antes de gravar, em milissegundos.
    *
-   * Não é debounce — quem garante uma gravação só é a trava `marcado`. A
+   * Não é debounce — quem garante uma gravação só é a trava `gravado`. A
    * espera existe para não disputar o carrinho com o tema: gravar enquanto o
    * `/cart/add.js` dele ainda está no ar faz a Shopify responder ao tema um
    * carrinho de antes da nossa escrita, e a gaveta abre com o número errado.
@@ -86,9 +133,6 @@ export interface OpcoesDaMarca {
  */
 export function gerarMarcaDoApp(opcoes: OpcoesDaMarca = {}): string {
   const espera = opcoes.esperaMs ?? 400;
-  const corpo = JSON.stringify({
-    attributes: { [ATRIBUTO_DO_CARRINHO]: VALOR_DO_ATRIBUTO },
-  });
 
   return `(function(){
 try{
@@ -98,7 +142,28 @@ window.${MARCA_DE_INJECAO}=true;
 var CAMINHOS=["/cart/add","/cart/change","/cart/update","/cart/clear"];
 var fetchOriginal=window.fetch?window.fetch.bind(window):null;
 var abrirOriginal=window.XMLHttpRequest?window.XMLHttpRequest.prototype.open:null;
-var marcado=false;
+/* O corpo da última gravação. Trava por CONTEÚDO, e não por página: um toque
+ * numa notificação com a página aberta muda o corpo, e a mudança seguinte do
+ * carrinho grava de novo, agora com a origem do push. */
+var gravado=null;
+
+/*
+ * A marca do app sempre; a origem do push só enquanto o toque vale. Sem toque
+ * válido o atributo do push NÃO vai — nem vazio: apagá-lo aqui apagaria a
+ * origem que outra aba, carregada depois do toque, acabou de gravar. O
+ * atributo velho que fica no carrinho o webhook recusa pela hora do toque.
+ */
+function corpo(){
+var atributos={};
+atributos[${JSON.stringify(ATRIBUTO_DO_CARRINHO)}]=${JSON.stringify(VALOR_DO_ATRIBUTO)};
+try{
+var p=window.${GLOBAL_DO_PUSH};
+if(p&&typeof p.valor==='string'&&typeof p.expiraEm==='number'&&Date.now()<=p.expiraEm){
+atributos[${JSON.stringify(ATRIBUTO_DO_PUSH)}]=p.valor;
+}
+}catch(e){}
+return JSON.stringify({attributes:atributos});
+}
 
 function ehMudanca(url){
 try{
@@ -116,26 +181,29 @@ return c==='/cart'||/^\\/[a-z]{2}(-[a-z]{2})?\\/cart$/.test(c);
 }
 
 /*
- * Uma gravação por página. O atributo fica no carrinho até ele virar pedido,
- * então repetir não acrescenta nada e só gasta requisição da loja do cliente.
+ * Uma gravação por conteúdo. O atributo fica no carrinho até ele virar
+ * pedido, então repetir o mesmo corpo não acrescenta nada e só gasta
+ * requisição da loja do cliente.
  *
  * Usa o \`fetch\` ORIGINAL de propósito: \`/cart/update.js\` é uma mudança de
  * carrinho, e passar pelo embrulhado faria a própria gravação agendar outra,
  * em laço.
  */
 function marcar(){
-if(marcado||!fetchOriginal)return;
-marcado=true;
+if(!fetchOriginal)return;
+var c=corpo();
+if(c===gravado)return;
+gravado=c;
 fetchOriginal('/cart/update.js',{
 method:'POST',
 credentials:'same-origin',
 headers:{'Content-Type':'application/json','Accept':'application/json'},
-body:${JSON.stringify(corpo)}
-}).catch(function(){marcado=false;});
+body:c
+}).catch(function(){if(gravado===c)gravado=null;});
 }
 
 function agendar(){
-if(marcado)return;
+if(corpo()===gravado)return;
 setTimeout(marcar,${String(espera)});
 }
 

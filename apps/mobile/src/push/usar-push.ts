@@ -7,7 +7,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Platform } from 'react-native';
-import type { AppConfig } from '@storefy/config-schema';
+import type { AppConfig, OrigemDoPush } from '@storefy/config-schema';
 import type { Ambiente } from '../nucleo/ambiente.ts';
 import { buscarCaixaDeAvisos, credenciaisDe, type AvisoDaCaixa } from './api.ts';
 import { montarCaixa, marcarLido, marcarTodosLidos, naoLidos, type AvisoNaTela } from './caixa.ts';
@@ -15,9 +15,12 @@ import {
   contarAbertura,
   gravarHistorico,
   gravarLidos,
+  gravarToque,
   lerHistoricoDoDisco,
   lerLidosDoDisco,
+  lerToqueDoDisco,
 } from './disco.ts';
+import { marcaDoToque, type MarcaDoPush } from '../webview/atribuicao.ts';
 import { notificadorReal } from './onesignal.ts';
 import {
   decidirPermissao,
@@ -75,6 +78,11 @@ export interface UsoDoPush {
     variantId: string;
     path?: string;
   }) => Promise<RespostaDoAvisoDeVolta>;
+  /**
+   * A última notificação tocada que ainda responde pela compra, pronta para
+   * as abas gravarem no carrinho. `null` sem toque, ou com o toque vencido.
+   */
+  marcaDoPush: MarcaDoPush | null;
   /** M12: o estado das notificações, e ligar e desligar dentro do app. */
   notificacoes: EstadoDasNotificacoes;
   mudandoNotificacoes: boolean;
@@ -163,6 +171,7 @@ export function usarPush({ ambiente, config, ativo, navegar }: Opcoes): UsoDoPus
   const [avisosBrutos, setAvisosBrutos] = useState<AvisoDaCaixa[]>([]);
   const [lidos, setLidos] = useState<string[]>([]);
   const [caixaCarregando, setCaixaCarregando] = useState(false);
+  const [marcaDoPush, setMarcaDoPush] = useState<MarcaDoPush | null>(null);
 
   /* ----------------------------------------------------------- abertura */
 
@@ -171,15 +180,18 @@ export function usarPush({ ambiente, config, ativo, navegar }: Opcoes): UsoDoPus
     const segueVivo = (): boolean => vivo;
 
     async function comecar(): Promise<void> {
-      const [total, guardado, lidosGuardados] = await Promise.all([
+      const [total, guardado, lidosGuardados, toqueGuardado] = await Promise.all([
         contarAbertura(),
         lerHistoricoDoDisco(),
         lerLidosDoDisco(),
+        lerToqueDoDisco(),
       ]);
       if (!segueVivo()) return;
       setAberturas(total);
       setHistorico(guardado);
       setLidos(lidosGuardados);
+      // O toque que abriu o app a frio chega antes do disco, e é mais novo que ele.
+      setMarcaDoPush((atual) => atual ?? marcaDoToque(toqueGuardado, Date.now()));
 
       if (!ativo) {
         // Sem push neste build não há o que ler; liberar a marca evita deixar
@@ -245,6 +257,17 @@ export function usarPush({ ambiente, config, ativo, navegar }: Opcoes): UsoDoPus
 
   /* ------------------------------------------------- toque na notificação */
 
+  /*
+   * O toque vira a origem da próxima compra: na memória, para as abas abertas
+   * gravarem já na próxima mudança de carrinho, e no disco, para a compra que
+   * acontece depois de fechar e reabrir o app.
+   */
+  const guardarOrigem = useCallback((origem: OrigemDoPush): void => {
+    const toque = { origem, tocadaEmMs: Date.now() };
+    setMarcaDoPush(marcaDoToque(toque, toque.tocadaEmMs));
+    void gravarToque(toque);
+  }, []);
+
   const jaEscuta = useRef(false);
   useEffect(() => {
     if (!ativo || config === null || jaEscuta.current) return;
@@ -254,8 +277,9 @@ export function usarPush({ ambiente, config, ativo, navegar }: Opcoes): UsoDoPus
       notificadorReal,
       { urlDaLoja: config.store.url, dominios: config.store.domains },
       navegar,
+      guardarOrigem,
     );
-  }, [ativo, config, navegar]);
+  }, [ativo, config, guardarOrigem, navegar]);
 
   /* ------------------------------------------------------- a permissão */
 
@@ -493,6 +517,7 @@ export function usarPush({ ambiente, config, ativo, navegar }: Opcoes): UsoDoPus
     aoConcluirPedido,
     aoIdentificarCliente,
     aoPedirAvisoDeVolta,
+    marcaDoPush,
     notificacoes,
     mudandoNotificacoes,
     erroNasNotificacoes,

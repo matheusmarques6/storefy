@@ -6,7 +6,14 @@ import { exigirContextoCliente } from '@/lib/contexto';
 import { criarClientServidor } from '@/lib/supabase/server';
 import { criarClientServiceRole } from '@/lib/supabase/admin';
 import { estadoDasNotificacoes } from '@/lib/ativar-push';
-import { appDaLoja, contarAparelhos, listarCampanhas } from '@/lib/push-servidor';
+import {
+  appDaLoja,
+  contarAparelhos,
+  listarCampanhas,
+  vendasDasCampanhas,
+  vendasDoPush,
+} from '@/lib/push-servidor';
+import { vendasVisiveis } from '@/lib/vendas-do-push';
 import { EstadoVazio } from '@/components/estado-vazio';
 import { Button } from '@/components/ui/button';
 import { PushNaoConfigurado } from './nao-configurado';
@@ -47,14 +54,24 @@ export default async function PaginaDeCampanhas() {
     );
   }
 
-  const [campanhas, aparelhos, notificacoes] = await Promise.all([
+  const comVendas = vendasVisiveis(lojaAtiva);
+  const [campanhas, aparelhos, notificacoes, totalDeVendas] = await Promise.all([
     listarCampanhas(supabase, app.id),
     contarAparelhos(supabase, app.id),
     // Lido com a service role porque precisa saber se os SEGREDOS existem, e
     // as colunas `_enc` são invisíveis para o painel de propósito. O que volta
     // é só booleano e texto.
     estadoDasNotificacoes(criarClientServiceRole(), lojaAtiva.id),
+    comVendas ? vendasDoPush(supabase, app.id) : Promise.resolve(null),
   ]);
+
+  // Só as enviadas: campanha que não saiu não vendeu, e a soma não precisa dela.
+  const vendas = comVendas
+    ? await vendasDasCampanhas(
+        supabase,
+        campanhas.filter((campanha) => campanha.status === 'sent').map((campanha) => campanha.id),
+      )
+    : new Map<string, never>();
 
   const podeEscrever = papel === 'owner' || papel === 'admin';
 
@@ -81,12 +98,14 @@ export default async function PaginaDeCampanhas() {
         <PushNaoConfigurado pendencias={notificacoes.pendencias} podeEscrever={podeEscrever} />
       )}
 
-      <ResumoDoPush aparelhos={aparelhos} campanhas={campanhas} />
+      <ResumoDoPush aparelhos={aparelhos} campanhas={campanhas} vendas={totalDeVendas} />
 
       <AbasDoPush atual="campanhas" />
 
       <ListaDeCampanhas
         campanhas={campanhas}
+        vendas={Object.fromEntries(vendas)}
+        vendasVisiveis={comVendas}
         podeEscrever={podeEscrever}
         fuso={lojaAtiva.timezone}
       />

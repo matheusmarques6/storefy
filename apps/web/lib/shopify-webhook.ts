@@ -14,8 +14,12 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '@storefy/db';
 import {
   ATRIBUTO_DO_CARRINHO,
+  ATRIBUTO_DO_PUSH,
   VALOR_DO_ATRIBUTO,
+  lerAtributoDoPush,
   tokenDoCarrinhoSemChave,
+  toqueAindaVale,
+  type ToqueNoPush,
 } from '@storefy/config-schema';
 import type { Topico } from '@/lib/shopify';
 
@@ -48,6 +52,31 @@ export function origemDoPedido(pedido: unknown): 'app' | 'site' {
   const atributos = lerAtributos(pedido);
   const marca = atributos[ATRIBUTO_DO_CARRINHO];
   return marca === VALOR_DO_ATRIBUTO || marca === 'true' ? 'app' : 'site';
+}
+
+/**
+ * Que notificação trouxe este pedido, se alguma (C07, C09 e C10).
+ *
+ * Pelo atributo `_storefy_push`, que o app grava no carrinho depois de um
+ * toque, conferido contra a hora do pedido: um toque responde pela compra por
+ * três dias. O carrinho guarda o atributo enquanto existir, e sem esta
+ * conferência a compra feita num carrinho parado há um mês levaria o crédito
+ * da notificação de hoje.
+ *
+ * Só pedido do app. O app grava as duas marcas juntas; um pedido do site com o
+ * atributo do push não se explica, e não leva o crédito.
+ *
+ * O id que sai daqui ainda não foi conferido: é `registrar_pedido` que confere
+ * que a campanha é do mesmo app, porque o atributo qualquer um escreve.
+ */
+export function toqueDoPedido(pedido: unknown, agoraMs = Date.now()): ToqueNoPush | null {
+  if (origemDoPedido(pedido) !== 'app') return null;
+
+  const toque = lerAtributoDoPush(lerAtributos(pedido)[ATRIBUTO_DO_PUSH]);
+  if (toque === null) return null;
+
+  const feitoEm = Date.parse(texto(pedido, 'created_at') ?? '');
+  return toqueAindaVale(toque.tocadaEmMs, Number.isNaN(feitoEm) ? agoraMs : feitoEm) ? toque : null;
 }
 
 /** Os `note_attributes` do pedido, como mapa. */
@@ -290,6 +319,7 @@ async function gravarPedido(
   const id = texto(pedido, 'id');
   if (id === null) return { feito: 'sem_id' };
 
+  const toque = toqueDoPedido(pedido);
   const { data: novo, error } = await supabase.rpc('registrar_pedido', {
     p_app_id: appId,
     p_shopify_order_id: id,
@@ -302,6 +332,8 @@ async function gravarPedido(
     p_currency: texto(pedido, 'currency') ?? undefined,
     // Casado com o token que o app reportou, que chega sem a chave secreta.
     p_cart_token: tokenDoCarrinhoSemChave(texto(pedido, 'cart_token') ?? ''),
+    p_push_campaign_id: toque?.origem.tipo === 'campanha' ? toque.origem.id : undefined,
+    p_push_automation_id: toque?.origem.tipo === 'automacao' ? toque.origem.id : undefined,
   });
   if (error != null) throw new Error(error.message);
 

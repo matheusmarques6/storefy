@@ -150,6 +150,7 @@ async function despacharCampanhas(supabase: Client, resumo: ResumoDoJob): Promis
         segment: campanha.segment,
         imagem:
           campanha.image_path === null ? null : urlDaImagemDoPush(supabase, campanha.image_path),
+        origem: { tipo: 'campanha', id: campanha.id },
       },
     );
 
@@ -213,6 +214,9 @@ async function despacharAutomacoes(supabase: Client, resumo: ResumoDoJob): Promi
         deepLink: envio.deep_link,
         // Automação é para UM aparelho: o que disparou o gatilho.
         inscricoes: envio.subscription_id === null ? [] : [envio.subscription_id],
+        ...(envio.automation_id === null
+          ? {}
+          : { origem: { tipo: 'automacao', id: envio.automation_id } as const }),
       },
     );
 

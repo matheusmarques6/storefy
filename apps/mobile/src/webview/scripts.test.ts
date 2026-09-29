@@ -2,7 +2,7 @@ import { Script } from 'node:vm';
 import { describe, expect, it } from 'vitest';
 import { parseAppConfig, type AppConfigInput } from '@storefy/config-schema';
 import { MARCA_DE_INJECAO } from './carrinho';
-import { MARCA_DE_INJECAO as MARCA_DA_ATRIBUICAO } from './atribuicao';
+import { GLOBAL_DO_PUSH, MARCA_DE_INJECAO as MARCA_DA_ATRIBUICAO } from './atribuicao';
 import {
   marcaOCarrinho,
   observaCarrinho,
@@ -125,6 +125,29 @@ describe('scriptDepoisDoConteudo', () => {
     expect(() => {
       compila(script);
     }).not.toThrow();
+  });
+
+  it('o toque na notificação vai para a página antes da marca que o lê', () => {
+    const marca = { valor: 'c:11111111-1111-4111-8111-111111111111:1790000000', expiraEm: 99 };
+    const script = scriptDepoisDoConteudo(config(), marca);
+
+    expect(script).toContain(`window.${GLOBAL_DO_PUSH}=${JSON.stringify(marca)}`);
+    expect(script.indexOf(GLOBAL_DO_PUSH)).toBeLessThan(script.indexOf(MARCA_DA_ATRIBUICAO));
+    expect(() => {
+      compila(script);
+    }).not.toThrow();
+    // Sem toque, a variável vai nula: a aba recarregada não herda um toque antigo.
+    expect(scriptDepoisDoConteudo(config())).toContain(`window.${GLOBAL_DO_PUSH}=null`);
+  });
+
+  it('fora da Shopify, nem a variável do push vai', () => {
+    const script = scriptDepoisDoConteudo(
+      config({
+        store: { name: 'Fora', url: 'https://fora.com.br', domains: [], platform: 'other' },
+      }),
+      { valor: 'c:x:1', expiraEm: 1 },
+    );
+    expect(script).not.toContain(GLOBAL_DO_PUSH);
   });
 
   it('loja Shopify diz ao app quem é o cliente logado', () => {

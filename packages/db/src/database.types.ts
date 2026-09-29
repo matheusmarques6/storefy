@@ -1317,6 +1317,8 @@ export type Database = {
           cart_token: string | null;
           ordered_at: string;
           created_at: string;
+          push_campaign_id: string | null;
+          push_automation_id: string | null;
         };
         Insert: {
           id?: string;
@@ -1330,6 +1332,8 @@ export type Database = {
           cart_token?: string | null;
           ordered_at: string;
           created_at?: string;
+          push_campaign_id?: string | null;
+          push_automation_id?: string | null;
         };
         Update: {
           id?: string;
@@ -1343,6 +1347,8 @@ export type Database = {
           cart_token?: string | null;
           ordered_at?: string;
           created_at?: string;
+          push_campaign_id?: string | null;
+          push_automation_id?: string | null;
         };
         Relationships: [
           {
@@ -1355,6 +1361,18 @@ export type Database = {
             foreignKeyName: "shop_orders_device_id_fkey";
             columns: ["device_id"];
             referencedRelation: "devices";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "shop_orders_push_automation_id_fkey";
+            columns: ["push_automation_id"];
+            referencedRelation: "push_automations";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "shop_orders_push_campaign_id_fkey";
+            columns: ["push_campaign_id"];
+            referencedRelation: "push_campaigns";
             referencedColumns: ["id"];
           },
         ];
@@ -1799,6 +1817,14 @@ export type Database = {
         Args: { p_dias?: number };
         Returns: { app_id: string | null; loja: string | null; organizacao: string | null; campanhas_enviadas: number | null; campanhas_falhas: number | null; entregues: number | null; abertos: number | null; automacoes_enviadas: number | null; automacoes_falhas: number | null; aparelhos: number | null; ativos: number | null }[];
       };
+      receita_das_campanhas: {
+        Args: { p_ids: string[] };
+        Returns: { campanha_id: string | null; pedidos: number | null; receita_cents: number | null }[];
+      };
+      receita_do_push: {
+        Args: { p_app_id: string; p_dias?: number };
+        Returns: { pedidos: number | null; receita_cents: number | null }[];
+      };
       registrar_aparelho: {
         Args: { p_app_id: string; p_subscription: string; p_platform: Database["public"]["Enums"]["device_platform"]; p_app_version?: string; p_external_id?: string; p_email_hash?: string };
         Returns: { device_id: string | null; limitado: boolean | null; novo: boolean | null; boas_vindas: boolean | null }[];
@@ -1828,7 +1854,7 @@ export type Database = {
         Returns: unknown;
       };
       registrar_pedido: {
-        Args: { p_app_id: string; p_shopify_order_id: string; p_source: Database["public"]["Enums"]["origem_do_pedido"]; p_total_cents: number; p_ordered_at: string; p_order_number?: string; p_currency?: string; p_cart_token?: string };
+        Args: { p_app_id: string; p_shopify_order_id: string; p_source: Database["public"]["Enums"]["origem_do_pedido"]; p_total_cents: number; p_ordered_at: string; p_order_number?: string; p_currency?: string; p_cart_token?: string; p_push_campaign_id?: string; p_push_automation_id?: string };
         Returns: boolean;
       };
       remover_chave_do_webhook: {
@@ -1858,6 +1884,10 @@ export type Database = {
       restaurar_config: {
         Args: { p_app_id: string; p_version: number };
         Returns: number;
+      };
+      resultado_das_automacoes: {
+        Args: { p_app_id: string; p_dias?: number };
+        Returns: { automacao_id: string | null; envios: number | null; pedidos: number | null; receita_cents: number | null }[];
       };
       resumo_do_admin: {
         Args: Record<string, never>;

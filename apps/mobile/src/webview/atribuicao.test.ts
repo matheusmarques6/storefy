@@ -14,12 +14,17 @@
 import { createContext, runInContext } from 'node:vm';
 import { describe, expect, it } from 'vitest';
 import { gerarObservadorDeCarrinho } from './carrinho';
+import { JANELA_DO_PUSH_MS, lerAtributoDoPush } from '@storefy/config-schema';
 import {
   ATRIBUTO_DO_CARRINHO,
+  ATRIBUTO_DO_PUSH,
+  GLOBAL_DO_PUSH,
   MARCA_DE_INJECAO,
   VALOR_DO_ATRIBUTO,
   ehPaginaDoCarrinho,
+  gerarAtualizacaoDoPush,
   gerarMarcaDoApp,
+  marcaDoToque,
 } from './atribuicao';
 
 const BASE = 'https://oakvintage.com.br';
@@ -432,5 +437,116 @@ describe('gerarMarcaDoApp', () => {
   /* No iOS, um retorno não serializável derruba a injeção sem aviso nenhum. */
   it('o script termina em true', () => {
     expect(gerarMarcaDoApp().trimEnd().endsWith('true;')).toBe(true);
+  });
+});
+
+describe('a origem do push no carrinho', () => {
+  const CAMPANHA = '11111111-1111-4111-8111-111111111111';
+  const toque = (tocadaEmMs: number) => ({
+    origem: { tipo: 'campanha' as const, id: CAMPANHA },
+    tocadaEmMs,
+  });
+
+  function corpoDa(marcacao: Chamada | undefined): Record<string, string> {
+    return (JSON.parse(String(marcacao?.corpo)) as { attributes: Record<string, string> })
+      .attributes;
+  }
+
+  it('marcaDoToque: vale por três dias e leva o valor que o webhook lê', () => {
+    const agora = Date.parse('2026-09-29T12:00:00Z');
+    const marca = marcaDoToque(toque(agora), agora);
+
+    expect(marca?.expiraEm).toBe(agora + JANELA_DO_PUSH_MS);
+    expect(lerAtributoDoPush(marca?.valor)).toEqual(toque(agora));
+    expect(marcaDoToque(toque(agora), agora + JANELA_DO_PUSH_MS + 1)).toBeNull();
+    expect(marcaDoToque(null, agora)).toBeNull();
+  });
+
+  it('grava a origem junto com a marca, enquanto o toque vale', async () => {
+    const ambiente = criarAmbiente();
+    const marca = marcaDoToque(toque(Date.now()), Date.now());
+    runInContext(gerarAtualizacaoDoPush(marca), createContext(ambiente.janela));
+    ambiente.injetar();
+
+    await ambiente.buscarPelaPagina('/cart/add.js');
+    await ambiente.avancarEEscoar(500);
+
+    expect(corpoDa(ambiente.marcacoes()[0])).toEqual({
+      [ATRIBUTO_DO_CARRINHO]: VALOR_DO_ATRIBUTO,
+      [ATRIBUTO_DO_PUSH]: marca?.valor,
+    });
+  });
+
+  /*
+   * Vencido, o atributo não vai — e não vai VAZIO: apagar daqui apagaria a
+   * origem que outra aba, carregada depois do toque, acabou de gravar.
+   */
+  it('toque vencido não vai, e o atributo não é apagado', async () => {
+    const ambiente = criarAmbiente();
+    ambiente.janela[GLOBAL_DO_PUSH] = { valor: 'c:x:1', expiraEm: Date.now() - 1 };
+    ambiente.injetar();
+
+    await ambiente.buscarPelaPagina('/cart/add.js');
+    await ambiente.avancarEEscoar(500);
+
+    expect(corpoDa(ambiente.marcacoes()[0])).toEqual({
+      [ATRIBUTO_DO_CARRINHO]: VALOR_DO_ATRIBUTO,
+    });
+  });
+
+  /* O toque com a loja aberta: a página já marcou, e a próxima mudança grava a origem. */
+  it('toque com a página aberta grava de novo na mudança seguinte', async () => {
+    const ambiente = criarAmbiente();
+    ambiente.injetar();
+
+    await ambiente.buscarPelaPagina('/cart/add.js');
+    await ambiente.avancarEEscoar(500);
+    expect(ambiente.marcacoes()).toHaveLength(1);
+
+    const marca = marcaDoToque(toque(Date.now()), Date.now());
+    runInContext(gerarAtualizacaoDoPush(marca), createContext(ambiente.janela));
+    await ambiente.buscarPelaPagina('/cart/change.js');
+    await ambiente.avancarEEscoar(500);
+
+    expect(ambiente.marcacoes()).toHaveLength(2);
+    expect(corpoDa(ambiente.marcacoes()[1])[ATRIBUTO_DO_PUSH]).toBe(marca?.valor);
+
+    // E, gravada a origem, não regrava o mesmo corpo.
+    await ambiente.buscarPelaPagina('/cart/add.js');
+    await ambiente.avancarEEscoar(500);
+    expect(ambiente.marcacoes()).toHaveLength(2);
+  });
+
+  it('valor estranho na variável é ignorado, sem quebrar a marca', async () => {
+    for (const estranho of [
+      { valor: 42, expiraEm: Date.now() + 1000 },
+      'c:x',
+      null,
+      { valor: 'c' },
+    ]) {
+      const ambiente = criarAmbiente();
+      ambiente.janela[GLOBAL_DO_PUSH] = estranho;
+      ambiente.injetar();
+
+      await ambiente.buscarPelaPagina('/cart/add.js');
+      await ambiente.avancarEEscoar(500);
+
+      expect(corpoDa(ambiente.marcacoes()[0]), JSON.stringify(estranho)).toEqual({
+        [ATRIBUTO_DO_CARRINHO]: VALOR_DO_ATRIBUTO,
+      });
+    }
+  });
+
+  it('a atualização põe e tira o toque da página, e termina em true', () => {
+    const janela: Record<string, unknown> = {};
+    janela.window = janela;
+    const contexto = createContext(janela);
+    const marca = { valor: `c:${CAMPANHA}:1790000000`, expiraEm: 1 };
+
+    runInContext(gerarAtualizacaoDoPush(marca), contexto);
+    expect(janela[GLOBAL_DO_PUSH]).toEqual(marca);
+    runInContext(gerarAtualizacaoDoPush(null), contexto);
+    expect(janela[GLOBAL_DO_PUSH]).toBeNull();
+    expect(gerarAtualizacaoDoPush(null).endsWith('true;')).toBe(true);
   });
 });

@@ -35,6 +35,7 @@ import { acaoParaMensagem, type AcaoNativa, type ContextoDasAcoes } from '../bri
 import { TelaDeErro, TelaSemConexao } from '../telas/avisos';
 import { decidirNavegacao } from './navegacao';
 import { BarraDeProgresso } from './barra-de-progresso';
+import { gerarAtualizacaoDoPush, type MarcaDoPush } from './atribuicao';
 import {
   scriptAntesDoConteudo,
   scriptDepoisDoConteudo,
@@ -58,6 +59,11 @@ interface Props {
   config: AppConfig;
   contextoDoApp: ContextoDoApp;
   contextoDasAcoes: ContextoDasAcoes;
+  /**
+   * A última notificação tocada que ainda responde pela compra. Vai para a
+   * página, que a grava no carrinho junto com a marca do app.
+   */
+  marcaDoPush: MarcaDoPush | null;
   visivel: boolean;
   /** `true` quando o aparelho está sem internet, pelo NetInfo. */
   semConexao: boolean;
@@ -95,6 +101,7 @@ export function AbaWebView({
   config,
   contextoDoApp,
   contextoDasAcoes,
+  marcaDoPush,
   visivel,
   semConexao,
   aoAgir,
@@ -127,7 +134,17 @@ export function AbaWebView({
     () => scriptAntesDoConteudo(config, contextoDoApp),
     [config, contextoDoApp],
   );
-  const depois = useMemo(() => scriptDepoisDoConteudo(config), [config]);
+  const depois = useMemo(() => scriptDepoisDoConteudo(config, marcaDoPush), [config, marcaDoPush]);
+
+  /*
+   * O script novo só vale na PRÓXIMA carga. A página que já está aberta — o
+   * cliente tocou na notificação com a loja na tela — recebe o toque agora,
+   * e a próxima mudança de carrinho dela já sai com a origem certa.
+   */
+  useEffect(() => {
+    if (!jaCarregou.current) return;
+    referencia.current?.injectJavaScript(gerarAtualizacaoDoPush(marcaDoPush));
+  }, [marcaDoPush]);
   const doLojista = useMemo(() => scriptDoLojista(config), [config]);
 
   const recarregar = useCallback(() => {

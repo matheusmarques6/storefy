@@ -542,6 +542,7 @@ export function Loja({
                   config={config}
                   contextoDoApp={contextoDoApp}
                   contextoDasAcoes={contextoDasAcoes}
+                  marcaDoPush={push.marcaDoPush}
                   visivel={aba.id === ativa && protecao.situacao === 'livre'}
                   semConexao={semConexao}
                   aoAgir={aoAgir}
@@ -585,6 +586,7 @@ export function Loja({
               config={config}
               contextoDoApp={contextoDoApp}
               contextoDasAcoes={contextoDasAcoes}
+              marcaDoPush={push.marcaDoPush}
               visivel={aba.id === ativa}
               semConexao={semConexao}
               aoAgir={aoAgir}

@@ -11,6 +11,7 @@ import 'server-only';
  * A chave REST é POR LOJA, decifrada logo antes da chamada e nunca guardada.
  */
 
+import { dadosDaOrigem, type OrigemDoPush } from '@storefy/config-schema';
 import { filtrosDoPublico, publicoDoSegmento } from '@/lib/publico-do-push';
 
 export const BASE_DA_API = 'https://api.onesignal.com';
@@ -35,6 +36,13 @@ export interface NotificacaoParaEnviar {
   imagem?: string | null;
   /** Quando presente, manda só para estas inscrições (envio de automação). */
   inscricoes?: readonly string[];
+  /**
+   * De que campanha ou automação é este envio. Vai nos dados da notificação,
+   * e é por ele que o pedido feito depois do toque chega à receita do push.
+   * O envio de teste não tem: o toque do lojista no próprio celular não é
+   * venda da campanha.
+   */
+  origem?: OrigemDoPush;
 }
 
 export type ResultadoDoEnvio =
@@ -66,9 +74,12 @@ export function corpoDaNotificacao(
    * usamos `url`: ele abre o NAVEGADOR do celular em vez do app, e o cliente
    * sai da loja para uma aba sem carrinho e sem login.
    */
+  const dados: Record<string, string> = {};
   if (notificacao.deepLink !== null && notificacao.deepLink !== '') {
-    corpo.data = { deep_link: notificacao.deepLink };
+    dados.deep_link = notificacao.deepLink;
   }
+  if (notificacao.origem !== undefined) Object.assign(dados, dadosDaOrigem(notificacao.origem));
+  if (Object.keys(dados).length > 0) corpo.data = dados;
 
   /*
    * A imagem vai nos DOIS campos: `big_picture` é o Android; o iPhone lê

@@ -20,6 +20,7 @@ import {
 import type { CampanhaNaLista } from '@/lib/push-servidor';
 import { formatarDataHora } from '@/lib/fuso';
 import { descricaoDoPublico } from '@/lib/publico-do-push';
+import { receitaDaCampanha, textoDosPedidos, type Vendas } from '@/lib/vendas-do-push';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -55,10 +56,16 @@ type Confirmacao = { tipo: 'cancelar' | 'excluir'; campanha: CampanhaNaLista } |
 
 export function ListaDeCampanhas({
   campanhas,
+  vendas,
+  vendasVisiveis,
   podeEscrever,
   fuso,
 }: {
   campanhas: readonly CampanhaNaLista[];
+  /** Pedidos e receita de cada campanha enviada, pelo id. */
+  vendas: Readonly<Record<string, Vendas>>;
+  /** A loja manda os pedidos (Shopify conectada)? Sem isso, receita é traço. */
+  vendasVisiveis: boolean;
   podeEscrever: boolean;
   /**
    * O fuso da loja. Este componente é renderizado no servidor e hidratado no
@@ -114,6 +121,12 @@ export function ListaDeCampanhas({
         {campanhas.map((campanha) => {
           const metricas = lerMetricas(campanha.stats);
           const quando = campanha.sentAt ?? campanha.scheduledAt ?? campanha.createdAt;
+          const vendasDaCampanha = vendas[campanha.id];
+          const receita = receitaDaCampanha(campanha.status, vendasDaCampanha, vendasVisiveis);
+          const pedidos =
+            receita === '—' || vendasDaCampanha === undefined
+              ? undefined
+              : textoDosPedidos(vendasDaCampanha.pedidos);
 
           return (
             <li key={campanha.id} className="flex items-start gap-4 p-4">
@@ -139,11 +152,40 @@ export function ListaDeCampanhas({
                   {EXPLICACAO_DO_STATUS[campanha.status]}{' '}
                   <time dateTime={quando}>{formatar(quando, fuso)}</time>
                 </p>
+                {/* No celular, os números cabem numa linha só, embaixo do texto. */}
+                {campanha.status === 'sent' ? (
+                  <p className="text-xs sm:hidden" data-testid="numeros-no-celular">
+                    {numeroOuTraco(metricas.enviados)} enviados · {numeroOuTraco(metricas.abertos)}{' '}
+                    aberturas
+                    {metricas.taxaDeAbertura === null
+                      ? ''
+                      : ` (${porcentagemOuTraco(metricas.taxaDeAbertura)})`}
+                    {' · '}
+                    {pedidos === undefined ? `receita ${receita}` : `${receita} em ${pedidos}`}
+                  </p>
+                ) : null}
               </div>
 
               <div className="hidden shrink-0 gap-6 text-right sm:flex">
-                <Metrica rotulo="Entregues" valor={numeroOuTraco(metricas.entregues)} />
-                <Metrica rotulo="Aberturas" valor={porcentagemOuTraco(metricas.taxaDeAbertura)} />
+                <Metrica
+                  rotulo="Enviados"
+                  valor={numeroOuTraco(metricas.enviados)}
+                  detalhe={
+                    metricas.entregues === null
+                      ? undefined
+                      : `${numeroOuTraco(metricas.entregues)} entregues`
+                  }
+                />
+                <Metrica
+                  rotulo="Aberturas"
+                  valor={numeroOuTraco(metricas.abertos)}
+                  detalhe={
+                    metricas.taxaDeAbertura === null
+                      ? undefined
+                      : `${porcentagemOuTraco(metricas.taxaDeAbertura)} abriram`
+                  }
+                />
+                <Metrica rotulo="Receita" valor={receita} detalhe={pedidos} />
               </div>
 
               {podeEscrever &&
@@ -225,11 +267,14 @@ export function ListaDeCampanhas({
   );
 }
 
-function Metrica({ rotulo, valor }: { rotulo: string; valor: string }) {
+function Metrica({ rotulo, valor, detalhe }: { rotulo: string; valor: string; detalhe?: string }) {
   return (
     <div>
       <p className="text-muted-foreground text-xs">{rotulo}</p>
       <p className="text-sm font-medium tabular-nums">{valor}</p>
+      {detalhe === undefined ? null : (
+        <p className="text-muted-foreground text-xs tabular-nums">{detalhe}</p>
+      )}
     </div>
   );
 }
