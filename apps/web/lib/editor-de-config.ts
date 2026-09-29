@@ -38,6 +38,24 @@ export const PADRAO_POR_TIPO: Record<Tab['type'], { label: string; icon: string;
   notifications: { label: 'Avisos', icon: 'bell' },
 };
 
+/**
+ * O número que cada tipo de aba sabe mostrar sobre o ícone (C06b): o
+ * carrinho conta os itens, a caixa de avisos conta os não lidos. Os outros
+ * tipos não têm o que contar — e um número ali seria inventado.
+ */
+export const BADGE_DO_TIPO: Partial<Record<Tab['type'], Exclude<Tab['badge'], 'none'>>> = {
+  cart: 'cart_count',
+  notifications: 'unread',
+};
+
+/** Liga ou desliga o número sobre o ícone, quando o tipo da aba tem um. */
+export function mostrarNumeroDaAba(config: AppConfig, id: string, ligado: boolean): AppConfig {
+  const aba = config.tabs.find((item) => item.id === id);
+  const badge = aba === undefined ? undefined : BADGE_DO_TIPO[aba.type];
+  if (badge === undefined) return config;
+  return editarAba(config, id, { badge: ligado ? badge : 'none' });
+}
+
 /** Tipos que só fazem sentido uma vez na barra. */
 const TIPOS_UNICOS: Tab['type'][] = ['cart', 'account', 'search', 'notifications'];
 
@@ -129,7 +147,7 @@ export function adicionarAba(
     label: padrao.label,
     icon: padrao.icon,
     type: tipo,
-    badge: tipo === 'cart' ? 'cart_count' : tipo === 'notifications' ? 'unread' : 'none',
+    badge: BADGE_DO_TIPO[tipo] ?? 'none',
     ...(padrao.url === undefined ? {} : { url: padrao.url }),
   };
 

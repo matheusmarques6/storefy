@@ -7,7 +7,7 @@
  * uma configuração publicada que já foi conferida numa tela de celular de
  * verdade. É o que separa um preset de um palpite.
  */
-import { useActionState, useState, useTransition } from 'react';
+import { useActionState, useRef, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { Loader2, Power, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -31,10 +31,17 @@ import {
 export interface LojaPublicada {
   appId: string;
   rotulo: string;
+  /** O tema da Shopify lido da página da loja (A10), quando se sabe. */
+  tema: string | null;
 }
 
 export function CriarPreset({ lojas }: { lojas: LojaPublicada[] }) {
   const router = useRouter();
+  const campoDoTema = useRef<HTMLInputElement>(null);
+  // A loja escolhida antes da troca: o tema dela diz se o campo foi preenchido por nós.
+  const anteriorRef = useRef<string | undefined>(lojas[0]?.appId);
+  const temaDe = (appId: string | undefined): string | undefined =>
+    lojas.find((loja) => loja.appId === appId)?.tema ?? undefined;
 
   const [estado, enviar, enviando] = useActionState<
     EstadoDoPreset & { valores?: ValoresDigitados },
@@ -84,6 +91,19 @@ export function CriarPreset({ lojas }: { lojas: LojaPublicada[] }) {
                 key={estado.valores?.appId ?? 'inicial'}
                 {...propsDoCampo('appId', undefined, true)}
                 defaultValue={estado.valores?.appId}
+                onChange={(evento) => {
+                  /*
+                   * O tema da loja escolhida entra no campo — a não ser que a
+                   * equipe já tenha escrito outro: aí o que ela escreveu fica.
+                   */
+                  const campo = campoDoTema.current;
+                  if (campo === null) return;
+                  const anterior = temaDe(anteriorRef.current);
+                  anteriorRef.current = evento.target.value;
+                  if (campo.value.trim() === '' || campo.value === anterior) {
+                    campo.value = temaDe(evento.target.value) ?? '';
+                  }
+                }}
                 className="border-input bg-background focus-visible:ring-ring h-10 w-full rounded-xl border px-3 text-sm focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
               >
                 {lojas.map((loja) => (
@@ -106,8 +126,11 @@ export function CriarPreset({ lojas }: { lojas: LojaPublicada[] }) {
 
               <Campo id="tema" rotulo="Tema da Shopify" dica="Dawn, Impulse, Prestige…">
                 <Input
+                  ref={campoDoTema}
                   {...propsDoCampo('tema', undefined, true)}
-                  defaultValue={estado.valores?.tema}
+                  defaultValue={
+                    estado.valores?.tema ?? temaDe(estado.valores?.appId ?? lojas[0]?.appId)
+                  }
                   placeholder="Dawn"
                   autoComplete="off"
                 />

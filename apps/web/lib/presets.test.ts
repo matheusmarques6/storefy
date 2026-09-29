@@ -12,7 +12,10 @@ import {
   aplicarPreset,
   lerPreset,
   lerPresets,
+  presetDoTema,
+  presetsPeloTema,
   resumoDaTroca,
+  type Preset,
   type PresetBruto,
 } from '@/lib/presets';
 
@@ -178,5 +181,35 @@ describe('resumoDaTroca', () => {
   it('avisa que o CSS existente é substituído, e não só que há um novo', () => {
     const comCss = { ...LOJA, webview: { ...LOJA.webview, customCss: 'p { color: red }' } };
     expect(resumoDaTroca(comCss, preset).join(' ')).toContain('substituído');
+  });
+});
+
+describe('presetsPeloTema', () => {
+  const preset = (id: string, tema: string): Preset => ({
+    id,
+    nome: `Preset ${id}`,
+    tema,
+    descricao: null,
+    tabs: [],
+    hideSelectors: [],
+    customCss: '',
+  });
+  const LISTA = [preset('a', 'Impulse'), preset('b', 'Dawn'), preset('c', 'Prestige')];
+
+  it('o preset do tema da loja vem primeiro; o resto mantém a ordem', () => {
+    expect(presetsPeloTema(LISTA, 'Dawn').map((item) => item.id)).toEqual(['b', 'a', 'c']);
+  });
+
+  /* O que a equipe digitou no preset e o que a página declara nunca vêm iguais letra por letra. */
+  it('compara sem caixa, sem acento e sem espaço sobrando', () => {
+    expect(presetDoTema(preset('x', ' dawn '), 'Dawn')).toBe(true);
+    expect(presetDoTema(preset('x', 'Éclat'), 'eclat')).toBe(true);
+    expect(presetDoTema(preset('x', 'Dawn Pro'), 'Dawn')).toBe(false);
+  });
+
+  it('sem tema conhecido, nada muda de lugar e nada é marcado', () => {
+    expect(presetsPeloTema(LISTA, null)).toEqual(LISTA);
+    expect(presetDoTema(preset('x', 'Dawn'), null)).toBe(false);
+    expect(presetDoTema(preset('x', ''), '  ')).toBe(false);
   });
 });

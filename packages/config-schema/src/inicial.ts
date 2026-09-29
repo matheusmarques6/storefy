@@ -26,7 +26,9 @@ export const TEMA_PADRAO: AppConfigInput['theme'] = {
   text: '#111827',
   tabBarBg: '#ffffff',
   tabBarActive: '#111827',
-  tabBarInactive: '#9ca3af',
+  // Cinza que ainda lê bem sobre o branco (4,8:1). O de antes, #9ca3af, ficava
+  // em 2,5:1: toda loja nova começava com as abas quase sumindo no sol.
+  tabBarInactive: '#6b7280',
   statusBar: 'dark',
 };
 

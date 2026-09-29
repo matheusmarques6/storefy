@@ -21,6 +21,7 @@ import { criarClientServiceRole } from '@/lib/supabase/admin';
 import { exigirContextoCliente } from '@/lib/contexto';
 import { guardarAsset, removerAsset } from '@/lib/assets-da-loja';
 import { iconeDoSite } from '@/lib/logo-do-site';
+import { descobrirTema } from '@/lib/pagina-da-loja';
 import { garantirRascunho, salvarRascunho } from '@/lib/configs-servidor';
 import { validarConfig, type Problema } from '@/lib/editor-de-config';
 import { FALHA_GENERICA, mensagemDaFalha } from '@/lib/erros';
@@ -42,6 +43,64 @@ function traduzirErro(codigo: string | undefined, mensagem: string): string {
     return 'Não encontramos o rascunho deste app. Recarregue a página e tente de novo.';
   }
   return mensagemDaFalha('app', { code: codigo, message: mensagem }, FALHA_GENERICA);
+}
+
+export interface EstadoDoTema {
+  ok?: boolean;
+  /** O tema lido, quando deu certo. */
+  tema?: string;
+  mensagem?: string;
+}
+
+/**
+ * Lê de novo, na página da loja, o tema da Shopify em uso (A10).
+ *
+ * Para a loja cadastrada antes da detecção, ou que trocou de tema depois: o
+ * editor põe o preset daquele tema em primeiro. Grava pela sessão — a RLS de
+ * `stores` só deixa proprietário e administrador mudar a loja.
+ */
+export async function descobrirTemaDaLoja(storeId: string): Promise<EstadoDoTema> {
+  const { papel } = await exigirContextoCliente();
+  if (papel !== 'owner' && papel !== 'admin') {
+    return { mensagem: 'Apenas proprietários e administradores mudam a loja.' };
+  }
+
+  const supabase = await criarClientServidor();
+  // Pela sessão: uma loja de outra organização não volta, e nada é buscado.
+  const { data: loja, error: erroDaLeitura } = await supabase
+    .from('stores')
+    .select('primary_url, platform')
+    .eq('id', storeId)
+    .maybeSingle();
+  if (erroDaLeitura != null) {
+    return { mensagem: traduzirErro(erroDaLeitura.code, erroDaLeitura.message) };
+  }
+  if (loja == null) return { mensagem: 'Loja não encontrada.' };
+  if (loja.platform !== 'shopify') {
+    return { mensagem: 'Os presets são de temas da Shopify, e esta loja é de outra plataforma.' };
+  }
+
+  let endereco: URL;
+  try {
+    endereco = new URL(loja.primary_url);
+  } catch {
+    return { mensagem: 'O endereço da loja não é válido. Confira na página da loja.' };
+  }
+
+  const descoberto = await descobrirTema(endereco);
+  if (!descoberto.ok) return { mensagem: descoberto.motivo };
+
+  const { data: gravada, error } = await supabase
+    .from('stores')
+    .update({ shopify_theme: descoberto.tema })
+    .eq('id', storeId)
+    .select('id')
+    .maybeSingle();
+  if (error != null) return { mensagem: traduzirErro(error.code, error.message) };
+  if (gravada == null) return { mensagem: 'Apenas proprietários e administradores mudam a loja.' };
+
+  revalidatePath('/app');
+  return { ok: true, tema: descoberto.tema };
 }
 
 /**

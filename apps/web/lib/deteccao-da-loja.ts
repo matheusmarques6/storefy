@@ -25,6 +25,41 @@ export interface MarcaDetectada {
   descricao: string | null;
   /** A página tem marcas de Shopify? */
   ehShopify: boolean;
+  /** O tema da Shopify em uso ("Dawn", "Prestige"…), para o preset certo (A10). */
+  tema: string | null;
+}
+
+/**
+ * O tema da Shopify que a loja usa (A10).
+ *
+ * Toda página de loja Shopify traz, no `content_for_header`, uma linha como
+ * `Shopify.theme = {"name":"Dawn - cópia","schema_name":"Dawn",…};`. Vale o
+ * `schema_name`, que é o do tema ORIGINAL: o nome que o lojista deu à cópia
+ * ("Dawn - cópia", "Tema de Natal") não diz de que tema ela veio. O `name`
+ * só entra quando o esquema não vem.
+ */
+export function temaDaShopify(html: string): string | null {
+  // Preguiçoso e limitado: o objeto é pequeno, e um `}` seguido de `;` fecha
+  // até a versão com o `style` aninhado.
+  const bloco = /Shopify\.theme\s*=\s*(\{[\s\S]{0,2000}?\})\s*;/.exec(html)?.[1];
+  if (bloco === undefined) return null;
+
+  let lido: unknown;
+  try {
+    lido = JSON.parse(bloco);
+  } catch {
+    // Tema que escreve o objeto fora do JSON: sem tema, e o lojista escolhe o preset.
+    return null;
+  }
+  if (lido === null || typeof lido !== 'object') return null;
+
+  const { schema_name: esquema, name: nome } = lido as { schema_name?: unknown; name?: unknown };
+  for (const valor of [esquema, nome]) {
+    if (typeof valor !== 'string') continue;
+    const limpo = valor.replace(/\s+/g, ' ').trim().slice(0, 80);
+    if (limpo !== '') return limpo;
+  }
+  return null;
 }
 
 /** Lê o conteúdo de uma metatag, por nome ou por propriedade. */
@@ -175,6 +210,7 @@ export function detectarMarca(html: string, urlDaLoja: string): MarcaDetectada {
     logo,
     descricao: meta(html, 'og:description') ?? meta(html, 'description'),
     ehShopify: pareceShopify(html),
+    tema: temaDaShopify(html),
   };
 }
 

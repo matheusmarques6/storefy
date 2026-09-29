@@ -8319,6 +8319,61 @@ select tests.ok('A07 revalidar',
 reset role;
 select tests.logout();
 
+-- ============================== grupo: o tema da loja (A10, migration 63)
+--
+-- O tema da Shopify lido da página da loja, para o editor sugerir o preset.
+-- O dono e o administrador gravam; o membro lê e não muda; outra empresa nem
+-- vê. O formato é conferido no banco: é texto que vem de um site de fora.
+
+select tests.login('a-owner@teste.local');
+set role authenticated;
+
+update public.stores set shopify_theme = 'Dawn' where id = (select loja_a from tests.lojas);
+
+select tests.ok('A10 tema',
+  (select shopify_theme = 'Dawn' from public.stores where id = (select loja_a from tests.lojas)),
+  'o dono grava o tema da loja');
+
+select tests.ok('A10 tema',
+  tests.bloqueado($q$update public.stores set shopify_theme = E'Dawn\x01'
+                      where id = (select loja_a from tests.lojas)$q$),
+  'tema com caractere de controle é recusado');
+
+select tests.ok('A10 tema',
+  tests.bloqueado($q$update public.stores set shopify_theme = repeat('x', 81)
+                      where id = (select loja_a from tests.lojas)$q$),
+  'tema com mais de 80 caracteres é recusado');
+
+reset role;
+select tests.login('a-member@teste.local');
+set role authenticated;
+
+update public.stores set shopify_theme = 'Impulse' where id = (select loja_a from tests.lojas);
+
+select tests.ok('A10 tema',
+  (select shopify_theme = 'Dawn' from public.stores where id = (select loja_a from tests.lojas)),
+  'o membro lê o tema, e não muda');
+
+reset role;
+select tests.login('b-owner@teste.local');
+set role authenticated;
+
+update public.stores set shopify_theme = 'Impulse' where id = (select loja_a from tests.lojas);
+
+select tests.ok('A10 tema',
+  tests.contar($q$select count(*) from public.stores
+                   where id = (select loja_a from tests.lojas)$q$) = 0,
+  'outra empresa nem vê a loja');
+
+reset role;
+
+select tests.ok('A10 tema',
+  (select shopify_theme = 'Dawn' from public.stores where id = (select loja_a from tests.lojas)),
+  'e não muda o tema dela');
+
+update public.stores set shopify_theme = null where id = (select loja_a from tests.lojas);
+select tests.logout();
+
 -- ============================== grupo: varredura de segurança (Fase 8)
 --
 -- Duas travas que valem para o schema inteiro, e não para uma tabela: uma

@@ -4,6 +4,7 @@ import {
   detectarMarca,
   nomeDoTitulo,
   pareceShopify,
+  temaDaShopify,
   temaSugerido,
 } from '@/lib/deteccao-da-loja';
 
@@ -22,7 +23,9 @@ const HTML_SHOPIFY = `<!doctype html>
   <meta property="og:image" content="//cdn.shopify.com/s/files/1/0001/capa.jpg">
   <link rel="apple-touch-icon" href="/cdn/shop/files/icone_180x.png">
   <link rel="icon" href="/favicon.ico">
-  <script>var Shopify = Shopify || {}; Shopify.shop = "oak-vintage.myshopify.com";</script>
+  <script>var Shopify = Shopify || {}; Shopify.shop = "oak-vintage.myshopify.com";
+Shopify.theme = {"name":"Dawn - cópia de Natal","id":136218345672,"schema_name":"Dawn","schema_version":"15.2.0","theme_store_id":887,"role":"main","style":{"id":null,"handle":null}};
+Shopify.locale = "pt-BR";</script>
 </head>
 <body></body></html>`;
 
@@ -108,6 +111,7 @@ describe('detectarMarca', () => {
       logo: 'https://oakvintage.com.br/cdn/shop/files/icone_180x.png',
       descricao: 'Peças únicas, garimpadas à mão.',
       ehShopify: true,
+      tema: 'Dawn',
     });
   });
 
@@ -136,6 +140,7 @@ describe('detectarMarca', () => {
       logo: null,
       descricao: null,
       ehShopify: false,
+      tema: null,
     });
   });
 
@@ -148,6 +153,41 @@ describe('detectarMarca', () => {
   it('ignora logo com esquema que não dá para baixar', () => {
     const html = '<head><link rel="apple-touch-icon" href="javascript:alert(1)"></head>';
     expect(detectarMarca(html, LOJA).logo).toBeNull();
+  });
+});
+
+describe('temaDaShopify', () => {
+  /* O nome que o lojista deu à cópia não diz de que tema ela veio; o esquema, sim. */
+  it('o tema original, e não o nome da cópia', () => {
+    expect(temaDaShopify(HTML_SHOPIFY)).toBe('Dawn');
+  });
+
+  it('sem o esquema, o nome; sem nenhum dos dois, nada', () => {
+    expect(temaDaShopify('<script>Shopify.theme = {"name":"Prestige","id":1};</script>')).toBe(
+      'Prestige',
+    );
+    expect(temaDaShopify('<script>Shopify.theme = {"id":1,"role":"main"};</script>')).toBeNull();
+  });
+
+  it('página que não é de Shopify, ou objeto que não é JSON: nada, sem estourar', () => {
+    for (const html of [
+      '<html><body>oi</body></html>',
+      '<script>Shopify.theme = {name: Dawn};</script>',
+      '<script>Shopify.theme = "Dawn";</script>',
+      '<script>Shopify.theme = {"schema_name": 42};</script>',
+    ]) {
+      expect(temaDaShopify(html), html).toBeNull();
+    }
+  });
+
+  it('espaço sobrando some, e o nome não passa de 80 caracteres', () => {
+    expect(temaDaShopify('<script>Shopify.theme = {"schema_name":"  Dawn \\n "};</script>')).toBe(
+      'Dawn',
+    );
+    const longo = 'x'.repeat(200);
+    expect(temaDaShopify(`<script>Shopify.theme = {"schema_name":"${longo}"};</script>`)).toBe(
+      'x'.repeat(80),
+    );
   });
 });
 

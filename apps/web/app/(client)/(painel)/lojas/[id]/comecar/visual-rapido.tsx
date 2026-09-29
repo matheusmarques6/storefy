@@ -17,6 +17,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Switch } from '@/components/ui/switch';
+import { AvisoDeContraste } from '../../../app/aviso-de-contraste';
 import { CampoDeCor } from '../../../app/campo-de-cor';
 import { CampoDeImagem } from '../../../app/campo-de-imagem';
 import { IconeDaAba } from '../../../app/icone-da-aba';
@@ -128,6 +129,9 @@ export function VisualRapido({
                 setConfig((atual) => editarTema(atual, { primary: cor, tabBarActive: cor }));
               }}
             />
+            <div className="mt-4 empty:hidden">
+              <AvisoDeContraste tema={config.theme} />
+            </div>
           </CardContent>
         </Card>
 
@@ -225,7 +229,7 @@ export function VisualRapido({
         </div>
       </div>
 
-      <div className="lg:sticky lg:top-6 lg:self-start">
+      <div className="lg:sticky lg:top-20 lg:self-start">
         <Previa
           config={config}
           abaAtiva={abaDaPrevia}

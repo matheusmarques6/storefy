@@ -1396,6 +1396,7 @@ export type Database = {
           shopify_client_id: string | null;
           shopify_client_secret_enc: string | null;
           shopify_token_expires_at: string | null;
+          shopify_theme: string | null;
         };
         Insert: {
           id?: string;
@@ -1415,6 +1416,7 @@ export type Database = {
           shopify_client_id?: string | null;
           shopify_client_secret_enc?: string | null;
           shopify_token_expires_at?: string | null;
+          shopify_theme?: string | null;
         };
         Update: {
           id?: string;
@@ -1434,6 +1436,7 @@ export type Database = {
           shopify_client_id?: string | null;
           shopify_client_secret_enc?: string | null;
           shopify_token_expires_at?: string | null;
+          shopify_theme?: string | null;
         };
         Relationships: [
           {

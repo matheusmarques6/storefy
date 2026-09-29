@@ -16,6 +16,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select } from '@/components/ui/select';
+import { Switch } from '@/components/ui/switch';
 import {
   anuncioDaOrdem,
   deslocamentoDaVizinha,
@@ -23,11 +24,13 @@ import {
   velocidadeDaRolagem,
 } from '@/lib/arrastar-abas';
 import {
+  BADGE_DO_TIPO,
   MAX_ABAS,
   MIN_ABAS,
   adicionarAba,
   editarAba,
   entradaDosAjustes,
+  mostrarNumeroDaAba,
   moverAba,
   podeAdicionarAba,
   podeRemoverAba,
@@ -48,7 +51,7 @@ const ROTULO_DO_TIPO: Record<Tab['type'], string> = {
 const EXPLICACAO_DO_TIPO: Record<Tab['type'], string> = {
   webview: 'Abre um endereço da sua loja, como uma coleção.',
   search: 'Abre a busca da loja.',
-  cart: 'Abre o carrinho e mostra a quantidade de itens.',
+  cart: 'Abre o carrinho da loja.',
   account: 'Abre a área de conta do cliente.',
   notifications: 'Caixa de avisos nativa. Disponível quando o push estiver configurado.',
 };
@@ -392,9 +395,28 @@ export function SecaoAbas({
                       </p>
                     </div>
                   ) : (
-                    <p className="text-muted-foreground self-center text-xs sm:col-span-2">
-                      {EXPLICACAO_DO_TIPO[aba.type]}
-                    </p>
+                    <div className="space-y-2 self-center sm:col-span-2">
+                      <p className="text-muted-foreground text-xs">
+                        {EXPLICACAO_DO_TIPO[aba.type]}
+                      </p>
+                      {BADGE_DO_TIPO[aba.type] === undefined ? null : (
+                        <div className="flex items-center justify-between gap-3">
+                          <span id={`aba-${aba.id}-numero`} className="text-sm">
+                            {aba.type === 'cart'
+                              ? 'Mostrar o número de itens sobre o ícone'
+                              : 'Mostrar quantos avisos não foram lidos'}
+                          </span>
+                          <Switch
+                            aria-labelledby={`aba-${aba.id}-numero`}
+                            checked={aba.badge !== 'none'}
+                            disabled={somenteLeitura}
+                            onCheckedChange={(ligado) => {
+                              aoMudar(mostrarNumeroDaAba(config, aba.id, ligado));
+                            }}
+                          />
+                        </div>
+                      )}
+                    </div>
                   )}
                 </div>
 

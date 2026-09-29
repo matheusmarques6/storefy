@@ -4,6 +4,7 @@ import {
   MOTIVO_PULO,
   SUPABASE_DISPONIVEL,
   bancoDeTeste,
+  criarLojaPelaTela,
   criarUsuarioConfirmado,
   emailDeTeste,
   entrar,
@@ -385,4 +386,95 @@ test('A07: revalidar a credencial marca o erro com o motivo e fica na auditoria'
     actor_id: idAdmin,
     diff: { status: { de: 'verified', para: 'error' }, verified_at: { para: null } },
   });
+});
+
+test('A10: o preset nasce de uma loja no ar, com o tema dela, e chega ao lojista daquele tema', async ({
+  browser,
+}) => {
+  const sufixo = Math.random().toString(36).slice(2, 8);
+  const loja = `Loja Modelo ${sufixo}`;
+  const empresa = `Empresa Modelo ${sufixo}`;
+  const preset = `Dawn — modelo ${sufixo}`;
+
+  // A loja modelo: publicada, com o tema lido da página (como o cadastro grava).
+  const cliente = await (await browser.newContext()).newPage();
+  const emailCliente = emailDeTeste('a10-cliente');
+  await criarUsuarioConfirmado(emailCliente, empresa);
+  await entrar(cliente, emailCliente);
+  const lojaId = await criarLojaPelaTela(cliente, loja, `loja-modelo-${sufixo}.com.br`);
+  await cliente.goto('/app');
+  await cliente.waitForLoadState('networkidle');
+  const barra = cliente.getByRole('region', { name: 'Publicação do app' });
+  await barra.getByRole('button', { name: /Publicar alterações/ }).click();
+  await cliente.getByRole('button', { name: 'Publicar agora' }).click();
+  await expect(cliente.getByText(/Versão \d+ publicada/)).toBeVisible();
+  const { error } = await bancoDeTeste()
+    .from('stores')
+    .update({ shopify_theme: 'Dawn' })
+    .eq('id', lojaId);
+  expect(error).toBeNull();
+
+  const admin = await (await browser.newContext()).newPage();
+  const emailAdmin = emailDeTeste('equipe-a10');
+  const idAdmin = await criarUsuarioConfirmado(emailAdmin, 'Equipe A10');
+  await tornarPlatformAdmin(idAdmin);
+  await entrar(admin, emailAdmin);
+  await admin.goto('/admin/presets');
+
+  // A loja aparece com o tema dela, e escolhê-la preenche o tema do preset.
+  await admin.getByLabel('Copiar de').selectOption({ label: `${loja} · ${empresa} · tema Dawn` });
+  await expect(admin.getByLabel('Tema da Shopify')).toHaveValue('Dawn');
+  await admin.getByLabel('Nome', { exact: true }).fill(preset);
+  await admin.getByRole('button', { name: 'Criar preset' }).click();
+  await expect(admin.getByText(`Preset "${preset}" criado a partir dessa loja.`)).toBeVisible();
+  const linha = admin.getByRole('row', { name: new RegExp(preset) });
+  await expect(linha).toContainText('Dawn');
+  await expect(linha.getByText('Visível')).toBeVisible();
+
+  // A curadoria fica na trilha, com quem da equipe fez.
+  const { data: criado } = await bancoDeTeste()
+    .from('config_presets')
+    .select('id')
+    .eq('nome', preset)
+    .single();
+  const idDoPreset = criado?.id ?? '';
+  const trilha = async (acao: 'create' | 'update' | 'delete') => {
+    const { data } = await bancoDeTeste()
+      .from('audit_logs')
+      .select('actor_id')
+      .eq('entity', 'config_presets')
+      .eq('entity_id', idDoPreset)
+      .eq('action', acao);
+    return (data ?? []).map((linhaDaTrilha) => linhaDaTrilha.actor_id);
+  };
+  expect(await trilha('create')).toEqual([idAdmin]);
+
+  try {
+    // O lojista do tema Dawn vê o preset em primeiro, marcado.
+    const itemDoPreset = cliente.locator('li').filter({ hasText: preset });
+    const abrirLoja = async () => {
+      await cliente.reload();
+      await cliente.waitForLoadState('networkidle');
+      await cliente
+        .getByRole('navigation', { name: 'Seções do editor' })
+        .getByRole('button', { name: 'Loja' })
+        .click();
+    };
+    await abrirLoja();
+    await expect(cliente.getByTestId('tema-da-loja')).toContainText('Sua loja usa o tema Dawn.');
+    await expect(itemDoPreset).toContainText('Feito para o seu tema');
+
+    // Desligado, some da lista do lojista.
+    await linha.getByRole('button', { name: 'Desligar' }).click();
+    await expect(linha.getByText('Desligado')).toBeVisible();
+    expect(await trilha('update')).toEqual([idAdmin]);
+    await abrirLoja();
+    await expect(itemDoPreset).toHaveCount(0);
+  } finally {
+    // Apagado, some da curadoria — e não fica para os outros testes.
+    await linha.getByRole('button', { name: 'Apagar' }).click();
+    await admin.getByRole('alertdialog').getByRole('button', { name: 'Apagar' }).click();
+    await expect(linha).toHaveCount(0);
+    await expect.poll(() => trilha('delete')).toEqual([idAdmin]);
+  }
 });

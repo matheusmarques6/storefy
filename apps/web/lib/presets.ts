@@ -159,3 +159,29 @@ export function resumoDaTroca(config: AppConfig, preset: Preset): string[] {
 
   return mudancas;
 }
+
+/**
+ * O nome de um tema, para comparar: sem acento, sem caixa, sem espaço sobrando.
+ * "Dawn", " dawn " e "DAWN" são o mesmo tema; o nome que a equipe digitou no
+ * preset e o que a página da loja declara nunca vêm iguais letra por letra.
+ */
+function nomeDoTema(texto: string): string {
+  return texto.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase().replace(/\s+/g, ' ').trim();
+}
+
+/** O preset é do tema que a loja usa? */
+export function presetDoTema(preset: Pick<Preset, 'tema'>, temaDaLoja: string | null): boolean {
+  if (temaDaLoja === null) return false;
+  const tema = nomeDoTema(temaDaLoja);
+  return tema !== '' && nomeDoTema(preset.tema) === tema;
+}
+
+/**
+ * Os presets com os do tema da loja na frente (A10). O resto mantém a ordem
+ * em que veio: só o que é do tema sobe.
+ */
+export function presetsPeloTema(presets: readonly Preset[], temaDaLoja: string | null): Preset[] {
+  const doTema = presets.filter((preset) => presetDoTema(preset, temaDaLoja));
+  const outros = presets.filter((preset) => !presetDoTema(preset, temaDaLoja));
+  return [...doTema, ...outros];
+}

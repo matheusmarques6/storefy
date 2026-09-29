@@ -132,6 +132,20 @@ export const lojaSchema = z.object({
    * pela Shopify ou pelos arquivos no site.
    */
   plataforma: z.enum(['shopify', 'other'], { error: 'Escolha a plataforma da loja.' }).optional(),
+  /*
+   * O tema da Shopify que a detecção leu da página (A10): uma dica para o
+   * editor sugerir o preset certo. Ausente é "não mexer". Não tem campo na
+   * tela, então valor estranho é ignorado em vez de virar um erro que o
+   * lojista não teria onde corrigir.
+   */
+  tema: z
+    .string()
+    .trim()
+    .min(1)
+    .max(80)
+    .regex(/^[^\p{Cc}]+$/u)
+    .optional()
+    .catch(undefined),
 });
 
 export const organizacaoSchema = z.object({

@@ -184,6 +184,7 @@ export function FormularioLoja({
             </p>
             <div className="mt-2 flex flex-wrap items-center gap-2">
               {marca.ehShopify ? <Badge variant="secondary">Shopify</Badge> : null}
+              {marca.tema === null ? null : <Badge variant="outline">Tema {marca.tema}</Badge>}
               {marca.corPrincipal === null ? (
                 <Badge variant="outline">Sem cor declarada</Badge>
               ) : (
@@ -242,6 +243,13 @@ export function FormularioLoja({
           <option value="other">Outra plataforma (Nuvemshop, WooCommerce, VTEX…)</option>
         </Select>
       </Campo>
+      {/*
+       * O tema lido da página vai junto, para o editor sugerir o preset feito
+       * para ele (A10). Só numa loja Shopify: nas outras, não há preset.
+       */}
+      {marca?.tema != null && plataforma === 'shopify' ? (
+        <input type="hidden" name="tema" value={marca.tema} />
+      ) : null}
 
       {comContato ? (
         <Campo

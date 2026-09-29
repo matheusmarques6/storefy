@@ -124,6 +124,8 @@ export default async function PaginaDoEditor() {
       ondeBaixarAPrevia={ondeBaixarAPrevia(plataforma)}
       historico={historico}
       presets={presets}
+      temaDaLoja={lojaAtiva.platform === 'shopify' ? lojaAtiva.shopify_theme : null}
+      lojaNaShopify={lojaAtiva.platform === 'shopify'}
       fuso={lojaAtiva.timezone}
       somenteLeitura={!podeEscrever(papel)}
       pushConfigurado={(app?.onesignal_app_id ?? null) !== null}

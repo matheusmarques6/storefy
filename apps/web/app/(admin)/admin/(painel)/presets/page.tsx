@@ -49,7 +49,7 @@ export default async function PaginaPresets() {
        */
       supabase
         .from('app_configs')
-        .select('app_id, apps!inner(stores!inner(name, organizations!inner(name)))')
+        .select('app_id, apps!inner(stores!inner(name, shopify_theme, organizations!inner(name)))')
         .eq('status', 'published')
         .order('published_at', { ascending: false })
         .limit(100),
@@ -64,7 +64,10 @@ export default async function PaginaPresets() {
 
   const lojas: LojaPublicada[] = configs.map((linha) => ({
     appId: linha.app_id,
-    rotulo: `${linha.apps.stores.name} · ${linha.apps.stores.organizations.name}`,
+    rotulo: `${linha.apps.stores.name} · ${linha.apps.stores.organizations.name}${
+      linha.apps.stores.shopify_theme === null ? '' : ` · tema ${linha.apps.stores.shopify_theme}`
+    }`,
+    tema: linha.apps.stores.shopify_theme,
   }));
 
   return (

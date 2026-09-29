@@ -2,6 +2,7 @@
 
 /** Nome, ícone, tela de abertura, cores e barra de status (C06a). */
 import type { AppConfig } from '@storefy/config-schema';
+import { AvisoDeContraste } from './aviso-de-contraste';
 import { CampoDeCor } from './campo-de-cor';
 import { CampoDeImagem } from './campo-de-imagem';
 import { CampoDeNome } from './campo-de-nome';
@@ -105,6 +106,8 @@ export function SecaoAparencia({
           fundo.
         </p>
       </div>
+
+      <AvisoDeContraste tema={config.theme} />
     </div>
   );
 }

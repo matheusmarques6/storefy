@@ -15,11 +15,22 @@
  * avisa; sair pelo menu do painel grava na hora o que estava esperando.
  */
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from 'react';
-import { AlertTriangle, Eye, MousePointerClick } from 'lucide-react';
+import {
+  AlertTriangle,
+  Eye,
+  History,
+  MousePointerClick,
+  Palette,
+  PanelBottom,
+  Sparkles,
+  Store,
+  type LucideIcon,
+} from 'lucide-react';
 import { toast } from 'sonner';
 import type { AppConfig } from '@storefy/config-schema';
 import type { VersaoDoHistorico, VersaoPublicada } from '@/lib/configs-servidor';
 import { editarWebview, validarConfig, type Problema } from '@/lib/editor-de-config';
+import { fundoDoApp } from '@/lib/fundo-do-app';
 import { cn } from '@/lib/utils';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
@@ -55,23 +66,31 @@ const ESPERA_PARA_GRAVAR_MS = 1000;
 
 type Secao = 'aparencia' | 'abas' | 'loja' | 'recursos' | 'versoes';
 
-const SECOES: { id: Secao; rotulo: string; descricao: string }[] = [
+const SECOES: { id: Secao; rotulo: string; descricao: string; icone: LucideIcon }[] = [
   {
     id: 'aparencia',
     rotulo: 'Aparência',
     descricao: 'Nome, ícone, tela de abertura, cores e barra de status.',
+    icone: Palette,
   },
-  { id: 'abas', rotulo: 'Abas', descricao: 'O que aparece na barra de baixo, e em que ordem.' },
-  { id: 'loja', rotulo: 'Loja', descricao: 'O que esconder do site dentro do app.' },
+  {
+    id: 'abas',
+    rotulo: 'Abas',
+    descricao: 'O que aparece na barra de baixo, e em que ordem.',
+    icone: PanelBottom,
+  },
+  { id: 'loja', rotulo: 'Loja', descricao: 'O que esconder do site dentro do app.', icone: Store },
   {
     id: 'recursos',
     rotulo: 'Recursos',
     descricao: 'Boas-vindas, banner, aviso no topo, notificações e Face ID.',
+    icone: Sparkles,
   },
   {
     id: 'versoes',
     rotulo: 'Versões',
     descricao: 'O que já foi publicado: comparar com o rascunho e voltar atrás.',
+    icone: History,
   },
 ];
 
@@ -87,6 +106,10 @@ interface Props {
   numeroExigivel: number | null;
   /** Presets de tema curados pela equipe (A10). Vazio some da tela. */
   presets: Preset[];
+  /** O tema da Shopify que a loja usa, lido da página (A10). */
+  temaDaLoja: string | null;
+  /** Os presets são de temas da Shopify: só nela dá para ler o tema. */
+  lojaNaShopify: boolean;
   /** O fuso da loja, para as datas do histórico de versões. */
   fuso: string;
   /** O nome embaixo do ícone (C06a). Fora da config: muda no próximo envio às lojas. */
@@ -108,6 +131,8 @@ export function Editor({
   pushConfigurado,
   numeroExigivel,
   presets,
+  temaDaLoja,
+  lojaNaShopify,
   fuso,
   nomeDoApp,
   urlDoIcone,
@@ -388,10 +413,19 @@ export function Editor({
         </Alert>
       ) : null}
 
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
-        <div className="space-y-4">
-          <nav aria-label="Seções do editor" className="flex flex-wrap gap-1">
-            {SECOES.map((item) => (
+      {/*
+       * Três colunas na tela larga (seção 9 do plano: navegação das seções ·
+       * propriedades · o celular ao vivo). Na média, as seções sobem para uma
+       * faixa em cima e ficam as duas colunas; no celular, tudo empilha.
+       */}
+      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px] xl:grid-cols-[176px_minmax(0,1fr)_320px]">
+        <nav
+          aria-label="Seções do editor"
+          className="flex flex-wrap gap-1 lg:col-span-2 xl:sticky xl:top-20 xl:col-span-1 xl:flex-col xl:self-start"
+        >
+          {SECOES.map((item) => {
+            const Icone = item.icone;
+            return (
               <button
                 key={item.id}
                 type="button"
@@ -400,17 +434,20 @@ export function Editor({
                   setSecao(item.id);
                 }}
                 className={cn(
-                  'rounded-lg px-3 py-2 text-sm font-medium transition-colors',
+                  'flex items-center gap-2 rounded-lg px-3 py-2 text-left text-sm font-medium transition-colors',
                   item.id === secao
                     ? 'bg-accent text-accent-foreground'
                     : 'text-muted-foreground hover:bg-accent/60',
                 )}
               >
+                <Icone className="size-4 shrink-0" aria-hidden />
                 {item.rotulo}
               </button>
-            ))}
-          </nav>
+            );
+          })}
+        </nav>
 
+        <div className="min-w-0">
           <Card>
             <CardHeader>
               <CardTitle className="text-base">{secaoAtual?.rotulo}</CardTitle>
@@ -442,6 +479,9 @@ export function Editor({
                   aoMudar={setConfig}
                   somenteLeitura={somenteLeitura}
                   presets={presets}
+                  storeId={storeId}
+                  temaDaLoja={temaDaLoja}
+                  lojaNaShopify={lojaNaShopify}
                 />
               ) : null}
               {secao === 'recursos' ? (
@@ -466,7 +506,7 @@ export function Editor({
           </Card>
         </div>
 
-        <div className="space-y-3 lg:sticky lg:top-6 lg:self-start">
+        <div className="space-y-3 lg:sticky lg:top-20 lg:self-start">
           <Previa
             config={config}
             abaAtiva={abaDaPrevia}
@@ -475,6 +515,7 @@ export function Editor({
             caminho={caminhoNaPrevia}
             selecionando={selecionando}
             aoEscolherSeletor={aoEscolherSeletor}
+            identidade={{ nomeDoApp, urlDoIcone, urlDaSplash, fundo: fundoDoApp(config) }}
           />
 
           {somenteLeitura ? null : (

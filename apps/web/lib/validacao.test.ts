@@ -51,6 +51,17 @@ describe('urlLojaSchema', () => {
 });
 
 describe('lojaSchema', () => {
+  /* O tema não tem campo na tela: valor estranho é ignorado, e não um erro sem onde corrigir. */
+  it('o tema lido da página vai junto; o que não é nome de tema some', () => {
+    const base = { nome: 'Minha Loja', url: 'minhaloja.com.br' };
+    expect(lojaSchema.parse({ ...base, tema: ' Dawn ' }).tema).toBe('Dawn');
+    for (const tema of ['', 'x'.repeat(81), 'Dawn\u0000', 42]) {
+      const resultado = lojaSchema.safeParse({ ...base, tema });
+      expect(resultado.success, String(tema)).toBe(true);
+      if (resultado.success) expect(resultado.data.tema).toBeUndefined();
+    }
+  });
+
   it('aceita nome e URL válidos', () => {
     const resultado = lojaSchema.parse({ nome: 'Minha Loja', url: 'minhaloja.com.br' });
     expect(resultado).toEqual({

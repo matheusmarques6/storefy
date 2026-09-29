@@ -64,6 +64,32 @@ describe('diferencasDaConfig', () => {
     ]);
   });
 
+  /* Antes, desligar o número da caixa de avisos aparecia como "sem o número do carrinho". */
+  it('o número sobre o ícone é dito pelo que ele conta', () => {
+    const avisos = {
+      id: 'avisos',
+      label: 'Avisos',
+      icon: 'bell',
+      type: 'notifications' as const,
+      badge: 'unread' as const,
+    };
+    const antes = copia();
+    antes.tabs = [...antes.tabs.slice(0, 3), avisos];
+    const depois = structuredClone(antes);
+    depois.tabs = depois.tabs.map((aba) =>
+      aba.id === 'avisos' || aba.id === 'carrinho' ? { ...aba, badge: 'none' as const } : aba,
+    );
+
+    expect(textos(antes, depois)).toEqual([
+      'Aba “Carrinho”: sem o número do carrinho',
+      'Aba “Avisos”: sem o número de avisos',
+    ]);
+    expect(textos(depois, antes)).toEqual([
+      'Aba “Carrinho”: mostra o número do carrinho',
+      'Aba “Avisos”: mostra quantos avisos não foram lidos',
+    ]);
+  });
+
   it('a mesma aba com as chaves em outra ordem não é mudança (o banco não guarda a ordem)', () => {
     const rascunho = copia();
     rascunho.tabs = rascunho.tabs.map(

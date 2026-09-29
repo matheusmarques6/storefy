@@ -9,6 +9,7 @@ import 'server-only';
  * com teto de tempo e de tamanho.
  */
 import { buscarPublico, type FalhaDaBusca } from '@/lib/busca-publica';
+import { temaDaShopify } from '@/lib/deteccao-da-loja';
 
 /** A loja pode demorar; o cadastro não pode ficar pendurado nela. */
 export const TEMPO_LIMITE_DA_LEITURA_MS = 8000;
@@ -18,7 +19,8 @@ const TAMANHO_MAXIMO_DA_PAGINA = 2 * 1024 * 1024;
 export const AGENTE_DA_STOREFY =
   'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0 Safari/537.36 StorefyBot';
 
-export type PaginaDaLoja = { ok: true; html: string; url: URL } | { ok: false; motivo: string };
+export type PaginaDaLoja =
+  { ok: true; html: string; url: URL } | { ok: false; motivo: string; falha: FalhaDaBusca };
 
 /** A falha da busca, dita ao lojista. */
 export function motivoDaFalha(falha: FalhaDaBusca, status?: number): string {
@@ -45,7 +47,9 @@ export async function lerPaginaDaLoja(url: URL, buscador?: typeof fetch): Promis
     agente: AGENTE_DA_STOREFY,
     ...(buscador === undefined ? {} : { buscador }),
   });
-  if (!lida.ok) return { ok: false, motivo: motivoDaFalha(lida.falha, lida.status) };
+  if (!lida.ok) {
+    return { ok: false, motivo: motivoDaFalha(lida.falha, lida.status), falha: lida.falha };
+  }
   return { ok: true, html: new TextDecoder('utf-8').decode(lida.corpo), url: lida.urlFinal };
 }
 
@@ -69,4 +73,33 @@ export async function confirmarShopify(base: URL, buscador?: typeof fetch): Prom
   } catch {
     return false;
   }
+}
+
+export type TemaDescoberto = { ok: true; tema: string } | { ok: false; motivo: string };
+
+/**
+ * Lê o tema da Shopify na página inicial da loja (A10), quando o lojista pede
+ * no editor — para a loja cadastrada antes da detecção, ou que trocou de tema.
+ */
+export async function descobrirTema(url: URL, buscador?: typeof fetch): Promise<TemaDescoberto> {
+  const pagina = await lerPaginaDaLoja(url, buscador);
+  if (!pagina.ok) {
+    // No editor não há campo para "preencher à mão", como no cadastro.
+    return {
+      ok: false,
+      motivo:
+        pagina.falha === 'rede' || pagina.falha === 'saltos'
+          ? 'Não conseguimos acessar a loja agora. Confira se o site está no ar e tente de novo.'
+          : pagina.motivo,
+    };
+  }
+  const tema = temaDaShopify(pagina.html);
+  if (tema === null) {
+    return {
+      ok: false,
+      motivo:
+        'A página da loja não diz qual é o tema. Escolha o preset pelo nome do tema, que aparece na Shopify em Loja virtual › Temas.',
+    };
+  }
+  return { ok: true, tema };
 }

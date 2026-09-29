@@ -105,6 +105,7 @@ export async function criarLoja(_anterior: EstadoLoja, dados: FormData): Promise
     nome: dados.get('nome'),
     url: dados.get('url'),
     plataforma: dados.get('plataforma') ?? undefined,
+    tema: dados.get('tema') ?? undefined,
   });
   if (!analise.success) return { erros: extrairErros(analise.error) };
 
@@ -120,6 +121,7 @@ export async function criarLoja(_anterior: EstadoLoja, dados: FormData): Promise
       shop_domain: new URL(analise.data.url).hostname,
       // A detecção preenche, o lojista confirma na tela. Sem escolha, Shopify.
       platform: analise.data.plataforma ?? 'shopify',
+      shopify_theme: analise.data.tema ?? null,
     })
     .select('id')
     .single();
@@ -185,6 +187,7 @@ export async function editarLoja(
     // Ausente quer dizer "não mexer" — o schema só confere o que veio.
     fuso: dados.get('fuso') ?? undefined,
     plataforma: dados.get('plataforma') ?? undefined,
+    tema: dados.get('tema') ?? undefined,
   });
   if (!analise.success) return { erros: extrairErros(analise.error), valores };
 
@@ -210,6 +213,7 @@ export async function editarLoja(
       support_email: analise.data.emailDeAtendimento,
       ...(analise.data.fuso === undefined ? {} : { timezone: analise.data.fuso }),
       ...(analise.data.plataforma === undefined ? {} : { platform: analise.data.plataforma }),
+      ...(analise.data.tema === undefined ? {} : { shopify_theme: analise.data.tema }),
     })
     .eq('id', lojaId)
     .select('id')

@@ -33,6 +33,7 @@ import {
 import { log } from '@/lib/log';
 import { lido } from '@/lib/leitura';
 import { garantirSegredoDoApp } from '@/lib/segredo-do-app';
+import { fundoDoApp } from '@/lib/fundo-do-app';
 
 export const dynamic = 'force-dynamic';
 
@@ -175,7 +176,7 @@ async function montar(buildId: string): Promise<DadosParaOBuild | null> {
     .eq('id', build.id)
     .eq('status', 'queued');
 
-  const tema = corDoTema(config.config);
+  const tema = fundoDoApp(config.config);
 
   // Meia hora: mais do que um build leva para baixar, e curto o bastante para
   // o link não sobreviver ao log da execução.
@@ -300,18 +301,6 @@ function lerCredenciais(
     appleTeamId: apple?.apple_team_id ?? null,
     googleServiceAccount: abrirOuNulo(google?.google_service_account_enc ?? null, descriptografar),
   };
-}
-
-/** A cor de fundo do tema, que preenche o alfa do ícone. */
-function corDoTema(config: unknown): string {
-  if (config === null || typeof config !== 'object') return '#ffffff';
-  const tema = (config as Record<string, unknown>).theme;
-  if (tema === null || typeof tema !== 'object') return '#ffffff';
-
-  const fundo = (tema as Record<string, unknown>).background;
-  return typeof fundo === 'string' && /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i.test(fundo)
-    ? fundo
-    : '#ffffff';
 }
 
 /** `https://www.loja.com.br/` vira `www.loja.com.br`. Endereço ilegível, `null`. */

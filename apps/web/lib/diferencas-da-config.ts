@@ -71,6 +71,17 @@ const NOME_DA_COR: Record<Exclude<keyof AppConfig['theme'], 'statusBar'>, string
   tabBarInactive: 'Cor das abas não selecionadas',
 };
 
+/**
+ * O número sobre o ícone, dito pelo que ele conta. Antes toda mudança era
+ * contada como a do carrinho — e desligar o número da caixa de avisos
+ * aparecia como "sem o número do carrinho".
+ */
+function mudancaDoNumero(aba: Tab): string {
+  if (aba.badge === 'cart_count') return 'mostra o número do carrinho';
+  if (aba.badge === 'unread') return 'mostra quantos avisos não foram lidos';
+  return aba.type === 'notifications' ? 'sem o número de avisos' : 'sem o número do carrinho';
+}
+
 const O_QUE_A_ABA_ABRE: Record<Tab['type'], string> = {
   webview: 'uma página da loja',
   search: 'a busca',
@@ -123,11 +134,7 @@ function diferencasDasAbas(de: AppConfig['tabs'], para: AppConfig['tabs']): Dife
     if (anterior.icon !== aba.icon) partes.push('ícone novo');
     if (anterior.type !== aba.type) partes.push(`agora abre ${O_QUE_A_ABA_ABRE[aba.type]}`);
     if ((anterior.url ?? '') !== (aba.url ?? '')) partes.push(`endereço ${aba.url ?? '—'}`);
-    if (anterior.badge !== aba.badge) {
-      partes.push(
-        aba.badge === 'cart_count' ? 'mostra o número do carrinho' : 'sem o número do carrinho',
-      );
-    }
+    if (anterior.badge !== aba.badge) partes.push(mudancaDoNumero(aba));
     const nome =
       anterior.label === aba.label
         ? `Aba ${entreAspas(aba.label)}`

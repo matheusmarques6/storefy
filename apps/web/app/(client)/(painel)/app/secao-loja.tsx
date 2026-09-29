@@ -14,6 +14,9 @@ import { AplicarPreset } from './aplicar-preset';
 
 export function SecaoLoja({
   presets,
+  storeId,
+  temaDaLoja,
+  lojaNaShopify,
   config,
   aoMudar,
   somenteLeitura,
@@ -22,6 +25,10 @@ export function SecaoLoja({
   aoMudar: (config: AppConfig) => void;
   /** Os presets de tema que a equipe curou. Vazio esconde o bloco inteiro. */
   presets: Preset[];
+  storeId: string;
+  /** O tema da Shopify que a loja usa (A10), para pôr o preset dele em primeiro. */
+  temaDaLoja: string | null;
+  lojaNaShopify: boolean;
   somenteLeitura: boolean;
 }) {
   const { webview } = config;
@@ -37,6 +44,9 @@ export function SecaoLoja({
       <AplicarPreset
         config={config}
         presets={presets}
+        storeId={storeId}
+        temaDaLoja={temaDaLoja}
+        lojaNaShopify={lojaNaShopify}
         aoMudar={aoMudar}
         somenteLeitura={somenteLeitura}
       />

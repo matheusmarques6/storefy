@@ -13,6 +13,7 @@ import {
   editarWebview,
   idLivre,
   linkDaLoja,
+  mostrarNumeroDaAba,
   moverAba,
   podeAdicionarAba,
   podeRemoverAba,
@@ -85,6 +86,34 @@ describe('adicionar e remover abas', () => {
     const semCarrinho = removerAba(base(), 'carrinho');
     const comCarrinho = adicionarAba(semCarrinho, 'cart');
     expect(comCarrinho.tabs.find((aba) => aba.type === 'cart')?.badge).toBe('cart_count');
+  });
+
+  /* C06b: o número sobre o ícone é escolha do lojista, mas só onde há o que contar. */
+  it('o número sobre o ícone liga e desliga no carrinho e na caixa de avisos', () => {
+    const comAvisos = adicionarAba(base(), 'notifications', { push: true });
+    const avisos = comAvisos.tabs.find((aba) => aba.type === 'notifications');
+    if (avisos === undefined) throw new Error('sem a aba de avisos');
+    expect(avisos.badge).toBe('unread');
+
+    const semNumero = mostrarNumeroDaAba(comAvisos, avisos.id, false);
+    expect(semNumero.tabs.find((aba) => aba.id === avisos.id)?.badge).toBe('none');
+    expect(
+      mostrarNumeroDaAba(semNumero, avisos.id, true).tabs.find((aba) => aba.id === avisos.id)
+        ?.badge,
+    ).toBe('unread');
+
+    const carrinho = mostrarNumeroDaAba(base(), 'carrinho', false);
+    expect(carrinho.tabs.find((aba) => aba.id === 'carrinho')?.badge).toBe('none');
+    // Só a aba pedida muda.
+    expect(carrinho.tabs.filter((aba) => aba.id !== 'carrinho')).toEqual(
+      base().tabs.filter((aba) => aba.id !== 'carrinho'),
+    );
+  });
+
+  it('aba sem o que contar não ganha número, e aba que não existe não muda nada', () => {
+    const config = base();
+    expect(mostrarNumeroDaAba(config, 'inicio', true)).toBe(config);
+    expect(mostrarNumeroDaAba(config, 'nao-existe', true)).toBe(config);
   });
 
   it('não deixa a barra ficar com menos de duas abas', () => {

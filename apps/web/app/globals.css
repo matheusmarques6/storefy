@@ -26,7 +26,8 @@
   --color-input: oklch(92% 0.004 286.3);
   --color-ring: oklch(21% 0.006 285.9);
 
-  --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  /* `--font-inter` vem do `next/font`, no `<html>` (app/layout.tsx). */
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
 }
 
 @layer base {
