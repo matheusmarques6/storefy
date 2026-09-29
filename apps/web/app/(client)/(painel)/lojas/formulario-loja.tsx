@@ -14,18 +14,22 @@ import { useActionState, useState, useTransition } from 'react';
 import { AlertCircle, Check, Search, Sparkles } from 'lucide-react';
 import { detectarLoja, type EstadoLoja } from './acoes';
 import type { MarcaDetectada } from '@/lib/deteccao-da-loja';
+import type { GrupoDeFusos } from '@/lib/fuso';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { BotaoEnviar } from '@/components/botao-enviar';
 import { Button } from '@/components/ui/button';
 import { Campo, propsDoCampo } from '@/components/campo';
 import { Input } from '@/components/ui/input';
+import { Select } from '@/components/ui/select';
 
 export function FormularioLoja({
   acao,
   nomeInicial = '',
   urlInicial = '',
   emailInicial = '',
+  fusoInicial = '',
+  gruposDeFusos,
   rotuloEnvio,
   carregando,
   comDeteccao = false,
@@ -35,6 +39,14 @@ export function FormularioLoja({
   nomeInicial?: string;
   urlInicial?: string;
   emailInicial?: string;
+  fusoInicial?: string;
+  /**
+   * As opções do fuso, montadas no SERVIDOR: os nomes vêm do `Intl`, e o do
+   * navegador pode chamar o mesmo fuso de outro jeito — a lista mudaria entre
+   * a primeira pintura e a hidratação. Sem a lista, o campo não aparece: o
+   * cadastro não pergunta o fuso, e o padrão do banco atende o Brasil.
+   */
+  gruposDeFusos?: GrupoDeFusos[];
   rotuloEnvio: string;
   carregando: string;
   /** A detecção só faz sentido no cadastro; na edição a loja já está lida. */
@@ -194,14 +206,48 @@ export function FormularioLoja({
           dica="Aparece na política de privacidade do app e na ficha das lojas de aplicativos. Pode deixar em branco por enquanto."
         >
           <Input
-            {...propsDoCampo('emailDeAtendimento', estado.erros?.emailDeAtendimento, false)}
+            {...propsDoCampo('emailDeAtendimento', estado.erros?.emailDeAtendimento, true)}
             type="email"
-            defaultValue={emailInicial}
+            // O que voltou do servidor, e não só o inicial: o React limpa o
+            // formulário no fim da ação, e a limpeza volta para ESTE valor.
+            defaultValue={estado.valores?.emailDeAtendimento ?? emailInicial}
             placeholder="atendimento@sualoja.com.br"
             autoComplete="email"
           />
         </Campo>
       ) : null}
+
+      {gruposDeFusos === undefined ? null : (
+        <Campo
+          id="fuso"
+          rotulo="Fuso horário"
+          erro={estado.erros?.fuso}
+          dica="O dos seus clientes. É a hora das campanhas agendadas, a que as automações respeitam para não mandar nada de madrugada e a que fecha o dia nos números."
+        >
+          {/*
+            A `key` segue o valor que voltou do servidor. Num `<select>`, o
+            React só aplica o `defaultValue` ao MONTAR — e a limpeza que ele faz
+            no fim da ação devolveria o fuso ao de antes, calada, depois de
+            qualquer erro em outro campo. Com a chave, o campo remonta com o
+            fuso escolhido e a limpeza volta para ele.
+          */}
+          <Select
+            key={estado.valores?.fuso ?? fusoInicial}
+            {...propsDoCampo('fuso', estado.erros?.fuso, true)}
+            defaultValue={estado.valores?.fuso ?? fusoInicial}
+          >
+            {gruposDeFusos.map((grupo) => (
+              <optgroup key={grupo.rotulo} label={grupo.rotulo}>
+                {grupo.opcoes.map((opcao) => (
+                  <option key={opcao.valor} value={opcao.valor}>
+                    {opcao.rotulo}
+                  </option>
+                ))}
+              </optgroup>
+            ))}
+          </Select>
+        </Campo>
+      )}
 
       {/* A cor detectada entra no rascunho do app. O servidor revalida. */}
       <input type="hidden" name="corDetectada" value={marca?.corPrincipal ?? ''} />

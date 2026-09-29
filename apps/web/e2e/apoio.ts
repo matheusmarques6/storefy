@@ -29,6 +29,33 @@ function admin() {
   });
 }
 
+/**
+ * O banco visto de fora, para o teste conferir o que a TELA gravou.
+ *
+ * Só leitura de conferência: nenhum teste deve preparar dado por aqui o que a
+ * interface consegue fazer — senão o teste prova o banco, e não o produto.
+ */
+export function bancoDeTeste() {
+  return admin();
+}
+
+/** Cadastra uma loja pela interface e devolve o id dela. */
+export async function criarLojaPelaTela(
+  page: Page,
+  nome: string,
+  endereco: string,
+): Promise<string> {
+  await page.goto('/lojas/nova');
+  await page.getByLabel('Nome da loja').fill(nome);
+  await page.getByLabel('Endereço da loja').fill(endereco);
+  await page.getByRole('button', { name: 'Criar loja' }).click();
+  await page.waitForURL(/\/lojas\/[0-9a-f-]{36}\?criada=1/);
+
+  const id = /\/lojas\/([0-9a-f-]{36})/.exec(page.url())?.[1];
+  if (id === undefined) throw new Error(`A loja não foi criada: ${page.url()}`);
+  return id;
+}
+
 export function emailDeTeste(rotulo: string): string {
   const aleatorio = Math.random().toString(36).slice(2, 10);
   return `${PREFIXO}+${rotulo}-${aleatorio}@exemplo.test`;

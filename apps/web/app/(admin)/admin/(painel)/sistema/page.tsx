@@ -16,7 +16,7 @@
  * anotar para depois.
  */
 import type { Metadata } from 'next';
-import { CheckCircle2, CircleSlash, Settings, TriangleAlert } from 'lucide-react';
+import { CheckCircle2, CircleSlash, MinusCircle, Settings, TriangleAlert } from 'lucide-react';
 import { exigirPlatformAdmin } from '@/lib/contexto';
 import { conferir, resumo, variaveisCobertas } from '@/lib/configuracoes-sistema';
 import type { IntegracaoConferida } from '@/lib/configuracoes-sistema';
@@ -62,8 +62,9 @@ export default async function PaginaSistema() {
 
   const conferidas = conferir(presentes);
   const r = resumo(conferidas);
-  const essenciais = conferidas.filter((i) => i.essencial);
-  const opcionais = conferidas.filter((i) => !i.essencial);
+  const essenciais = conferidas.filter((i) => i.nivel === 'essencial');
+  const porRecurso = conferidas.filter((i) => i.nivel === 'recurso');
+  const opcionais = conferidas.filter((i) => i.nivel === 'opcional');
 
   return (
     <div className="space-y-6">
@@ -94,7 +95,10 @@ export default async function PaginaSistema() {
             <CheckCircle2 className="text-foreground mt-0.5 size-4 shrink-0" aria-hidden />
             <span>
               As configurações essenciais estão no lugar. {r.completas} de {r.total} integrações
-              completas.
+              necessárias completas
+              {opcionais.length === 0
+                ? '.'
+                : `, e ${String(r.opcionaisEmUso)} de ${String(opcionais.length)} opcionais em uso.`}
             </span>
           </CardContent>
         </Card>
@@ -104,6 +108,11 @@ export default async function PaginaSistema() {
       <Secao
         titulo="Por recurso"
         descricao="Cada uma liga uma parte do produto. Faltando, só aquela parte fica indisponível."
+        itens={porRecurso}
+      />
+      <Secao
+        titulo="Opcionais"
+        descricao="Nada deixa de funcionar sem elas. Ligue quando quiser o que cada uma oferece."
         itens={opcionais}
       />
 
@@ -158,27 +167,16 @@ function Secao({
             <CardHeader className="pb-3">
               <div className="flex items-start justify-between gap-2">
                 <CardTitle className="text-base">{item.nome}</CardTitle>
-                {item.completa ? (
-                  <Badge variant="secondary" className="shrink-0 gap-1">
-                    <CheckCircle2 className="size-3" aria-hidden />
-                    Configurada
-                  </Badge>
-                ) : (
-                  <Badge
-                    variant={item.essencial ? 'destructive' : 'outline'}
-                    className="shrink-0 gap-1"
-                  >
-                    <CircleSlash className="size-3" aria-hidden />
-                    Faltando
-                  </Badge>
-                )}
+                <Situacao item={item} />
               </div>
               <CardDescription>{item.oQueQuebra}</CardDescription>
             </CardHeader>
             <CardContent className="pt-0">
               <ul className="flex flex-wrap gap-1">
                 {item.variaveis.map((nome) => {
-                  const falta = item.faltando.includes(nome);
+                  // Opcional desligada não "falta": a chave fica neutra, sem
+                  // o tracejado vermelho de quem precisa de conserto.
+                  const falta = item.nivel !== 'opcional' && item.faltando.includes(nome);
                   return (
                     <li
                       key={nome}
@@ -198,5 +196,36 @@ function Secao({
         ))}
       </div>
     </section>
+  );
+}
+
+/** O selo de cada integração: configurada, faltando, ou — se opcional — não usada. */
+function Situacao({ item }: { item: IntegracaoConferida }) {
+  if (item.completa) {
+    return (
+      <Badge variant="secondary" className="shrink-0 gap-1">
+        <CheckCircle2 className="size-3" aria-hidden />
+        Configurada
+      </Badge>
+    );
+  }
+
+  if (item.nivel === 'opcional') {
+    return (
+      <Badge variant="outline" className="text-muted-foreground shrink-0 gap-1">
+        <MinusCircle className="size-3" aria-hidden />
+        Não usado
+      </Badge>
+    );
+  }
+
+  return (
+    <Badge
+      variant={item.nivel === 'essencial' ? 'destructive' : 'outline'}
+      className="shrink-0 gap-1"
+    >
+      <CircleSlash className="size-3" aria-hidden />
+      Faltando
+    </Badge>
   );
 }

@@ -31,6 +31,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { EstadoVazio } from '@/components/estado-vazio';
 import { cn } from '@/lib/utils';
+import { FUSO_PADRAO, formatarDataHora } from '@/lib/fuso';
 import {
   Table,
   TableBody,
@@ -159,7 +160,7 @@ export default async function PaginaBuilds({
                         </Badge>
                       </TableCell>
                       <TableCell className="text-muted-foreground text-sm">
-                        {new Date(build.created_at).toLocaleString('pt-BR')}
+                        {formatarDataHora(build.created_at, FUSO_PADRAO)}
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center justify-end gap-2">

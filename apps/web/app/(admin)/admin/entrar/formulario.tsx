@@ -29,6 +29,7 @@ export function FormularioLoginAdmin() {
           <Campo id="email" rotulo="E-mail" erro={estado.erros?.email}>
             <Input
               {...propsDoCampo('email', estado.erros?.email)}
+              defaultValue={estado.valores?.email}
               type="email"
               autoComplete="email"
               required

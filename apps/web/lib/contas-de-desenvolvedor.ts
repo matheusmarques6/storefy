@@ -15,6 +15,7 @@ import 'server-only';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '@storefy/db';
 import { criptografar } from '@/lib/cripto';
+import { FALHA_GENERICA, mensagemDaFalha } from '@/lib/erros';
 
 type Client = SupabaseClient<Database>;
 
@@ -97,7 +98,9 @@ export async function guardarChaveDaApple(
     { onConflict: 'org_id,platform' },
   );
 
-  return error == null ? { ok: true } : { ok: false, motivo: error.message };
+  return error == null
+    ? { ok: true }
+    : { ok: false, motivo: mensagemDaFalha('contas', error, FALHA_GENERICA) };
 }
 
 /** Guarda a conta de serviço do Google já validada. */
@@ -120,7 +123,9 @@ export async function guardarContaDoGoogle(
     { onConflict: 'org_id,platform' },
   );
 
-  return error == null ? { ok: true } : { ok: false, motivo: error.message };
+  return error == null
+    ? { ok: true }
+    : { ok: false, motivo: mensagemDaFalha('contas', error, FALHA_GENERICA) };
 }
 
 /**
@@ -172,5 +177,7 @@ export async function desconectar(
     .eq('org_id', orgId)
     .eq('platform', plataforma);
 
-  return error == null ? { ok: true } : { ok: false, motivo: error.message };
+  return error == null
+    ? { ok: true }
+    : { ok: false, motivo: mensagemDaFalha('contas', error, FALHA_GENERICA) };
 }

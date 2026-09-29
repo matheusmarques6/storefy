@@ -3,6 +3,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { ROTULO_PAPEL, ROTULO_STATUS_ORG, podeEscrever } from '@storefy/db';
 import { exigirContextoCliente } from '@/lib/contexto';
+import { FUSO_PADRAO, formatarData } from '@/lib/fuso';
 import { FormularioOrganizacao } from './formularios';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -66,16 +67,12 @@ export default async function PaginaConfiguracoes() {
             </div>
             <div>
               <dt className="text-muted-foreground">Criada em</dt>
-              <dd className="mt-1">
-                {new Date(organizacao.created_at).toLocaleDateString('pt-BR')}
-              </dd>
+              <dd className="mt-1">{formatarData(organizacao.created_at, FUSO_PADRAO)}</dd>
             </div>
             {organizacao.trial_ends_at == null ? null : (
               <div>
                 <dt className="text-muted-foreground">Teste até</dt>
-                <dd className="mt-1">
-                  {new Date(organizacao.trial_ends_at).toLocaleDateString('pt-BR')}
-                </dd>
+                <dd className="mt-1">{formatarData(organizacao.trial_ends_at, FUSO_PADRAO)}</dd>
               </div>
             )}
           </dl>

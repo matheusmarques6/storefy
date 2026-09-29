@@ -7,6 +7,7 @@ import { exigirPlatformAdmin } from '@/lib/contexto';
 import { criarClientServidor } from '@/lib/supabase/server';
 import { CampoBusca, Paginacao, lerParams } from '../paginacao';
 import { termoParaIlike } from '@/lib/listagem';
+import { FUSO_PADRAO, formatarData } from '@/lib/fuso';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -97,7 +98,7 @@ export default async function PaginaOrganizacoes({
                       <Badge variant="secondary">{ROTULO_STATUS_ORG[org.status]}</Badge>
                     </TableCell>
                     <TableCell className="text-muted-foreground">
-                      {new Date(org.created_at).toLocaleDateString('pt-BR')}
+                      {formatarData(org.created_at, FUSO_PADRAO)}
                     </TableCell>
                     <TableCell className="text-right">
                       <Button variant="ghost" size="sm" asChild>

@@ -5,22 +5,16 @@ import { notFound } from 'next/navigation';
 import { ChevronLeft } from 'lucide-react';
 import { exigirContextoCliente } from '@/lib/contexto';
 import { criarClientServidor } from '@/lib/supabase/server';
-import { aparelhosRecentes, appDaLoja, buscarCampanha } from '@/lib/push-servidor';
+import { aparelhosRecentes, appDaLoja, buscarCampanha, contarAparelhos } from '@/lib/push-servidor';
+import { criarClientServiceRole } from '@/lib/supabase/admin';
+import { estadoDasNotificacoes } from '@/lib/ativar-push';
 import { podeEditar } from '@/lib/campanha';
+import { nomeDoFuso, paraCampoLocal } from '@/lib/fuso';
 import { EstadoVazio } from '@/components/estado-vazio';
 import { Button } from '@/components/ui/button';
 import { EditarCampanha } from './editar-campanha';
 
 export const metadata: Metadata = { title: 'Editar campanha' };
-
-/** ISO do banco para o formato que o `datetime-local` aceita, no fuso local. */
-function paraCampoLocal(iso: string | null): string {
-  if (iso === null) return '';
-  const data = new Date(iso);
-  if (Number.isNaN(data.getTime())) return '';
-  const local = new Date(data.getTime() - data.getTimezoneOffset() * 60_000);
-  return local.toISOString().slice(0, 16);
-}
 
 export default async function PaginaDeEdicao({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -34,7 +28,13 @@ export default async function PaginaDeEdicao({ params }: { params: Promise<{ id:
   const campanha = await buscarCampanha(supabase, app.id, id);
   if (campanha == null) notFound();
 
-  const aparelhos = await aparelhosRecentes(supabase, app.id);
+  const [aparelhos, alcance, notificacoes] = await Promise.all([
+    aparelhosRecentes(supabase, app.id),
+    contarAparelhos(supabase, app.id),
+    // Service role porque precisa saber se os SEGREDOS existem; volta só
+    // booleano e texto (ver a página da lista).
+    estadoDasNotificacoes(criarClientServiceRole(), lojaAtiva.id),
+  ]);
 
   if (papel !== 'owner' && papel !== 'admin') {
     return (
@@ -86,14 +86,21 @@ export default async function PaginaDeEdicao({ params }: { params: Promise<{ id:
 
       <EditarCampanha
         campanhaId={campanha.id}
+        rascunho={campanha.status === 'draft'}
         nomeDoApp={lojaAtiva.name}
         urlDaLoja={lojaAtiva.primary_url}
+        fuso={lojaAtiva.timezone}
+        nomeDoFuso={nomeDoFuso(lojaAtiva.timezone)}
         aparelhos={aparelhos}
+        alcance={alcance}
+        notificacoesLigadas={notificacoes.ligado}
         iniciais={{
           title: campanha.title,
           body: campanha.body,
           deepLink: campanha.deepLink ?? '',
-          agendarPara: paraCampoLocal(campanha.scheduledAt),
+          // No fuso DA LOJA, e não no do servidor: era o que fazia a hora
+          // errada voltar "certa" na edição e o defeito ficar invisível.
+          agendarPara: paraCampoLocal(campanha.scheduledAt, lojaAtiva.timezone),
           enviarAgora: campanha.status === 'draft',
         }}
       />

@@ -10,7 +10,14 @@
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { cookies } from 'next/headers';
-import { extrairErros, lojaSchema, urlLojaSchema, type ErrosDeCampo } from '@/lib/validacao';
+import {
+  extrairErros,
+  lojaSchema,
+  urlLojaSchema,
+  valoresDigitados,
+  type ErrosDeCampo,
+  type ValoresDigitados,
+} from '@/lib/validacao';
 import { criarClientServidor } from '@/lib/supabase/server';
 import { COOKIE_LOJA, exigirContextoCliente } from '@/lib/contexto';
 import { garantirRascunho, salvarRascunho } from '@/lib/configs-servidor';
@@ -21,10 +28,13 @@ import {
   type MarcaDetectada,
 } from '@/lib/deteccao-da-loja';
 import { ehHostPublico } from '@/lib/preview-proxy';
+import { mensagemDaFalha } from '@/lib/erros';
 
 export interface EstadoLoja {
   erros?: ErrosDeCampo;
   mensagem?: string;
+  /** O que foi digitado nos campos não controlados, para não se apagarem no erro. */
+  valores?: ValoresDigitados;
 }
 
 export type ResultadoDaDeteccao =
@@ -143,7 +153,11 @@ function traduzirErroBanco(codigo: string, mensagem: string): string {
   if (codigo === '42501' || codigo === 'PGRST301') {
     return 'Você não tem permissão para esta ação. Fale com o proprietário da empresa.';
   }
-  return mensagem !== '' ? mensagem : 'Não foi possível salvar. Tente novamente.';
+  return mensagemDaFalha(
+    'lojas',
+    { code: codigo, message: mensagem },
+    'Não foi possível salvar agora. Tente de novo em instantes.',
+  );
 }
 
 export async function criarLoja(_anterior: EstadoLoja, dados: FormData): Promise<EstadoLoja> {
@@ -219,12 +233,15 @@ export async function editarLoja(
   _anterior: EstadoLoja,
   dados: FormData,
 ): Promise<EstadoLoja> {
+  const valores = valoresDigitados(dados, ['emailDeAtendimento', 'fuso']);
   const analise = lojaSchema.safeParse({
     nome: dados.get('nome'),
     url: dados.get('url'),
     emailDeAtendimento: dados.get('emailDeAtendimento') ?? '',
+    // Ausente quer dizer "não mexer" — o schema só confere o que veio.
+    fuso: dados.get('fuso') ?? undefined,
   });
-  if (!analise.success) return { erros: extrairErros(analise.error) };
+  if (!analise.success) return { erros: extrairErros(analise.error), valores };
 
   const supabase = await criarClientServidor();
   const { data: atualizada, error } = await supabase
@@ -234,19 +251,27 @@ export async function editarLoja(
       primary_url: analise.data.url,
       shop_domain: new URL(analise.data.url).hostname,
       support_email: analise.data.emailDeAtendimento,
+      ...(analise.data.fuso === undefined ? {} : { timezone: analise.data.fuso }),
     })
     .eq('id', lojaId)
     .select('id')
     .maybeSingle();
 
   if (error != null) {
-    return { mensagem: traduzirErroBanco(error.code, error.message) };
+    // O banco confere o fuso de novo (migration `fuso_da_loja`). Só chega aqui
+    // um fuso que o `Intl` conhece e o Postgres não — versões diferentes do
+    // banco de fusos —, e a resposta certa é a mesma do schema.
+    if (error.message.startsWith('fuso_desconhecido')) {
+      return { erros: { fuso: 'Este fuso não é aceito. Escolha outro da lista.' }, valores };
+    }
+    return { mensagem: traduzirErroBanco(error.code, error.message), valores };
   }
   // Sem erro e sem linha: a RLS filtrou o UPDATE (papel insuficiente).
   if (atualizada == null) {
     return {
       mensagem:
         'Você não tem permissão para editar esta loja. Apenas proprietários e administradores podem.',
+      valores,
     };
   }
 

@@ -85,7 +85,7 @@ export default async function PaginaDePublicacao() {
         )}
       />
 
-      <HistoricoDeBuilds builds={dados.builds} />
+      <HistoricoDeBuilds builds={dados.builds} fuso={lojaAtiva.timezone} />
     </div>
   );
 }

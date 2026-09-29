@@ -17,6 +17,7 @@ import { toast } from 'sonner';
 import type { PlatformAdminRole } from '@storefy/db';
 import { ROTULO_PAPEL_ADMIN } from '@/lib/equipe-admin';
 import { convidarAdmin, mudarPapelDoAdmin, removerAdmin, type EstadoDaEquipe } from './acoes';
+import { valoresDigitados, type ValoresDigitados } from '@/lib/validacao';
 import { Button } from '@/components/ui/button';
 import { Campo, propsDoCampo } from '@/components/campo';
 import { Input } from '@/components/ui/input';
@@ -35,20 +36,21 @@ import {
 export function Convidar() {
   const router = useRouter();
 
-  const [estado, enviar, enviando] = useActionState<EstadoDaEquipe, FormData>(
-    async (anterior, dados) => {
-      const resultado = await convidarAdmin(anterior, dados);
+  const [estado, enviar, enviando] = useActionState<
+    EstadoDaEquipe & { valores?: ValoresDigitados },
+    FormData
+  >(async (anterior, dados) => {
+    const resultado = await convidarAdmin(anterior, dados);
 
-      if (resultado.ok === true) {
-        toast.success(resultado.mensagem ?? 'Pessoa adicionada.');
-        router.refresh();
-      } else if (resultado.mensagem != null) {
-        toast.error(resultado.mensagem);
-      }
-      return resultado;
-    },
-    {},
-  );
+    if (resultado.ok === true) {
+      toast.success(resultado.mensagem ?? 'Pessoa adicionada.');
+      router.refresh();
+      return { ...resultado, valores: {} };
+    }
+    if (resultado.mensagem != null) toast.error(resultado.mensagem);
+    // Recusado, o e-mail e o papel escolhidos continuam no formulário.
+    return { ...resultado, valores: valoresDigitados(dados, ['email', 'papel']) };
+  }, {});
 
   return (
     <Card>
@@ -64,6 +66,7 @@ export function Convidar() {
           <Campo id="email" rotulo="E-mail" dica="O mesmo com que ela entra na Storefy.">
             <Input
               {...propsDoCampo('email', undefined, true)}
+              defaultValue={estado.valores?.email}
               type="email"
               placeholder="pessoa@convertfy.me"
               autoComplete="off"
@@ -72,9 +75,16 @@ export function Convidar() {
           </Campo>
 
           <Campo id="papel" rotulo="Papel" dica="Suporte vê tudo, mas não altera a equipe.">
+            {/*
+              `key` pelo papel devolvido: num `<select>` o React só aplica o
+              `defaultValue` ao montar, e sem remontar a limpeza do fim da
+              ação voltaria para "Suporte" — quem escolheu superadmin e errou
+              o e-mail adicionaria a pessoa com o papel errado no envio seguinte.
+            */}
             <select
+              key={estado.valores?.papel ?? 'support'}
               {...propsDoCampo('papel', undefined, true)}
-              defaultValue="support"
+              defaultValue={estado.valores?.papel ?? 'support'}
               className="border-input bg-background focus-visible:ring-ring h-10 w-full rounded-xl border px-3 text-sm focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
             >
               <option value="support">Suporte</option>

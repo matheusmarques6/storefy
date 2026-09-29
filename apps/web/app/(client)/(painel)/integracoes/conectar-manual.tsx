@@ -31,6 +31,7 @@ import { ChevronDown, ExternalLink, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { conferirDominioDigitado, rotuloDoEscopo, type SituacaoDaShopify } from '@/lib/integracoes';
 import { conectarShopifyManual, type EstadoDaIntegracao } from './acoes';
+import { valoresDigitados, type ValoresDigitados } from '@/lib/validacao';
 import { Button } from '@/components/ui/button';
 import { Campo, propsDoCampo } from '@/components/campo';
 import { Input } from '@/components/ui/input';
@@ -53,20 +54,22 @@ export function ConectarManual({
   const [erroDoDominio, setErroDoDominio] = useState<string | undefined>(undefined);
   const [passosAbertos, setPassosAbertos] = useState(!conectada && !alternativo);
 
-  const [estado, enviar, enviando] = useActionState<EstadoDaIntegracao, FormData>(
-    async (anterior, dados) => {
-      const resultado = await conectarShopifyManual(anterior, dados);
+  const [estado, enviar, enviando] = useActionState<
+    EstadoDaIntegracao & { valores?: ValoresDigitados },
+    FormData
+  >(async (anterior, dados) => {
+    const resultado = await conectarShopifyManual(anterior, dados);
 
-      if (resultado.ok === true) {
-        toast.success(resultado.mensagem ?? 'Loja conectada.');
-        router.refresh();
-      } else if (resultado.mensagem != null) {
-        toast.error(resultado.mensagem);
-      }
-      return resultado;
-    },
-    {},
-  );
+    if (resultado.ok === true) {
+      toast.success(resultado.mensagem ?? 'Loja conectada.');
+      router.refresh();
+    } else if (resultado.mensagem != null) {
+      toast.error(resultado.mensagem);
+    }
+    // O Client ID que o lojista acabou de colar continua no campo, dê certo
+    // ou não. O segredo e o token não entram na lista: nunca voltam à tela.
+    return { ...resultado, valores: valoresDigitados(dados, ['clientId']) };
+  }, {});
 
   return (
     <div className={alternativo ? 'space-y-4 border-t pt-4' : 'space-y-4'}>
@@ -124,7 +127,7 @@ export function ConectarManual({
         <Campo id="clientId" rotulo="Client ID" dica="No app que você criou, em Configurações.">
           <Input
             {...propsDoCampo('clientId', undefined, true)}
-            defaultValue={situacao.clientId ?? ''}
+            defaultValue={estado.valores?.clientId ?? situacao.clientId ?? ''}
             placeholder="Cole aqui"
             autoComplete="off"
             spellCheck={false}

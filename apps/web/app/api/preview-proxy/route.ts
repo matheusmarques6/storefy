@@ -14,6 +14,7 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { criarClientServidor } from '@/lib/supabase/server';
 import {
+  avaliarRespostaDaLoja,
   cssDaPrevia,
   destinoDaPrevia,
   ehHostPublico,
@@ -127,10 +128,11 @@ export async function GET(requisicao: NextRequest): Promise<NextResponse> {
     clearTimeout(alarme);
   }
 
-  const tipo = resposta.headers.get('content-type') ?? '';
-  if (!tipo.toLowerCase().includes('html')) {
-    return erro(415, 'Este endereço não é uma página da loja.');
-  }
+  const avaliada = avaliarRespostaDaLoja(
+    resposta.status,
+    resposta.headers.get('content-type') ?? '',
+  );
+  if (!avaliada.ok) return erro(avaliada.status, avaliada.mensagem);
 
   const bruto = await resposta.arrayBuffer();
   if (bruto.byteLength > TAMANHO_MAXIMO) {

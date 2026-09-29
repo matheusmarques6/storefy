@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  avaliarRespostaDaLoja,
   MARCA_DA_PREVIA,
   cssDaPrevia,
   destinoDaPrevia,
@@ -228,5 +229,45 @@ describe('cssDaPrevia', () => {
 
   it('lista vazia não vira CSS nenhum', () => {
     expect(cssDaPrevia([])).toBe('');
+  });
+});
+
+describe('avaliarRespostaDaLoja', () => {
+  /*
+   * A página de erro da PRÓPRIA loja aparece: é o que o app vai mostrar num
+   * produto que não existe, e esconder isso atrás de um aviso nosso tiraria a
+   * prévia do papel de prévia.
+   */
+  it('HTML aparece com qualquer status, inclusive a página de 404 da loja', () => {
+    expect(avaliarRespostaDaLoja(200, 'text/html; charset=utf-8')).toEqual({ ok: true });
+    expect(avaliarRespostaDaLoja(404, 'text/html')).toEqual({ ok: true });
+    expect(avaliarRespostaDaLoja(500, 'TEXT/HTML')).toEqual({ ok: true });
+  });
+
+  /*
+   * O caso que a primeira versão errava: um 403 de CDN virava "não é uma
+   * página da loja", e o lojista iria conferir um endereço que estava certo.
+   */
+  it('erro que não é HTML diz que a LOJA respondeu com erro, e qual', () => {
+    const r = avaliarRespostaDaLoja(403, 'text/plain');
+    expect(r.ok).toBe(false);
+    if (!r.ok) {
+      expect(r.mensagem).toContain('403');
+      expect(r.mensagem).toContain('no ar');
+      expect(r.mensagem).not.toContain('não é uma página');
+    }
+  });
+
+  it('sucesso que não é HTML é um endereço que não é página', () => {
+    const r = avaliarRespostaDaLoja(200, 'image/png');
+    expect(r.ok).toBe(false);
+    if (!r.ok) {
+      expect(r.status).toBe(415);
+      expect(r.mensagem).toContain('não é uma página');
+    }
+  });
+
+  it('resposta sem tipo nenhum não é tratada como página', () => {
+    expect(avaliarRespostaDaLoja(200, '').ok).toBe(false);
   });
 });

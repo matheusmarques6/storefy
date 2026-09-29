@@ -11,6 +11,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '@storefy/db';
 import type { AppConfig } from '@storefy/config-schema';
 import { decidirRascunho } from '@/lib/rascunho';
+import { FALHA_GENERICA, mensagemDaFalha } from '@/lib/erros';
 
 type Client = SupabaseClient<Database>;
 
@@ -101,7 +102,8 @@ export async function garantirRascunho(
       config: decisao.config,
       status: 'draft',
     });
-    if (error != null) return { ok: false, motivo: error.message };
+    if (error != null)
+      return { ok: false, motivo: mensagemDaFalha('configs', error, FALHA_GENERICA) };
   }
 
   if (decisao.acao === 'consertar') {
@@ -110,7 +112,8 @@ export async function garantirRascunho(
       .update({ config: decisao.config })
       .eq('app_id', app.id)
       .eq('version', decisao.version);
-    if (error != null) return { ok: false, motivo: error.message };
+    if (error != null)
+      return { ok: false, motivo: mensagemDaFalha('configs', error, FALHA_GENERICA) };
   }
 
   return {
@@ -135,7 +138,8 @@ export async function salvarRascunho(
     .select('id')
     .maybeSingle();
 
-  if (error != null) return { ok: false, motivo: error.message };
+  if (error != null)
+    return { ok: false, motivo: mensagemDaFalha('configs', error, FALHA_GENERICA) };
   // Sem erro e sem linha: a RLS filtrou o UPDATE, ou o rascunho já foi
   // publicado por outra aba enquanto esta estava aberta.
   if (data == null) {

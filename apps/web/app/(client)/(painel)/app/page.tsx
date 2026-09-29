@@ -57,13 +57,16 @@ export default async function PaginaDoEditor() {
       .eq('id', rascunho.rascunho.appId)
       .maybeSingle(),
     /*
-     * Os presets ATIVOS, que a RLS já filtra: a policy de `config_presets`
-     * libera para o lojista só os ligados. Repetir o filtro aqui seria uma
-     * segunda regra a manter, e a do banco é a que vale.
+     * Os presets ATIVOS. A RLS já libera ao lojista só os ligados — mas a
+     * equipe da plataforma lê todos, e o editor é a mesma tela para os dois.
+     * Sem o filtro aqui, alguém da equipe veria no editor presets que nenhum
+     * cliente vê: a tela precisa dizer o que o LOJISTA enxerga, e isso é uma
+     * pergunta da consulta, não de quem está olhando.
      */
     supabase
       .from('config_presets')
       .select('id, nome, tema, descricao, tabs, hide_selectors, custom_css')
+      .eq('ativo', true)
       .order('tema', { ascending: true })
       .order('nome', { ascending: true }),
   ]);
@@ -95,6 +98,7 @@ export default async function PaginaDoEditor() {
       urlDaSplash={urlDaSplash}
       historico={historico}
       presets={presets}
+      fuso={lojaAtiva.timezone}
       somenteLeitura={!podeEscrever(papel)}
       pushConfigurado={(app?.onesignal_app_id ?? null) !== null}
     />

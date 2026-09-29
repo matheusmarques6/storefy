@@ -3,19 +3,29 @@
 /** Login do painel admin (A01). */
 import { redirect } from 'next/navigation';
 import { criarClientServidor } from '@/lib/supabase/server';
-import { extrairErros, loginSchema, type ErrosDeCampo } from '@/lib/validacao';
+import { traduzirErroAuth } from '@/lib/erros-do-auth';
+import {
+  extrairErros,
+  loginSchema,
+  valoresDigitados,
+  type ErrosDeCampo,
+  type ValoresDigitados,
+} from '@/lib/validacao';
 
 export interface EstadoAdmin {
   erros?: ErrosDeCampo;
   mensagem?: string;
+  /** O e-mail digitado, para o formulário não se apagar no erro. */
+  valores?: ValoresDigitados;
 }
 
 export async function entrarAdmin(_anterior: EstadoAdmin, dados: FormData): Promise<EstadoAdmin> {
+  const valores = valoresDigitados(dados, ['email']);
   const analise = loginSchema.safeParse({
     email: dados.get('email'),
     senha: dados.get('senha'),
   });
-  if (!analise.success) return { erros: extrairErros(analise.error) };
+  if (!analise.success) return { erros: extrairErros(analise.error), valores };
 
   const supabase = await criarClientServidor();
   const { error } = await supabase.auth.signInWithPassword({
@@ -24,7 +34,7 @@ export async function entrarAdmin(_anterior: EstadoAdmin, dados: FormData): Prom
   });
 
   if (error != null) {
-    return { mensagem: 'E-mail ou senha incorretos.' };
+    return { mensagem: traduzirErroAuth(error.code, error.message), valores };
   }
 
   // A sessão está criada; a guarda do layout confere platform_admins e manda

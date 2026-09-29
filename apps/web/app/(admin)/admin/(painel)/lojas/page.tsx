@@ -7,6 +7,7 @@ import { exigirPlatformAdmin } from '@/lib/contexto';
 import { criarClientServidor } from '@/lib/supabase/server';
 import { CampoBusca, Paginacao, lerParams } from '../paginacao';
 import { termoParaIlike } from '@/lib/listagem';
+import { FUSO_PADRAO, formatarData } from '@/lib/fuso';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -103,7 +104,7 @@ export default async function PaginaLojasAdmin({
                         <Badge variant="secondary">{ROTULO_STATUS_LOJA[loja.status]}</Badge>
                       </TableCell>
                       <TableCell className="text-muted-foreground">
-                        {new Date(loja.created_at).toLocaleDateString('pt-BR')}
+                        {formatarData(loja.created_at, FUSO_PADRAO)}
                       </TableCell>
                     </TableRow>
                   );

@@ -41,6 +41,73 @@ test('login com senha errada mostra erro sem revelar se o e-mail existe', async 
     page.getByRole('alert').filter({ hasText: 'E-mail ou senha incorretos' }),
   ).toBeVisible();
   await expect(page).toHaveURL(/\/entrar/);
+
+  /*
+   * O e-mail FICA; só a senha volta vazia. O React 19 limpa sozinho os campos
+   * não controlados no fim de toda ação de formulário, e era o que acontecia
+   * aqui: a pessoa errava a senha e tinha de digitar o e-mail de novo.
+   */
+  await expect(page.getByLabel('E-mail')).toHaveValue(email);
+  await expect(page.getByLabel('Senha')).toHaveValue('');
+});
+
+/*
+ * O preenchimento automático do navegador costuma chegar ANTES de o React
+ * assumir a página: o campo mostra o e-mail salvo, mas o estado dele ainda é o
+ * vazio. Sem o campo adotar o que já está escrito ao montar, o primeiro erro
+ * apagava o e-mail que o navegador tinha preenchido.
+ *
+ * Os scripts ficam presos até o e-mail estar no campo — é a janela real, só
+ * que aberta de propósito e por tempo suficiente para o teste não depender de
+ * sorte.
+ */
+test('e-mail preenchido antes de a página ficar pronta não some depois do erro', async ({
+  page,
+}) => {
+  const email = emailDeTeste('autofill');
+  await criarUsuarioConfirmado(email, 'Empresa Autofill');
+
+  let liberar: () => void = () => undefined;
+  const liberados = new Promise<void>((resolver) => {
+    liberar = resolver;
+  });
+  // Só os scripts: segurar o CSS também seguraria a pintura da página, e o
+  // campo nunca ficaria visível para ser preenchido.
+  await page.route(
+    (url) => url.pathname.startsWith('/_next/static/') && url.pathname.endsWith('.js'),
+    async (rota) => {
+      await liberados;
+      await rota.continue();
+    },
+  );
+
+  // `commit`, e não `domcontentloaded`: os scripts do Next são módulos, e o
+  // DOMContentLoaded espera por eles — ficaria esperando pelo que está preso.
+  await page.goto('/entrar', { waitUntil: 'commit' });
+  await page.getByLabel('E-mail').fill(email);
+  liberar();
+  await page.waitForLoadState('networkidle');
+
+  await page.getByLabel('Senha').fill('senha-completamente-errada');
+  await page.getByRole('button', { name: 'Entrar', exact: true }).click();
+
+  await expect(
+    page.getByRole('alert').filter({ hasText: 'E-mail ou senha incorretos' }),
+  ).toBeVisible();
+  await expect(page.getByLabel('E-mail')).toHaveValue(email);
+});
+
+test('cadastro recusado não apaga o nome da empresa nem o e-mail', async ({ page }) => {
+  await page.goto('/cadastrar');
+  await page.getByLabel('Nome da sua empresa').fill('Empresa Que Fica');
+  await page.getByLabel('E-mail').fill('ainda-nao-e-email');
+  await page.getByLabel('Senha').fill(SENHA_PADRAO);
+  await page.getByRole('button', { name: 'Criar conta' }).click();
+
+  await expect(page.getByText('E-mail inválido')).toBeVisible();
+  await expect(page.getByLabel('Nome da sua empresa')).toHaveValue('Empresa Que Fica');
+  await expect(page.getByLabel('E-mail')).toHaveValue('ainda-nao-e-email');
+  await expect(page.getByLabel('Senha')).toHaveValue('');
 });
 
 test('formulário de cadastro valida campos vazios e senha curta', async ({ page }) => {

@@ -6,14 +6,35 @@
  * A prévia fica ao lado e acompanha a digitação: o lojista escreve num campo
  * largo de navegador e a mensagem chega numa tira estreita de tela bloqueada,
  * e não há como consertar depois de enviar.
+ *
+ * ENVIAR AGORA PEDE CONFIRMAÇÃO, e o botão diz o que vai acontecer. Os dois
+ * nasceram de um defeito: na edição de um rascunho o único botão era "Salvar
+ * alterações", com "Agora" marcado — e salvar MANDAVA a campanha para todos os
+ * clientes. Uma notificação enviada não volta; o clique que a envia precisa
+ * saber disso.
  */
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Loader2, Send } from 'lucide-react';
 import { toast } from 'sonner';
-import { MAXIMO_DO_CORPO, MAXIMO_DO_TITULO, type ProblemaNoFormulario } from '@/lib/campanha';
+import {
+  MAXIMO_DO_CORPO,
+  MAXIMO_DO_TITULO,
+  validarCampanha,
+  type ProblemaNoFormulario,
+} from '@/lib/campanha';
 import { Button } from '@/components/ui/button';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
@@ -34,30 +55,66 @@ export interface ValoresIniciais {
 interface Props {
   nomeDoApp: string;
   urlDaLoja: string;
+  /** O fuso da loja, para conferir o horário aqui mesmo, antes de ir ao servidor. */
+  fuso: string;
+  /**
+   * Em que fuso o horário é lido — "horário de Brasília". Sem isto o lojista
+   * não sabe em que hora está agendando, e é essa dúvida que faz alguém
+   * marcar 23:00 "para compensar" um fuso que já estava certo.
+   */
+  nomeDoFuso: string;
   /** Aparelhos para o envio de teste. */
   aparelhos: readonly AparelhoParaTeste[];
+  /** Quantos aparelhos têm o app: o tamanho do envio, dito na confirmação. */
+  alcance: number | null;
+  /** Sem as notificações ligadas, "agora" quer dizer "assim que ligar". */
+  notificacoesLigadas: boolean;
   iniciais: ValoresIniciais;
-  /** Texto do botão principal. */
-  rotuloDoEnvio: string;
+  /** O botão principal diz o que acontece com o que está marcado. */
+  rotuloDoEnvio: { agora: string; agendado: string };
   aoEnviar: (valores: ValoresIniciais) => Promise<EstadoDoPush>;
-  /** Só na criação: salvar sem enviar. */
+  /** Salvar sem enviar: na criação e na edição de um rascunho. */
   aoSalvarRascunho?: (
     valores: Omit<ValoresIniciais, 'agendarPara' | 'enviarAgora'>,
   ) => Promise<EstadoDoPush>;
+  rotuloDoRascunho?: string;
+}
+
+/** O que a confirmação diz sobre o tamanho do envio. */
+function descricaoDoEnvio(alcance: number | null, ligadas: boolean): string {
+  if (!ligadas) {
+    return 'As notificações desta loja ainda não estão ligadas. A campanha fica na fila e sai assim que a configuração terminar, para todos os aparelhos com o app. Depois de enviada, não dá para desfazer.';
+  }
+  if (alcance === 0) {
+    return 'Ninguém instalou o app ainda, então ela não vai chegar a nenhum celular. Se quiser, agende para depois de divulgar o app.';
+  }
+  const quantos =
+    alcance === null
+      ? 'todos os aparelhos com o app'
+      : alcance === 1
+        ? 'o único aparelho com o app'
+        : `os ${alcance.toLocaleString('pt-BR')} aparelhos com o app`;
+  return `Ela sai em instantes para ${quantos}. Depois de enviada, não dá para desfazer.`;
 }
 
 export function FormularioDaCampanha({
   nomeDoApp,
   urlDaLoja,
+  fuso,
+  nomeDoFuso,
   aparelhos,
+  alcance,
+  notificacoesLigadas,
   iniciais,
   rotuloDoEnvio,
   aoEnviar,
   aoSalvarRascunho,
+  rotuloDoRascunho = 'Salvar como rascunho',
 }: Props) {
   const router = useRouter();
   const [valores, setValores] = useState<ValoresIniciais>(iniciais);
   const [problemas, setProblemas] = useState<ProblemaNoFormulario[]>([]);
+  const [confirmando, setConfirmando] = useState(false);
   const [enviando, iniciar] = useTransition();
 
   const erroDe = (campo: ProblemaNoFormulario['campo']): string | undefined =>
@@ -90,13 +147,41 @@ export function FormularioDaCampanha({
     });
   }
 
+  /**
+   * Confere aqui o que dá para conferir aqui — as mesmas regras do servidor,
+   * que confere de novo. Sem isto, a confirmação de "enviar agora" abriria
+   * para uma campanha sem título, e o erro só apareceria DEPOIS de a pessoa
+   * confirmar o envio.
+   */
+  function conferir(): boolean {
+    const analise = validarCampanha(
+      {
+        title: valores.title,
+        body: valores.body,
+        deepLink: valores.deepLink,
+        agendarPara: valores.agendarPara,
+        enviarAgora: valores.enviarAgora,
+      },
+      { urlDaLoja, agoraMs: Date.now(), fuso },
+    );
+    if (analise.ok) return true;
+    setProblemas(analise.problemas);
+    toast.error('Confira os campos destacados.');
+    return false;
+  }
+
   return (
     <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_320px]">
       <form
         className="space-y-5"
         onSubmit={(evento) => {
           evento.preventDefault();
-          enviar(() => aoEnviar(valores), 'Pronto.');
+          if (!conferir()) return;
+          if (valores.enviarAgora) {
+            setConfirmando(true);
+            return;
+          }
+          enviar(() => aoEnviar(valores), 'Campanha agendada.');
         }}
       >
         <div className="space-y-2">
@@ -233,11 +318,21 @@ export function FormularioDaCampanha({
               }}
               aria-label="Data e hora do envio"
               aria-invalid={erroDe('agendarPara') !== undefined}
+              aria-describedby={
+                erroDe('agendarPara') === undefined
+                  ? 'fuso-do-envio'
+                  : 'fuso-do-envio erro-agendarPara'
+              }
               className="w-auto"
             />
+            <span id="fuso-do-envio" className="text-muted-foreground text-xs">
+              {nomeDoFuso}
+            </span>
           </label>
           {erroDe('agendarPara') === undefined ? null : (
-            <p className="text-destructive text-sm">{erroDe('agendarPara')}</p>
+            <p id="erro-agendarPara" className="text-destructive text-sm">
+              {erroDe('agendarPara')}
+            </p>
           )}
         </fieldset>
 
@@ -253,7 +348,7 @@ export function FormularioDaCampanha({
             ) : (
               <Send className="size-4" aria-hidden />
             )}
-            {rotuloDoEnvio}
+            {valores.enviarAgora ? rotuloDoEnvio.agora : rotuloDoEnvio.agendado}
           </Button>
 
           {aoSalvarRascunho === undefined ? null : (
@@ -273,7 +368,7 @@ export function FormularioDaCampanha({
                 );
               }}
             >
-              Salvar como rascunho
+              {rotuloDoRascunho}
             </Button>
           )}
 
@@ -286,6 +381,45 @@ export function FormularioDaCampanha({
       <aside className="lg:sticky lg:top-24 lg:self-start">
         <PreviaDaNotificacao nomeDoApp={nomeDoApp} title={valores.title} body={valores.body} />
       </aside>
+
+      <AlertDialog
+        open={confirmando}
+        onOpenChange={(aberto) => {
+          if (!enviando) setConfirmando(aberto);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Enviar agora para todos?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {descricaoDoEnvio(alcance, notificacoesLigadas)}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={enviando}>Voltar</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={enviando}
+              onClick={(evento) => {
+                // O diálogo fica aberto, com o botão girando, até a resposta:
+                // fechar antes deixaria a pessoa sem saber se foi.
+                evento.preventDefault();
+                enviar(async () => {
+                  const resultado = await aoEnviar(valores);
+                  setConfirmando(false);
+                  return resultado;
+                }, 'Campanha na fila de envio.');
+              }}
+            >
+              {enviando ? (
+                <Loader2 className="size-4 animate-spin" aria-hidden />
+              ) : (
+                <Send className="size-4" aria-hidden />
+              )}
+              Enviar agora
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

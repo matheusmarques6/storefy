@@ -27,11 +27,19 @@ export interface Integracao {
   /** O que para de funcionar sem ela, em pt-BR e concreto. */
   oQueQuebra: string;
   /**
-   * Sem ela o painel não sobe. Distinto de "importante": a diferença é entre
-   * um produto quebrado e um recurso indisponível, e a tela separa os dois.
+   * O quanto a falta dela pesa, e a tela separa os três.
+   *
+   * `essencial`: sem ela o painel não sobe para ninguém. `recurso`: sem ela,
+   * uma parte do produto para (o push, a publicação). `opcional`: sem ela
+   * NADA para — é uma escolha, como entrar com o Google ou ter domínio
+   * próprio. A primeira versão só tinha essencial e o resto, e mostrava as
+   * opcionais em "Faltando", com a chave tracejada em vermelho, ao lado de um
+   * texto dizendo "Nada quebra". A tela contradizia a si mesma.
    */
-  essencial: boolean;
+  nivel: NivelDaIntegracao;
 }
+
+export type NivelDaIntegracao = 'essencial' | 'recurso' | 'opcional';
 
 export const INTEGRACOES: Integracao[] = [
   {
@@ -43,7 +51,7 @@ export const INTEGRACOES: Integracao[] = [
       'SUPABASE_SERVICE_ROLE_KEY',
     ],
     oQueQuebra: 'Ninguém entra no painel. É o banco, a autenticação e o armazenamento.',
-    essencial: true,
+    nivel: 'essencial',
   },
   {
     chave: 'cripto',
@@ -51,7 +59,7 @@ export const INTEGRACOES: Integracao[] = [
     variaveis: ['ENCRYPTION_KEY'],
     oQueQuebra:
       'As credenciais dos clientes (Shopify, Apple, Google) não são lidas nem gravadas. Trocar esta chave torna ilegível tudo que já foi guardado.',
-    essencial: true,
+    nivel: 'essencial',
   },
   {
     chave: 'site',
@@ -59,7 +67,7 @@ export const INTEGRACOES: Integracao[] = [
     variaveis: ['NEXT_PUBLIC_SITE_URL'],
     oQueQuebra:
       'O OAuth da Shopify é recusado e os webhooks são registrados com endereço errado, sem avisar. Precisa começar com https://.',
-    essencial: true,
+    nivel: 'essencial',
   },
   {
     chave: 'shopify',
@@ -67,14 +75,14 @@ export const INTEGRACOES: Integracao[] = [
     variaveis: ['SHOPIFY_API_KEY', 'SHOPIFY_API_SECRET', 'SHOPIFY_SCOPES'],
     oQueQuebra:
       'O botão "Conectar com a Shopify" não aparece, e o webhook responde 503 para a Shopify reentregar depois.',
-    essencial: false,
+    nivel: 'recurso',
   },
   {
     chave: 'onesignal',
     nome: 'OneSignal',
     variaveis: ['ONESIGNAL_ORG_API_KEY'],
     oQueQuebra: 'Nenhum push sai: nem campanha, nem carrinho abandonado, nem volta ao estoque.',
-    essencial: false,
+    nivel: 'recurso',
   },
   {
     chave: 'build',
@@ -82,7 +90,7 @@ export const INTEGRACOES: Integracao[] = [
     variaveis: ['GITHUB_DISPATCH_TOKEN', 'GITHUB_REPO', 'BUILD_API_SECRET', 'EAS_WEBHOOK_SECRET'],
     oQueQuebra:
       'Nenhum cliente consegue publicar: o build não é disparado, e a EAS não consegue avisar quando termina.',
-    essencial: false,
+    nivel: 'recurso',
   },
   {
     chave: 'cron',
@@ -90,21 +98,21 @@ export const INTEGRACOES: Integracao[] = [
     variaveis: ['CRON_SECRET'],
     oQueQuebra:
       'Os quatro jobs agendados recusam a própria Vercel: push não é despachado, e os números do painel param de ser recalculados.',
-    essencial: false,
+    nivel: 'recurso',
   },
   {
     chave: 'email',
     nome: 'E-mail',
     variaveis: ['RESEND_API_KEY', 'EMAIL_REMETENTE'],
     oQueQuebra: 'Convites e avisos por e-mail não são enviados.',
-    essencial: false,
+    nivel: 'recurso',
   },
   {
     chave: 'google',
     nome: 'Entrar com o Google',
     variaveis: ['NEXT_PUBLIC_GOOGLE_OAUTH_ENABLED'],
     oQueQuebra: 'O botão do Google não aparece no login. O e-mail e senha continuam funcionando.',
-    essencial: false,
+    nivel: 'opcional',
   },
   {
     chave: 'dominios',
@@ -112,7 +120,7 @@ export const INTEGRACOES: Integracao[] = [
     variaveis: ['NEXT_PUBLIC_CLIENT_HOST', 'NEXT_PUBLIC_ADMIN_HOST'],
     oQueQuebra:
       'Nada quebra: sem eles o painel e o admin convivem no mesmo domínio, o admin em /admin.',
-    essencial: false,
+    nivel: 'opcional',
   },
 ];
 
@@ -142,17 +150,26 @@ export function conferir(presentes: Record<string, boolean>): IntegracaoConferid
 }
 
 export interface ResumoDaConfiguracao {
+  /**
+   * Completas entre as que o produto PRECISA — essenciais e de recurso. As
+   * opcionais ficam fora da conta: "8 de 10" com as duas opcionais desligadas
+   * diria que falta algo quando não falta nada.
+   */
   completas: number;
   total: number;
   /** Essenciais faltando. Enquanto for > 0, o produto não funciona. */
   essenciaisFaltando: number;
+  /** Opcionais ligadas, só para constar. */
+  opcionaisEmUso: number;
 }
 
 export function resumo(conferidas: IntegracaoConferida[]): ResumoDaConfiguracao {
+  const necessarias = conferidas.filter((i) => i.nivel !== 'opcional');
   return {
-    completas: conferidas.filter((i) => i.completa).length,
-    total: conferidas.length,
-    essenciaisFaltando: conferidas.filter((i) => i.essencial && !i.completa).length,
+    completas: necessarias.filter((i) => i.completa).length,
+    total: necessarias.length,
+    essenciaisFaltando: conferidas.filter((i) => i.nivel === 'essencial' && !i.completa).length,
+    opcionaisEmUso: conferidas.filter((i) => i.nivel === 'opcional' && i.completa).length,
   };
 }
 

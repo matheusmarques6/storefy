@@ -14,6 +14,7 @@ import { ShieldAlert, Users } from 'lucide-react';
 import { exigirPlatformAdminComPapel } from '@/lib/contexto';
 import { criarClientServidor } from '@/lib/supabase/server';
 import { EXPLICACAO_PAPEL, ROTULO_PAPEL_ADMIN, lerEquipe } from '@/lib/equipe-admin';
+import { FUSO_PADRAO, formatarData } from '@/lib/fuso';
 import { AcoesDaLinha, Convidar } from './gerenciar';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
@@ -97,9 +98,7 @@ export default async function PaginaEquipe() {
                     </span>
                   </TableCell>
                   <TableCell className="text-muted-foreground text-sm">
-                    {pessoa.desde == null
-                      ? '—'
-                      : new Date(pessoa.desde).toLocaleDateString('pt-BR')}
+                    {formatarData(pessoa.desde, FUSO_PADRAO)}
                   </TableCell>
                   {souSuperadmin ? (
                     <TableCell className="text-right">

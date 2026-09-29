@@ -5,6 +5,7 @@ import { useState, useTransition } from 'react';
 import { History, RotateCcw } from 'lucide-react';
 import { toast } from 'sonner';
 import type { VersaoDoHistorico } from '@/lib/configs-servidor';
+import { formatarDataHora } from '@/lib/fuso';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -25,19 +26,21 @@ const ROTULO_DO_STATUS: Record<VersaoDoHistorico['status'], string> = {
   archived: 'Histórico',
 };
 
-function quando(iso: string | null): string {
-  if (iso === null) return '—';
-  return new Date(iso).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
+function quando(iso: string | null, fuso: string): string {
+  return formatarDataHora(iso, fuso);
 }
 
 export function SecaoVersoes({
   storeId,
   versoes,
   somenteLeitura,
+  fuso,
 }: {
   storeId: string;
   versoes: VersaoDoHistorico[];
   somenteLeitura: boolean;
+  /** O fuso da loja. Sem ele, servidor e navegador escreviam horas diferentes. */
+  fuso: string;
 }) {
   const [aRestaurar, setARestaurar] = useState<number | null>(null);
   const [processando, iniciar] = useTransition();
@@ -76,10 +79,10 @@ export function SecaoVersoes({
               </div>
               <p className="text-muted-foreground mt-1 text-xs">
                 {versao.status === 'published'
-                  ? `No ar desde ${quando(versao.publishedAt)}`
+                  ? `No ar desde ${quando(versao.publishedAt, fuso)}`
                   : versao.status === 'archived'
-                    ? `Esteve no ar em ${quando(versao.publishedAt)}`
-                    : `Criado em ${quando(versao.createdAt)}`}
+                    ? `Esteve no ar em ${quando(versao.publishedAt, fuso)}`
+                    : `Criado em ${quando(versao.createdAt, fuso)}`}
               </p>
             </div>
 

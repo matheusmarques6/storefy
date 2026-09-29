@@ -76,7 +76,10 @@ export function PreviaNoCelular({
             <p className="text-muted-foreground text-xs">
               {previa.expiraEm == null
                 ? 'Vale por 30 minutos.'
-                : `Vale até ${new Date(previa.expiraEm).toLocaleTimeString('pt-BR', {
+                : // No fuso do NAVEGADOR, de propósito: este texto só nasce
+                  // depois do clique (nunca no servidor, então não diverge na
+                  // hidratação), e "vale até" é sobre o relógio de quem lê.
+                  `Vale até ${new Date(previa.expiraEm).toLocaleTimeString('pt-BR', {
                     hour: '2-digit',
                     minute: '2-digit',
                   })}.`}

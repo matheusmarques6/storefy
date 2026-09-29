@@ -24,6 +24,7 @@ import { criarClientServidor } from '@/lib/supabase/server';
 import { appDaLoja } from '@/lib/push-servidor';
 import { numerosDoPeriodo } from '@/lib/analytics-servidor';
 import { comoNumero, comoPorcentagem, comoReais, fatiaDoApp, temMovimento } from '@/lib/analytics';
+import { formatarData } from '@/lib/fuso';
 import { CartaoDeNumero } from '@/components/cartao-de-numero';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -149,7 +150,7 @@ export default async function PaginaInicio() {
                 <CardContent className="flex items-center justify-between gap-2 pt-0">
                   <span className="text-muted-foreground text-xs">
                     Criada em{' '}
-                    {new Date(loja.created_at).toLocaleDateString('pt-BR', {
+                    {formatarData(loja.created_at, loja.timezone, {
                       day: '2-digit',
                       month: 'short',
                       year: 'numeric',

@@ -12,6 +12,7 @@ import { useRouter } from 'next/navigation';
 import { Loader2, Power, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { alternarPreset, apagarPreset, criarPresetDaLoja, type EstadoDoPreset } from './acoes';
+import { valoresDigitados, type ValoresDigitados } from '@/lib/validacao';
 import { Button } from '@/components/ui/button';
 import { Campo, propsDoCampo } from '@/components/campo';
 import { Input } from '@/components/ui/input';
@@ -35,20 +36,24 @@ export interface LojaPublicada {
 export function CriarPreset({ lojas }: { lojas: LojaPublicada[] }) {
   const router = useRouter();
 
-  const [estado, enviar, enviando] = useActionState<EstadoDoPreset, FormData>(
-    async (anterior, dados) => {
-      const resultado = await criarPresetDaLoja(anterior, dados);
+  const [estado, enviar, enviando] = useActionState<
+    EstadoDoPreset & { valores?: ValoresDigitados },
+    FormData
+  >(async (anterior, dados) => {
+    const resultado = await criarPresetDaLoja(anterior, dados);
 
-      if (resultado.ok === true) {
-        toast.success(resultado.mensagem ?? 'Preset criado.');
-        router.refresh();
-      } else if (resultado.mensagem != null) {
-        toast.error(resultado.mensagem);
-      }
-      return resultado;
-    },
-    {},
-  );
+    if (resultado.ok === true) {
+      toast.success(resultado.mensagem ?? 'Preset criado.');
+      router.refresh();
+      return { ...resultado, valores: {} };
+    }
+    if (resultado.mensagem != null) toast.error(resultado.mensagem);
+    // Recusado, o que foi escrito continua no formulário para corrigir.
+    return {
+      ...resultado,
+      valores: valoresDigitados(dados, ['appId', 'nome', 'tema', 'descricao']),
+    };
+  }, {});
 
   return (
     <Card>
@@ -73,8 +78,12 @@ export function CriarPreset({ lojas }: { lojas: LojaPublicada[] }) {
               rotulo="Copiar de"
               dica="Só aparecem as lojas com configuração publicada."
             >
+              {/* `key`: ver o seletor de papel da A11 — `<select>` só lê o
+                  `defaultValue` ao montar. */}
               <select
+                key={estado.valores?.appId ?? 'inicial'}
                 {...propsDoCampo('appId', undefined, true)}
+                defaultValue={estado.valores?.appId}
                 className="border-input bg-background focus-visible:ring-ring h-10 w-full rounded-xl border px-3 text-sm focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
               >
                 {lojas.map((loja) => (
@@ -89,6 +98,7 @@ export function CriarPreset({ lojas }: { lojas: LojaPublicada[] }) {
               <Campo id="nome" rotulo="Nome" dica="É o que o lojista vê na lista.">
                 <Input
                   {...propsDoCampo('nome', undefined, true)}
+                  defaultValue={estado.valores?.nome}
                   placeholder="Dawn — padrão"
                   autoComplete="off"
                 />
@@ -97,6 +107,7 @@ export function CriarPreset({ lojas }: { lojas: LojaPublicada[] }) {
               <Campo id="tema" rotulo="Tema da Shopify" dica="Dawn, Impulse, Prestige…">
                 <Input
                   {...propsDoCampo('tema', undefined, true)}
+                  defaultValue={estado.valores?.tema}
                   placeholder="Dawn"
                   autoComplete="off"
                 />
@@ -109,7 +120,8 @@ export function CriarPreset({ lojas }: { lojas: LojaPublicada[] }) {
               dica="Uma linha dizendo para quem serve."
             >
               <Input
-                {...propsDoCampo('descricao', undefined, false)}
+                {...propsDoCampo('descricao', undefined, true)}
+                defaultValue={estado.valores?.descricao}
                 placeholder="Esconde cabeçalho e rodapé do tema Dawn."
                 autoComplete="off"
               />

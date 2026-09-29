@@ -85,7 +85,11 @@ export default async function PaginaDeCampanhas() {
 
       <AbasDoPush atual="campanhas" />
 
-      <ListaDeCampanhas campanhas={campanhas} podeEscrever={podeEscrever} />
+      <ListaDeCampanhas
+        campanhas={campanhas}
+        podeEscrever={podeEscrever}
+        fuso={lojaAtiva.timezone}
+      />
     </div>
   );
 }

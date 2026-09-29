@@ -7,6 +7,7 @@ import { ROTULO_STATUS_LOJA, podeEscrever, podeExcluir } from '@storefy/db';
 import { COLUNAS_DA_LOJA } from '@storefy/db';
 import { exigirContextoCliente } from '@/lib/contexto';
 import { criarClientServidor } from '@/lib/supabase/server';
+import { gruposDeFusos, nomeDoFuso } from '@/lib/fuso';
 import { editarLoja } from '../acoes';
 import { FormularioLoja } from '../formulario-loja';
 import { ExcluirLoja } from './excluir-loja';
@@ -77,7 +78,7 @@ export default async function PaginaLoja({
           <CardTitle className="text-base">Dados da loja</CardTitle>
           <CardDescription>
             {podeEditar
-              ? 'Altere o nome ou o endereço que o app abre.'
+              ? 'O nome, o endereço que o app abre, o contato de atendimento e o fuso horário da loja.'
               : 'Somente proprietários e administradores podem alterar estes dados.'}
           </CardDescription>
         </CardHeader>
@@ -88,6 +89,8 @@ export default async function PaginaLoja({
               nomeInicial={loja.name}
               urlInicial={loja.primary_url}
               emailInicial={loja.support_email ?? ''}
+              fusoInicial={loja.timezone}
+              gruposDeFusos={gruposDeFusos(loja.timezone)}
               rotuloEnvio="Salvar alterações"
               carregando="Salvando..."
               comContato
@@ -105,6 +108,10 @@ export default async function PaginaLoja({
               <div>
                 <dt className="text-muted-foreground">E-mail de atendimento</dt>
                 <dd className="font-medium">{loja.support_email ?? 'Ainda não cadastrado'}</dd>
+              </div>
+              <div>
+                <dt className="text-muted-foreground">Fuso horário</dt>
+                <dd className="font-medium first-letter:uppercase">{nomeDoFuso(loja.timezone)}</dd>
               </div>
             </dl>
           )}

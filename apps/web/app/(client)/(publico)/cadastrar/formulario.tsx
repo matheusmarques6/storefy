@@ -36,6 +36,7 @@ export function FormularioCadastro() {
           >
             <Input
               {...propsDoCampo('nomeEmpresa', estado.erros?.nomeEmpresa, true)}
+              defaultValue={estado.valores?.nomeEmpresa}
               autoComplete="organization"
               placeholder="Minha Loja"
               required
@@ -45,6 +46,7 @@ export function FormularioCadastro() {
           <Campo id="email" rotulo="E-mail" erro={estado.erros?.email}>
             <Input
               {...propsDoCampo('email', estado.erros?.email)}
+              defaultValue={estado.valores?.email}
               type="email"
               autoComplete="email"
               placeholder="voce@suaempresa.com.br"

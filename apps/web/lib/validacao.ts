@@ -4,6 +4,7 @@
  * ver sempre o mesmo texto.
  */
 import { z } from 'zod';
+import { fusoAceito } from '@/lib/fuso';
 
 export const MIN_SENHA = 8;
 
@@ -104,6 +105,26 @@ export const lojaSchema = z.object({
    * ali travaria quem só quer ver o painel funcionando —, e a edição pede.
    */
   emailDeAtendimento: emailDeAtendimentoSchema.default(null),
+  /*
+   * O fuso da loja. Ausente quer dizer "não mexer": o cadastro não pergunta —
+   * o padrão do banco atende o Brasil —, e a edição sempre manda o campo.
+   *
+   * Só passa nome EXATO da lista (`fusoAceito`). O banco confere de novo, e
+   * precisa: um fuso que ele não reconhece derrubaria, para TODAS as lojas, o
+   * job que fecha os números do dia.
+   */
+  fuso: z
+    .string({ error: 'Escolha um fuso da lista.' })
+    .optional()
+    .transform((valor, contexto) => {
+      if (valor === undefined) return undefined;
+      const aceito = fusoAceito(valor);
+      if (aceito === null) {
+        contexto.addIssue({ code: 'custom', message: 'Escolha um fuso da lista.' });
+        return z.NEVER;
+      }
+      return aceito;
+    }),
 });
 
 export const organizacaoSchema = z.object({
@@ -130,6 +151,33 @@ export const trocarSenhaSchema = z
     message: 'As senhas não conferem.',
     path: ['confirmacao'],
   });
+
+/**
+ * O que a pessoa digitou, para voltar ao formulário junto com a resposta.
+ *
+ * O React 19 LIMPA o formulário ao fim de toda ação de `<form action>` — e a
+ * ação ter devolvido erro não conta. Assim, errar a senha apagava o e-mail;
+ * "já existe uma conta com este e-mail" apagava o nome da empresa junto; e a
+ * credencial recusada pela Shopify apagava o Client ID recém-colado. A limpeza
+ * devolve cada campo ao seu `defaultValue`: o formulário usa estes valores
+ * como `defaultValue`, e é para eles que ela volta.
+ *
+ * Com o campo não controlado, o que o navegador preencheu sozinho antes de a
+ * página ficar pronta também sobrevive — ele vai no envio, e volta daqui.
+ *
+ * A lista de campos é explícita, e não "tudo menos a senha": senha e segredo
+ * não podem voltar na resposta nem por engano — basta não estarem na lista.
+ */
+export type ValoresDigitados = Record<string, string>;
+
+export function valoresDigitados(dados: FormData, campos: readonly string[]): ValoresDigitados {
+  const valores: ValoresDigitados = {};
+  for (const campo of campos) {
+    const valor = dados.get(campo);
+    if (typeof valor === 'string') valores[campo] = valor;
+  }
+  return valores;
+}
 
 /** Erros por campo, no formato que os formulários consomem. */
 export type ErrosDeCampo = Record<string, string>;

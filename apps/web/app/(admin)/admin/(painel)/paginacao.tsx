@@ -80,7 +80,7 @@ export function CampoBusca({
   placeholder: string;
 }) {
   return (
-    <form action={acao} className="flex gap-2">
+    <form action={acao} method="get" className="flex gap-2">
       <input
         type="search"
         name="q"

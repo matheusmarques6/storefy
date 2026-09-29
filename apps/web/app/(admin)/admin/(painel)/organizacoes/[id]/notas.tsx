@@ -15,8 +15,10 @@ import { useActionState, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { EyeOff, Loader2, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
+import { FUSO_PADRAO, formatarDataHora } from '@/lib/fuso';
 import { MAXIMO_DA_NOTA, type Nota } from '@/lib/notas-internas';
 import { adicionarNota, apagarNota, type EstadoDaNota } from './acoes';
+import { valoresDigitados, type ValoresDigitados } from '@/lib/validacao';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import {
@@ -33,20 +35,23 @@ import {
 export function Notas({ orgId, notas }: { orgId: string; notas: Nota[] }) {
   const router = useRouter();
 
-  const [estado, enviar, enviando] = useActionState<EstadoDaNota, FormData>(
-    async (anterior, dados) => {
-      const resultado = await adicionarNota(anterior, dados);
+  const [estado, enviar, enviando] = useActionState<
+    EstadoDaNota & { valores?: ValoresDigitados },
+    FormData
+  >(async (anterior, dados) => {
+    const resultado = await adicionarNota(anterior, dados);
 
-      if (resultado.ok === true) {
-        toast.success(resultado.mensagem ?? 'Nota salva.');
-        router.refresh();
-      } else if (resultado.mensagem != null) {
-        toast.error(resultado.mensagem);
-      }
-      return resultado;
-    },
-    {},
-  );
+    if (resultado.ok === true) {
+      toast.success(resultado.mensagem ?? 'Nota salva.');
+      router.refresh();
+      // Salva, a caixa volta vazia para a próxima nota.
+      return { ...resultado, valores: {} };
+    }
+    if (resultado.mensagem != null) toast.error(resultado.mensagem);
+    // Recusada, a nota continua escrita: o React limpa o formulário no fim da
+    // ação, e a limpeza volta para o `defaultValue` — que é o texto enviado.
+    return { ...resultado, valores: valoresDigitados(dados, ['body']) };
+  }, {});
 
   return (
     <Card>
@@ -67,6 +72,7 @@ export function Notas({ orgId, notas }: { orgId: string; notas: Nota[] }) {
           <textarea
             id="body"
             name="body"
+            defaultValue={estado.valores?.body}
             rows={3}
             maxLength={MAXIMO_DA_NOTA}
             placeholder="O que aconteceu com este cliente?"
@@ -130,12 +136,7 @@ function Linha({ nota }: { nota: Nota }) {
       <div className="text-muted-foreground mt-2 flex flex-wrap items-center justify-between gap-2 text-xs">
         <span>
           {nota.autor}
-          {nota.quando == null
-            ? ''
-            : ` · ${new Date(nota.quando).toLocaleString('pt-BR', {
-                dateStyle: 'short',
-                timeStyle: 'short',
-              })}`}
+          {nota.quando == null ? '' : ` · ${formatarDataHora(nota.quando, FUSO_PADRAO)}`}
         </span>
 
         <Button

@@ -24,6 +24,7 @@ import {
 import { exigirPlatformAdmin } from '@/lib/contexto';
 import { criarClientServidor } from '@/lib/supabase/server';
 import { lerNotas } from '@/lib/notas-internas';
+import { FUSO_PADRAO, formatarDataHora } from '@/lib/fuso';
 import { Notas } from './notas';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -38,9 +39,9 @@ import {
 
 export const metadata: Metadata = { title: 'Organização · Admin' };
 
+/** No fuso da equipe: a Vercel roda em UTC, e sem isto toda hora saía três horas adiantada. */
 function dataHora(valor: string | null): string {
-  if (valor == null) return '—';
-  return new Date(valor).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
+  return formatarDataHora(valor, FUSO_PADRAO);
 }
 
 export default async function PaginaOrganizacao({ params }: { params: Promise<{ id: string }> }) {

@@ -6,6 +6,7 @@ import { ChevronLeft, ExternalLink } from 'lucide-react';
 import { exigirContextoCliente } from '@/lib/contexto';
 import { criarClientServidor } from '@/lib/supabase/server';
 import { appDaLoja, buscarCampanha } from '@/lib/push-servidor';
+import { formatarDataHora } from '@/lib/fuso';
 import {
   EXPLICACAO_DO_STATUS,
   ROTULO_DO_STATUS,
@@ -87,10 +88,10 @@ export default async function PaginaDaCampanha({ params }: { params: Promise<{ i
               valor={campanha.deepLink ?? 'Tela inicial do app'}
               icone={campanha.deepLink !== null}
             />
-            <Linha titulo="Criada em" valor={formatar(campanha.createdAt)} />
+            <Linha titulo="Criada em" valor={formatar(campanha.createdAt, lojaAtiva.timezone)} />
             <Linha
               titulo={campanha.sentAt === null ? 'Agendada para' : 'Enviada em'}
-              valor={formatar(campanha.sentAt ?? campanha.scheduledAt)}
+              valor={formatar(campanha.sentAt ?? campanha.scheduledAt, lojaAtiva.timezone)}
             />
           </dl>
 
@@ -138,9 +139,6 @@ function Linha({ titulo, valor, icone }: { titulo: string; valor: string; icone?
   );
 }
 
-function formatar(iso: string | null): string {
-  if (iso === null) return '—';
-  const data = new Date(iso);
-  if (Number.isNaN(data.getTime())) return '—';
-  return data.toLocaleString('pt-BR', { dateStyle: 'long', timeStyle: 'short' });
+function formatar(iso: string | null, fuso: string): string {
+  return formatarDataHora(iso, fuso, { dateStyle: 'long', timeStyle: 'short' });
 }

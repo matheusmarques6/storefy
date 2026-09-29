@@ -4,57 +4,36 @@
 import { redirect } from 'next/navigation';
 import { criarClientServidor } from '@/lib/supabase/server';
 import { urlDoSite } from '@/lib/env';
+import { traduzirErroAuth } from '@/lib/erros-do-auth';
 import {
   cadastroSchema,
   extrairErros,
   loginSchema,
   recuperarSenhaSchema,
   redefinirSenhaSchema,
+  valoresDigitados,
   type ErrosDeCampo,
+  type ValoresDigitados,
 } from '@/lib/validacao';
 
 export interface EstadoFormulario {
   erros?: ErrosDeCampo;
   mensagem?: string;
   sucesso?: boolean;
-}
-
-/**
- * Traduz os erros do Supabase Auth.
- *
- * As mensagens originais chegam em inglês e às vezes expõem detalhe interno.
- * Para credencial inválida devolvemos sempre o mesmo texto, sem dizer se foi o
- * e-mail ou a senha: distinguir permitiria descobrir quais e-mails têm conta.
- */
-function traduzirErroAuth(codigo: string | undefined, mensagem: string): string {
-  switch (codigo) {
-    case 'invalid_credentials':
-      return 'E-mail ou senha incorretos.';
-    case 'email_not_confirmed':
-      return 'Confirme seu e-mail antes de entrar. Procure a mensagem que enviamos na sua caixa de entrada.';
-    case 'user_already_exists':
-    case 'email_exists':
-      return 'Já existe uma conta com este e-mail. Tente entrar ou recuperar a senha.';
-    case 'weak_password':
-      return 'Senha muito fraca. Use pelo menos 8 caracteres, misturando letras e números.';
-    case 'over_email_send_rate_limit':
-      return 'Muitas tentativas seguidas. Espere alguns minutos e tente de novo.';
-    case 'same_password':
-      return 'A nova senha precisa ser diferente da atual.';
-    default:
-      return mensagem !== '' ? mensagem : 'Não foi possível concluir. Tente novamente.';
-  }
+  /** O que foi digitado, menos a senha: o formulário não se apaga no erro. */
+  valores?: ValoresDigitados;
 }
 
 export async function entrar(
   _anterior: EstadoFormulario,
   dados: FormData,
 ): Promise<EstadoFormulario> {
+  const valores = valoresDigitados(dados, ['email']);
   const analise = loginSchema.safeParse({
     email: dados.get('email'),
     senha: dados.get('senha'),
   });
-  if (!analise.success) return { erros: extrairErros(analise.error) };
+  if (!analise.success) return { erros: extrairErros(analise.error), valores };
 
   const supabase = await criarClientServidor();
   const { error } = await supabase.auth.signInWithPassword({
@@ -63,7 +42,7 @@ export async function entrar(
   });
 
   if (error != null) {
-    return { mensagem: traduzirErroAuth(error.code, error.message) };
+    return { mensagem: traduzirErroAuth(error.code, error.message), valores };
   }
 
   const proximo = dados.get('proximo');
@@ -74,12 +53,13 @@ export async function cadastrar(
   _anterior: EstadoFormulario,
   dados: FormData,
 ): Promise<EstadoFormulario> {
+  const valores = valoresDigitados(dados, ['nomeEmpresa', 'email']);
   const analise = cadastroSchema.safeParse({
     nomeEmpresa: dados.get('nomeEmpresa'),
     email: dados.get('email'),
     senha: dados.get('senha'),
   });
-  if (!analise.success) return { erros: extrairErros(analise.error) };
+  if (!analise.success) return { erros: extrairErros(analise.error), valores };
 
   const supabase = await criarClientServidor();
   const { data, error } = await supabase.auth.signUp({
@@ -93,7 +73,7 @@ export async function cadastrar(
   });
 
   if (error != null) {
-    return { mensagem: traduzirErroAuth(error.code, error.message) };
+    return { mensagem: traduzirErroAuth(error.code, error.message), valores };
   }
 
   // Sessão já ativa: a confirmação de e-mail está desligada no projeto.
@@ -112,8 +92,9 @@ export async function pedirRecuperacao(
   _anterior: EstadoFormulario,
   dados: FormData,
 ): Promise<EstadoFormulario> {
+  const valores = valoresDigitados(dados, ['email']);
   const analise = recuperarSenhaSchema.safeParse({ email: dados.get('email') });
-  if (!analise.success) return { erros: extrairErros(analise.error) };
+  if (!analise.success) return { erros: extrairErros(analise.error), valores };
 
   const supabase = await criarClientServidor();
   const { error } = await supabase.auth.resetPasswordForEmail(analise.data.email, {
@@ -123,7 +104,7 @@ export async function pedirRecuperacao(
   // Resposta idêntica com ou sem conta: dizer "e-mail não cadastrado" revelaria
   // quem tem conta na plataforma.
   if (error?.code === 'over_email_send_rate_limit') {
-    return { mensagem: traduzirErroAuth(error.code, error.message) };
+    return { mensagem: traduzirErroAuth(error.code, error.message), valores };
   }
 
   return {

@@ -4300,6 +4300,58 @@ select tests.ok('presets',
 reset role;
 select tests.logout();
 
+-- ============================== grupo: fuso da loja
+--
+-- O fuso é texto que o PAINEL grava, e o job diário lê com `at time zone`
+-- num laço sobre as lojas de todos os clientes. Um fuso que o banco não
+-- conhece derrubaria o fechamento do dia de todo mundo — então quem recusa é o
+-- banco, e não só a tela.
+
+select tests.login('a-owner@teste.local');
+set role authenticated;
+
+select tests.ok('fuso',
+  tests.permitido($q$update public.stores set timezone = 'America/Manaus'
+    where id = (select loja_a from tests.lojas)$q$),
+  'o dono troca o fuso da loja por um fuso de verdade');
+
+select tests.ok('fuso',
+  tests.erro($q$update public.stores set timezone = 'lixo'
+    where id = (select loja_a from tests.lojas)$q$),
+  'fuso que o banco não conhece é recusado, mesmo direto pela API');
+
+select tests.ok('fuso',
+  tests.erro($q$update public.stores set timezone = 'posix/America/Sao_Paulo'
+    where id = (select loja_a from tests.lojas)$q$),
+  'fuso no formato posix é recusado: o painel não saberia ler');
+
+select tests.ok('fuso',
+  tests.erro($q$insert into public.stores (org_id, name, primary_url, timezone)
+    select org_a, 'Loja Fuso Ruim', 'https://fuso-ruim.com.br', 'Marte/Olimpo' from tests.ids$q$),
+  'nem uma loja nova nasce com fuso inventado');
+
+select tests.ok('fuso',
+  tests.permitido($q$update public.stores set name = 'Loja da A'
+    where id = (select loja_a from tests.lojas)$q$),
+  'editar o nome não passa pela conferência do fuso');
+
+reset role;
+select tests.logout();
+
+select tests.ok('fuso',
+  (select timezone from public.stores where id = (select loja_a from tests.lojas)) = 'America/Manaus',
+  'o fuso gravado é o que o dono escolheu, e não o que foi recusado depois');
+
+-- E a consequência que motivou tudo: o job segue de pé.
+set role service_role;
+select tests.ok('fuso',
+  not tests.erro('select public.consolidar_analytics(1)'),
+  'o fechamento do dia roda com as lojas em fusos diferentes');
+reset role;
+
+update public.stores set timezone = 'America/Sao_Paulo'
+ where id = (select loja_a from tests.lojas);
+
 \echo ''
 \echo 'Falhas:'
 select grupo, descricao from tests.resultados where not passou order by id;

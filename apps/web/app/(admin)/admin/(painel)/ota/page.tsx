@@ -4,6 +4,7 @@ import { RefreshCw } from 'lucide-react';
 import { exigirPlatformAdmin } from '@/lib/contexto';
 import { criarClientServiceRole } from '@/lib/supabase/admin';
 import { resumoDaOta } from '@/lib/ota';
+import { FUSO_PADRAO, formatarDataHora } from '@/lib/fuso';
 import { EstadoVazio } from '@/components/estado-vazio';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
@@ -106,7 +107,5 @@ export default async function PaginaDaOta() {
 }
 
 function formatar(iso: string): string {
-  const data = new Date(iso);
-  if (Number.isNaN(data.getTime())) return '';
-  return data.toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
+  return formatarDataHora(iso, FUSO_PADRAO);
 }

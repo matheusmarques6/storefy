@@ -60,9 +60,18 @@ export async function exigirContextoCliente(): Promise<ContextoCliente> {
 
   if (user == null) redirect('/entrar');
 
+  /*
+   * `user_id` no filtro, e não só na RLS. A policy de `memberships` deixa a
+   * equipe da plataforma ler TODOS os vínculos — é o que o admin precisa —, e
+   * sem este filtro um admin que abrisse o painel do cliente caía na
+   * organização mais antiga da plataforma, que podia ser de outro cliente, com
+   * o papel de outra pessoa. "Minhas organizações" é pergunta sobre o usuário,
+   * e a consulta precisa dizer isso.
+   */
   const { data: vinculos, error: erroVinculos } = await supabase
     .from('memberships')
     .select('role, organizations(*)')
+    .eq('user_id', user.id)
     .order('created_at', { ascending: true });
 
   if (erroVinculos != null) {

@@ -24,6 +24,7 @@ import { podeCancelar, podeEditar, podeExcluir, validarCampanha } from '@/lib/ca
 import { DESCRICAO_DO_TIPO, ehTipoDeAutomacao, validarAutomacao } from '@/lib/automacao';
 import { normalizarDeepLink } from '@/lib/campanha';
 import type { ProblemaNoFormulario } from '@/lib/campanha';
+import { FALHA_GENERICA, mensagemDaFalha } from '@/lib/erros';
 
 export interface EstadoDoPush {
   ok?: boolean;
@@ -40,14 +41,26 @@ function traduzirErro(codigo: string | undefined, mensagem: string): string {
   if (codigo === '23514') {
     return 'Algum campo passou do tamanho permitido. Encurte o texto e tente de novo.';
   }
-  return mensagem !== '' ? mensagem : 'Não foi possível concluir. Tente novamente.';
+  return mensagemDaFalha('push', { code: codigo, message: mensagem }, FALHA_GENERICA);
 }
 
-/** A loja ativa e o app dela, ou o motivo de não dar. */
+/**
+ * A loja ativa e o app dela, ou o motivo de não dar.
+ *
+ * Toda ação daqui ESCREVE, e o papel é conferido antes: a RLS também recusa,
+ * mas recusa em silêncio — o UPDATE simplesmente não acha linha —, e a tela
+ * dizia "Campanha cancelada." para quem não podia cancelar nada.
+ */
 async function contexto() {
-  const { lojaAtiva } = await exigirContextoCliente();
+  const { lojaAtiva, papel } = await exigirContextoCliente();
   if (lojaAtiva == null) {
     return { ok: false as const, motivo: 'Cadastre uma loja antes de usar o push.' };
+  }
+  if (papel !== 'owner' && papel !== 'admin') {
+    return {
+      ok: false as const,
+      motivo: 'Apenas proprietários e administradores mexem nas notificações.',
+    };
   }
 
   const supabase = await criarClientServidor();
@@ -69,16 +82,17 @@ export async function criarCampanha(entrada: {
   const base = await contexto();
   if (!base.ok) return { mensagem: base.motivo };
 
+  // O "agora" contra o "agendar" é decidido em `validarCampanha`: agendar sem
+  // data é erro, e agora ignora a data que tenha sobrado no campo.
   const validacao = validarCampanha(
     {
       title: entrada.title,
       body: entrada.body,
       deepLink: entrada.deepLink,
-      // "Enviar agora" ignora o campo de data mesmo que ele tenha sobrado
-      // preenchido de uma escolha anterior na mesma tela.
-      agendarPara: entrada.enviarAgora ? '' : entrada.agendarPara,
+      agendarPara: entrada.agendarPara,
+      enviarAgora: entrada.enviarAgora,
     },
-    { urlDaLoja: base.loja.primary_url, agoraMs: Date.now() },
+    { urlDaLoja: base.loja.primary_url, agoraMs: Date.now(), fuso: base.loja.timezone },
   );
 
   if (!validacao.ok) return { problemas: validacao.problemas };
@@ -123,7 +137,7 @@ export async function salvarRascunhoDeCampanha(entrada: {
 
   const validacao = validarCampanha(
     { title: entrada.title, body: entrada.body, deepLink: entrada.deepLink },
-    { urlDaLoja: base.loja.primary_url, agoraMs: Date.now() },
+    { urlDaLoja: base.loja.primary_url, agoraMs: Date.now(), fuso: base.loja.timezone },
   );
   if (!validacao.ok) return { problemas: validacao.problemas };
 
@@ -166,14 +180,21 @@ export async function cancelarCampanha(campanhaId: string): Promise<EstadoDoPush
     return { mensagem: 'Esta campanha já saiu ou já está saindo. Não dá mais para cancelar.' };
   }
 
-  const { error } = await base.supabase
+  const { data: cancelada, error } = await base.supabase
     .from('push_campaigns')
     .update({ status: 'canceled' })
     .eq('id', campanhaId)
     .eq('app_id', base.app.id)
-    .eq('status', 'scheduled');
+    .eq('status', 'scheduled')
+    .select('id')
+    .maybeSingle();
 
   if (error != null) return { mensagem: traduzirErro(error.code, error.message) };
+  // O job pegou a campanha entre a leitura e o clique: dizer "cancelada" aqui
+  // seria mentir com a notificação já a caminho dos celulares.
+  if (cancelada == null) {
+    return { mensagem: 'Esta campanha já saiu ou já está saindo. Não dá mais para cancelar.' };
+  }
 
   revalidatePath('/push');
   return { ok: true, mensagem: 'Campanha cancelada.' };
@@ -195,13 +216,19 @@ export async function excluirCampanha(campanhaId: string): Promise<EstadoDoPush>
     return { mensagem: 'Campanha enviada fica no histórico. Ela não pode ser excluída.' };
   }
 
-  const { error } = await base.supabase
+  const { data: excluida, error } = await base.supabase
     .from('push_campaigns')
     .delete()
     .eq('id', campanhaId)
-    .eq('app_id', base.app.id);
+    .eq('app_id', base.app.id)
+    .in('status', ['draft', 'canceled', 'failed'])
+    .select('id')
+    .maybeSingle();
 
   if (error != null) return { mensagem: traduzirErro(error.code, error.message) };
+  if (excluida == null) {
+    return { mensagem: 'Não foi possível excluir: a campanha mudou. Recarregue a página.' };
+  }
 
   revalidatePath('/push');
   return { ok: true, mensagem: 'Campanha excluída.' };
@@ -237,13 +264,14 @@ export async function editarCampanha(
       title: entrada.title,
       body: entrada.body,
       deepLink: entrada.deepLink,
-      agendarPara: entrada.enviarAgora ? '' : entrada.agendarPara,
+      agendarPara: entrada.agendarPara,
+      enviarAgora: entrada.enviarAgora,
     },
-    { urlDaLoja: base.loja.primary_url, agoraMs: Date.now() },
+    { urlDaLoja: base.loja.primary_url, agoraMs: Date.now(), fuso: base.loja.timezone },
   );
   if (!validacao.ok) return { problemas: validacao.problemas };
 
-  const { error } = await base.supabase
+  const { data: gravada, error } = await base.supabase
     .from('push_campaigns')
     .update({
       title: validacao.valores.title,
@@ -254,12 +282,67 @@ export async function editarCampanha(
     })
     .eq('id', campanhaId)
     .eq('app_id', base.app.id)
-    .in('status', ['draft', 'scheduled']);
+    .in('status', ['draft', 'scheduled'])
+    .select('id')
+    .maybeSingle();
 
   if (error != null) return { mensagem: traduzirErro(error.code, error.message) };
+  // Entre a leitura acima e esta escrita o job pode ter começado a mandar:
+  // sem linha gravada, a campanha já não está mais aqui para ser editada.
+  if (gravada == null) {
+    return { mensagem: 'Esta campanha já saiu ou já está saindo. Não dá mais para editar.' };
+  }
 
   revalidatePath('/push');
-  return { ok: true, mensagem: 'Campanha atualizada.' };
+  return {
+    ok: true,
+    mensagem:
+      validacao.valores.agendarPara === null ? 'Campanha na fila de envio.' : 'Campanha agendada.',
+  };
+}
+
+/**
+ * Guarda o texto de um rascunho SEM mandá-lo.
+ *
+ * Existe porque a edição de um rascunho só sabia agendar: "Salvar alterações"
+ * gravava `scheduled` com a hora de agora — o lojista abria o rascunho para
+ * corrigir uma vírgula e a campanha saía para todos os clientes.
+ */
+export async function atualizarRascunho(
+  campanhaId: string,
+  entrada: { title: string; body: string; deepLink: string },
+): Promise<EstadoDoPush> {
+  const base = await contexto();
+  if (!base.ok) return { mensagem: base.motivo };
+
+  const validacao = validarCampanha(
+    { title: entrada.title, body: entrada.body, deepLink: entrada.deepLink },
+    { urlDaLoja: base.loja.primary_url, agoraMs: Date.now(), fuso: base.loja.timezone },
+  );
+  if (!validacao.ok) return { problemas: validacao.problemas };
+
+  // `status = draft` no filtro: se outra aba já agendou, o rascunho não existe
+  // mais, e isto não pode devolvê-lo a rascunho por baixo dos panos.
+  const { data, error } = await base.supabase
+    .from('push_campaigns')
+    .update({
+      title: validacao.valores.title,
+      body: validacao.valores.body,
+      deep_link: validacao.valores.deepLink,
+    })
+    .eq('id', campanhaId)
+    .eq('app_id', base.app.id)
+    .eq('status', 'draft')
+    .select('id')
+    .maybeSingle();
+
+  if (error != null) return { mensagem: traduzirErro(error.code, error.message) };
+  if (data == null) {
+    return { mensagem: 'Esta campanha não é mais um rascunho. Recarregue a página.' };
+  }
+
+  revalidatePath('/push');
+  return { ok: true, mensagem: 'Rascunho salvo.' };
 }
 
 /**
@@ -283,7 +366,7 @@ export async function enviarTeste(entrada: {
 
   const validacao = validarCampanha(
     { title: entrada.title, body: entrada.body, deepLink: entrada.deepLink },
-    { urlDaLoja: base.loja.primary_url, agoraMs: Date.now() },
+    { urlDaLoja: base.loja.primary_url, agoraMs: Date.now(), fuso: base.loja.timezone },
   );
   if (!validacao.ok) return { problemas: validacao.problemas };
 

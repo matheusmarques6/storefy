@@ -10,6 +10,7 @@
  * notificação, e o lojista precisa ver o corte ANTES de enviar, não depois.
  */
 import { z } from 'zod';
+import { instanteDaHoraLocal } from '@/lib/fuso';
 
 /** O mesmo limite do banco (`char_length(trim(title)) between 1 and 120`). */
 export const MAXIMO_DO_TITULO = 120;
@@ -95,8 +96,16 @@ export const FormularioDaCampanha = z.object({
       message: `A mensagem passa de ${String(MAXIMO_DO_CORPO)} caracteres.`,
     }),
   deepLink: z.string().trim().optional(),
-  /** ISO local do `datetime-local`, ou vazio para enviar agora. */
+  /** A hora de relógio do `datetime-local` ("2026-09-30T20:00"), no fuso da loja. */
   agendarPara: z.string().trim().optional(),
+  /**
+   * O que o lojista marcou em "Quando enviar". `false` é "Agendar para", e aí
+   * o horário é OBRIGATÓRIO: vazio não pode virar "agora". Era o que
+   * acontecia — quem marcava "Agendar" e esquecia a data mandava a campanha
+   * para todo mundo na mesma hora. Ausente (o rascunho), o horário nem entra
+   * na conta.
+   */
+  enviarAgora: z.boolean().optional(),
 });
 
 export type DadosDaCampanha = z.infer<typeof FormularioDaCampanha>;
@@ -155,12 +164,19 @@ export function normalizarDeepLink(
 export function interpretarAgendamento(
   entrada: string | undefined,
   agoraMs: number,
+  fuso: string,
 ): { ok: true; quando: Date | null } | { ok: false; mensagem: string } {
   const bruto = (entrada ?? '').trim();
   if (bruto === '') return { ok: true, quando: null };
 
-  const quando = new Date(bruto);
-  if (Number.isNaN(quando.getTime())) {
+  /*
+   * A hora de relógio é lida NO FUSO DA LOJA. Era `new Date(bruto)`, que lê
+   * string sem fuso no fuso do processo — UTC na Vercel —, e toda campanha
+   * agendada saía três horas antes. Os testes não pegavam porque passavam
+   * "…T15:00:00.000Z", com um `Z` que o `datetime-local` nunca manda.
+   */
+  const quando = instanteDaHoraLocal(bruto, fuso);
+  if (quando === null) {
     return { ok: false, mensagem: 'Escolha uma data e um horário.' };
   }
   if (quando.getTime() < agoraMs + ANTECEDENCIA_MINIMA_MS) {
@@ -176,7 +192,8 @@ export function interpretarAgendamento(
 /** Valida o formulário inteiro e devolve os problemas por campo. */
 export function validarCampanha(
   dados: unknown,
-  contexto: { urlDaLoja: string; agoraMs: number },
+  /** `fuso` é o da LOJA: a hora de um push é a hora dos clientes dela. */
+  contexto: { urlDaLoja: string; agoraMs: number; fuso: string },
 ):
   | {
       ok: true;
@@ -199,7 +216,12 @@ export function validarCampanha(
   const link = normalizarDeepLink(analise.data.deepLink, contexto.urlDaLoja);
   if (!link.ok) problemas.push({ campo: 'deepLink', mensagem: link.mensagem });
 
-  const agenda = interpretarAgendamento(analise.data.agendarPara, contexto.agoraMs);
+  // "Agora" ignora a data que tenha sobrado no campo de uma escolha anterior.
+  const horario = analise.data.enviarAgora === true ? '' : (analise.data.agendarPara ?? '');
+  const agenda =
+    analise.data.enviarAgora === false && horario === ''
+      ? ({ ok: false, mensagem: 'Escolha a data e o horário do envio.' } as const)
+      : interpretarAgendamento(horario, contexto.agoraMs, contexto.fuso);
   if (!agenda.ok) problemas.push({ campo: 'agendarPara', mensagem: agenda.mensagem });
 
   if (problemas.length > 0) return { ok: false, problemas };

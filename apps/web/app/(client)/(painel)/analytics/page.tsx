@@ -13,6 +13,7 @@ import {
 import { exigirContextoCliente } from '@/lib/contexto';
 import { criarClientServidor } from '@/lib/supabase/server';
 import { appDaLoja } from '@/lib/push-servidor';
+import { nomeDoFuso } from '@/lib/fuso';
 import { numerosDoPeriodo } from '@/lib/analytics-servidor';
 import {
   comoNumero,
@@ -195,8 +196,12 @@ export default async function PaginaDeAnalytics({
       )}
 
       <p className="text-muted-foreground text-xs">
-        Os números são recalculados de hora em hora, no fuso da loja ({lojaAtiva.timezone}). O dia
-        de hoje ainda está sendo contado.
+        Os números são recalculados de hora em hora, e o dia fecha à meia-noite no{' '}
+        {nomeDoFuso(lojaAtiva.timezone)} —{' '}
+        <Link href={`/lojas/${lojaAtiva.id}`} className="underline underline-offset-4">
+          o fuso da loja
+        </Link>
+        . O dia de hoje ainda está sendo contado.
       </p>
     </div>
   );

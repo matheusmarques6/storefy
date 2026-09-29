@@ -7,6 +7,7 @@ import { exigirPlatformAdmin } from '@/lib/contexto';
 import { criarClientServidor } from '@/lib/supabase/server';
 import { CampoBusca, Paginacao, lerParams } from '../paginacao';
 import { termoParaIlike } from '@/lib/listagem';
+import { FUSO_PADRAO, formatarDataHora } from '@/lib/fuso';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -136,10 +137,7 @@ export default async function PaginaLogs({
                   return (
                     <TableRow key={log.id}>
                       <TableCell className="text-muted-foreground whitespace-nowrap">
-                        {new Date(log.created_at).toLocaleString('pt-BR', {
-                          dateStyle: 'short',
-                          timeStyle: 'short',
-                        })}
+                        {formatarDataHora(log.created_at, FUSO_PADRAO)}
                       </TableCell>
                       <TableCell>
                         {nomeAtual != null && log.org_id != null ? (

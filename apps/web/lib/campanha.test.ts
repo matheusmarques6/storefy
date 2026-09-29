@@ -102,26 +102,48 @@ describe('normalizarDeepLink', () => {
 });
 
 describe('interpretarAgendamento', () => {
+  /*
+   * Os horários aqui estão no formato que o `datetime-local` REALMENTE manda:
+   * "AAAA-MM-DDTHH:mm", sem fuso. A versão anterior destes testes usava
+   * "…T15:00:00.000Z" — um formato que a tela nunca produz — e foi por isso
+   * que eles passavam enquanto toda campanha agendada saía três horas antes.
+   */
+  const SP = 'America/Sao_Paulo';
+
   it('vazio quer dizer enviar agora', () => {
-    expect(interpretarAgendamento('', AGORA)).toEqual({ ok: true, quando: null });
-    expect(interpretarAgendamento(undefined, AGORA)).toEqual({ ok: true, quando: null });
+    expect(interpretarAgendamento('', AGORA, SP)).toEqual({ ok: true, quando: null });
+    expect(interpretarAgendamento(undefined, AGORA, SP)).toEqual({ ok: true, quando: null });
   });
 
-  it('aceita um horário à frente', () => {
-    const r = interpretarAgendamento('2026-09-19T15:00:00.000Z', AGORA);
+  /* O defeito, em forma de teste. Com `new Date(texto)` no lugar, isto cai. */
+  it('a hora digitada é a hora DA LOJA: 15:00 em Brasília é 18:00 UTC', () => {
+    const r = interpretarAgendamento('2026-09-19T15:00', AGORA, SP);
     expect(r.ok).toBe(true);
-    if (r.ok) expect(r.quando?.toISOString()).toBe('2026-09-19T15:00:00.000Z');
+    if (r.ok) expect(r.quando?.toISOString()).toBe('2026-09-19T18:00:00.000Z');
   });
 
-  it('exige cinco minutos de antecedência', () => {
-    const emCima = new Date(AGORA + ANTECEDENCIA_MINIMA_MS - 1000).toISOString();
-    expect(interpretarAgendamento(emCima, AGORA).ok).toBe(false);
-    const folgado = new Date(AGORA + ANTECEDENCIA_MINIMA_MS + 1000).toISOString();
-    expect(interpretarAgendamento(folgado, AGORA).ok).toBe(true);
+  it('a mesma hora de relógio vira instantes diferentes em lojas de fusos diferentes', () => {
+    const saoPaulo = interpretarAgendamento('2026-09-19T15:00', AGORA, SP);
+    const manaus = interpretarAgendamento('2026-09-19T15:00', AGORA, 'America/Manaus');
+    expect(saoPaulo.ok && manaus.ok).toBe(true);
+    if (saoPaulo.ok && manaus.ok) {
+      // Manaus está uma hora atrás de Brasília: o mesmo "15:00" acontece depois.
+      expect((manaus.quando?.getTime() ?? 0) - (saoPaulo.quando?.getTime() ?? 0)).toBe(3_600_000);
+    }
+  });
+
+  it('exige cinco minutos de antecedência, medidos no fuso da loja', () => {
+    const campo = (ms: number) => new Date(ms - 3 * 3_600_000).toISOString().slice(0, 16); // hora de Brasília
+    expect(
+      interpretarAgendamento(campo(AGORA + ANTECEDENCIA_MINIMA_MS - 60_000), AGORA, SP).ok,
+    ).toBe(false);
+    expect(
+      interpretarAgendamento(campo(AGORA + ANTECEDENCIA_MINIMA_MS + 60_000), AGORA, SP).ok,
+    ).toBe(true);
   });
 
   it('recusa horário no passado', () => {
-    expect(interpretarAgendamento('2020-01-01T00:00:00.000Z', AGORA).ok).toBe(false);
+    expect(interpretarAgendamento('2020-01-01T00:00', AGORA, SP).ok).toBe(false);
   });
 
   /*
@@ -129,9 +151,13 @@ describe('interpretarAgendamento', () => {
    * campanha que o lojista quis agendar sair na hora, para todo mundo.
    */
   it('data ilegível é erro, e não "enviar agora"', () => {
-    const r = interpretarAgendamento('amanhã de manhã', AGORA);
+    const r = interpretarAgendamento('amanhã de manhã', AGORA, SP);
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.mensagem).toContain('data');
+  });
+
+  it('data que não existe é erro, e não o dia seguinte', () => {
+    expect(interpretarAgendamento('2026-02-31T15:00', AGORA, SP).ok).toBe(false);
   });
 });
 
@@ -139,7 +165,7 @@ describe('validarCampanha', () => {
   const base = { title: 'Promoção', body: 'Até 40% OFF', deepLink: '/promocoes' };
 
   it('aceita uma campanha completa', () => {
-    const r = validarCampanha(base, { urlDaLoja: LOJA, agoraMs: AGORA });
+    const r = validarCampanha(base, { urlDaLoja: LOJA, agoraMs: AGORA, fuso: 'America/Sao_Paulo' });
     expect(r.ok).toBe(true);
     if (r.ok) {
       expect(r.valores).toEqual({
@@ -152,7 +178,10 @@ describe('validarCampanha', () => {
   });
 
   it('cobra título e mensagem, em pt-BR', () => {
-    const r = validarCampanha({ title: '  ', body: '' }, { urlDaLoja: LOJA, agoraMs: AGORA });
+    const r = validarCampanha(
+      { title: '  ', body: '' },
+      { urlDaLoja: LOJA, agoraMs: AGORA, fuso: 'America/Sao_Paulo' },
+    );
     expect(r.ok).toBe(false);
     if (!r.ok) {
       expect(r.problemas.map((p) => p.campo).sort()).toEqual(['body', 'title']);
@@ -167,7 +196,7 @@ describe('validarCampanha', () => {
   it('recusa título longo demais para o banco aceitar', () => {
     const r = validarCampanha(
       { ...base, title: 'a'.repeat(121) },
-      { urlDaLoja: LOJA, agoraMs: AGORA },
+      { urlDaLoja: LOJA, agoraMs: AGORA, fuso: 'America/Sao_Paulo' },
     );
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.problemas[0]?.campo).toBe('title');
@@ -176,10 +205,46 @@ describe('validarCampanha', () => {
   it('junta os problemas de link e de horário numa vez só', () => {
     const r = validarCampanha(
       { ...base, deepLink: 'https://evil.com/x', agendarPara: '2020-01-01T00:00' },
-      { urlDaLoja: LOJA, agoraMs: AGORA },
+      { urlDaLoja: LOJA, agoraMs: AGORA, fuso: 'America/Sao_Paulo' },
     );
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.problemas.map((p) => p.campo).sort()).toEqual(['agendarPara', 'deepLink']);
+  });
+
+  /*
+   * O defeito: "Agendar para" com a data em branco virava envio IMEDIATO,
+   * porque horário vazio quer dizer "agora" — e a campanha que o lojista
+   * pretendia marcar para o fim de semana saía na hora, para todo mundo.
+   */
+  it('"Agendar para" sem data é erro no campo, e não envio agora', () => {
+    const r = validarCampanha(
+      { ...base, agendarPara: '', enviarAgora: false },
+      { urlDaLoja: LOJA, agoraMs: AGORA, fuso: 'America/Sao_Paulo' },
+    );
+    expect(r.ok).toBe(false);
+    if (!r.ok) {
+      expect(r.problemas).toEqual([
+        { campo: 'agendarPara', mensagem: 'Escolha a data e o horário do envio.' },
+      ]);
+    }
+  });
+
+  it('"Agora" ignora a data que sobrou no campo', () => {
+    const r = validarCampanha(
+      { ...base, agendarPara: '2020-01-01T00:00', enviarAgora: true },
+      { urlDaLoja: LOJA, agoraMs: AGORA, fuso: 'America/Sao_Paulo' },
+    );
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.valores.agendarPara).toBeNull();
+  });
+
+  it('"Agendar para" com data vale a data, no fuso da loja', () => {
+    const r = validarCampanha(
+      { ...base, agendarPara: '2026-09-19T15:00', enviarAgora: false },
+      { urlDaLoja: LOJA, agoraMs: AGORA, fuso: 'America/Sao_Paulo' },
+    );
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.valores.agendarPara?.toISOString()).toBe('2026-09-19T18:00:00.000Z');
   });
 });
 

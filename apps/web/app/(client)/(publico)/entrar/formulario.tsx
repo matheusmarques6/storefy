@@ -40,6 +40,10 @@ export function FormularioLogin({
           <Campo id="email" rotulo="E-mail" erro={estado.erros?.email}>
             <Input
               {...propsDoCampo('email', estado.erros?.email)}
+              // O e-mail volta do servidor com a resposta: o React limpa o
+              // formulário no fim da ação, e sem isto errar a senha apagava
+              // o e-mail junto.
+              defaultValue={estado.valores?.email}
               type="email"
               autoComplete="email"
               placeholder="voce@suaempresa.com.br"

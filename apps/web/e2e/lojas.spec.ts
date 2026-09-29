@@ -3,6 +3,8 @@ import { expect, test } from '@playwright/test';
 import {
   MOTIVO_PULO,
   SUPABASE_DISPONIVEL,
+  bancoDeTeste,
+  criarLojaPelaTela,
   criarUsuarioConfirmado,
   emailDeTeste,
   entrar,
@@ -93,4 +95,72 @@ test('recusa duas lojas com o mesmo endereço na mesma empresa', async ({ page }
   await expect(
     page.getByRole('alert').filter({ hasText: 'Já existe uma loja com este endereço' }),
   ).toBeVisible();
+});
+
+/*
+ * O fuso existia no banco com "o lojista ajusta" no comentário da coluna — e
+ * nenhuma tela para ajustar. Toda loja ficava presa no horário de Brasília:
+ * agendamento, silêncio noturno e fechamento do dia.
+ */
+test('o fuso da loja se troca na tela, e a troca fica na auditoria', async ({ page }) => {
+  const email = emailDeTeste('fuso');
+  await criarUsuarioConfirmado(email, 'Empresa Fuso');
+  await entrar(page, email);
+  const lojaId = await criarLojaPelaTela(page, 'Loja do Norte', 'loja-do-norte.com.br');
+
+  const campo = page.getByLabel('Fuso horário');
+  await expect(campo).toHaveValue('America/Sao_Paulo');
+
+  // O lojista escolhe pelo estado, e a lista diz a diferença para Brasília.
+  await expect(campo.locator('option[value="America/Manaus"]')).toHaveText(
+    'Amazonas (1 hora a menos que Brasília)',
+  );
+  await campo.selectOption('America/Manaus');
+  await page.getByRole('button', { name: 'Salvar alterações' }).click();
+
+  await expect(page.getByText('Alterações salvas')).toBeVisible();
+  await expect(page.getByLabel('Fuso horário')).toHaveValue('America/Manaus');
+
+  const banco = bancoDeTeste();
+  const { data: loja } = await banco.from('stores').select('timezone').eq('id', lojaId).single();
+  expect(loja?.timezone).toBe('America/Manaus');
+
+  const { data: trilha } = await banco
+    .from('audit_logs')
+    .select('diff')
+    .eq('entity', 'stores')
+    .eq('entity_id', lojaId)
+    .eq('action', 'update');
+  expect(JSON.stringify(trilha)).toContain('America/Manaus');
+});
+
+test('e-mail de atendimento recusado não apaga o que foi digitado', async ({ page }) => {
+  const email = emailDeTeste('contato');
+  await criarUsuarioConfirmado(email, 'Empresa Contato');
+  await entrar(page, email);
+  await criarLojaPelaTela(page, 'Loja Contato', 'loja-contato.com.br');
+
+  await page.waitForLoadState('networkidle');
+  await page.getByLabel('E-mail de atendimento').fill('atendimento@');
+  await page.getByLabel('Fuso horário').selectOption('America/Rio_Branco');
+  await page.getByRole('button', { name: 'Salvar alterações' }).click();
+
+  await expect(
+    page.getByRole('alert').filter({ hasText: 'Digite um e-mail válido' }),
+  ).toBeVisible();
+  // O React limpava o campo ao fim da ação, erro ou não: a pessoa via a
+  // mensagem embaixo de um campo que não tinha mais o que ela escreveu.
+  await expect(page.getByLabel('E-mail de atendimento')).toHaveValue('atendimento@');
+  await expect(page.getByLabel('Nome da loja')).toHaveValue('Loja Contato');
+  /*
+   * E o seletor, que é pior: num `<select>` o React só lê o `defaultValue` ao
+   * montar, e a limpeza voltava o fuso para o de antes SEM AVISO. Corrigido o
+   * e-mail, o "Salvar" gravaria o fuso antigo achando que gravou o novo.
+   */
+  await expect(page.getByLabel('Fuso horário')).toHaveValue('America/Rio_Branco');
+
+  await page.getByLabel('E-mail de atendimento').fill('atendimento@loja-contato.com.br');
+  await page.getByRole('button', { name: 'Salvar alterações' }).click();
+  await expect(page.getByText('Alterações salvas')).toBeVisible();
+  await expect(page.getByLabel('Fuso horário')).toHaveValue('America/Rio_Branco');
 });

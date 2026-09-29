@@ -5,6 +5,7 @@ import {
   lojaSchema,
   redefinirSenhaSchema,
   urlLojaSchema,
+  valoresDigitados,
 } from './validacao';
 
 describe('urlLojaSchema', () => {
@@ -103,6 +104,38 @@ describe('lojaSchema', () => {
   it('remove espaços do nome', () => {
     expect(lojaSchema.parse({ nome: '  Minha Loja  ', url: 'x.com.br' }).nome).toBe('Minha Loja');
   });
+
+  it('sem o campo de fuso, não mexe no fuso', () => {
+    expect(lojaSchema.parse({ nome: 'Minha Loja', url: 'x.com.br' }).fuso).toBeUndefined();
+  });
+
+  it('aceita um fuso da lista', () => {
+    const resultado = lojaSchema.parse({
+      nome: 'Minha Loja',
+      url: 'x.com.br',
+      fuso: 'America/Manaus',
+    });
+    expect(resultado.fuso).toBe('America/Manaus');
+  });
+
+  /*
+   * O campo é um seletor, mas o formulário chega ao servidor como texto livre
+   * — quem quiser manda qualquer coisa. E o fuso gravado vai parar num
+   * `at time zone` do job diário, que não perdoa.
+   */
+  it('recusa fuso fora da lista, com mensagem para o campo', () => {
+    for (const ruim of [
+      '',
+      'Marte/Olimpo',
+      'america/manaus',
+      'EST',
+      "UTC'; drop table stores;--",
+    ]) {
+      const r = lojaSchema.safeParse({ nome: 'Minha Loja', url: 'x.com.br', fuso: ruim });
+      expect(r.success, ruim).toBe(false);
+      if (!r.success) expect(r.error.issues[0]?.message).toBe('Escolha um fuso da lista.');
+    }
+  });
 });
 
 describe('cadastroSchema', () => {
@@ -165,5 +198,41 @@ describe('extrairErros', () => {
     if (resultado.success) throw new Error('esperava falha de validação');
     const erros = extrairErros(resultado.error);
     expect(erros.email).toBe('Informe seu e-mail.');
+  });
+});
+
+describe('valoresDigitados', () => {
+  function formulario(campos: Record<string, string | Blob>): FormData {
+    const dados = new FormData();
+    for (const [nome, valor] of Object.entries(campos)) dados.set(nome, valor);
+    return dados;
+  }
+
+  it('devolve só os campos pedidos', () => {
+    const dados = formulario({ email: 'a@b.com', senha: 'segredo123', nomeEmpresa: 'Loja' });
+    expect(valoresDigitados(dados, ['email', 'nomeEmpresa'])).toEqual({
+      email: 'a@b.com',
+      nomeEmpresa: 'Loja',
+    });
+  });
+
+  /*
+   * A garantia que importa: a senha só voltaria se alguém a pusesse na lista.
+   * Não existe "todos menos" para esquecer de atualizar.
+   */
+  it('a senha nunca volta se não estiver na lista', () => {
+    const dados = formulario({ email: 'a@b.com', senha: 'segredo123' });
+    expect(valoresDigitados(dados, ['email'])).not.toHaveProperty('senha');
+  });
+
+  it('devolve o texto como veio, sem aparar — é o que a pessoa escreveu', () => {
+    expect(valoresDigitados(formulario({ nome: '  Minha Loja ' }), ['nome'])).toEqual({
+      nome: '  Minha Loja ',
+    });
+  });
+
+  it('ignora campo ausente e arquivo', () => {
+    const dados = formulario({ logo: new Blob(['x']) });
+    expect(valoresDigitados(dados, ['logo', 'email'])).toEqual({});
   });
 });

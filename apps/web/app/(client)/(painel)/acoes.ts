@@ -9,21 +9,42 @@ import { criarClientServidor } from '@/lib/supabase/server';
 const UM_ANO = 60 * 60 * 24 * 365;
 
 /**
+ * As organizações de que o usuário é MEMBRO.
+ *
+ * Pergunta feita com `user_id` explícito, e não deixada para a RLS: a equipe
+ * da plataforma lê lojas e vínculos de todo mundo, e "posso ver" não é "é
+ * minha". Sem isto, um admin gravava no cookie a loja de outro cliente.
+ */
+async function minhasOrganizacoes(
+  supabase: Awaited<ReturnType<typeof criarClientServidor>>,
+): Promise<Set<string>> {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (user == null) return new Set();
+
+  const { data: vinculos } = await supabase
+    .from('memberships')
+    .select('org_id')
+    .eq('user_id', user.id);
+  return new Set((vinculos ?? []).map((vinculo) => vinculo.org_id));
+}
+
+/**
  * Define a loja ativa.
  *
- * Confere no banco antes de gravar o cookie. A RLS já impediria a leitura dos
- * dados de outra organização, mas gravar um id inválido deixaria o painel em
- * estado estranho — melhor rejeitar na entrada.
+ * Confere no banco antes de gravar o cookie. O contexto do painel já ignora
+ * loja de fora das organizações do usuário, mas gravar um id que não vale
+ * deixaria o painel em estado estranho — melhor rejeitar na entrada.
  */
 export async function trocarLojaAtiva(lojaId: string): Promise<void> {
   const supabase = await criarClientServidor();
-  const { data: loja } = await supabase
-    .from('stores')
-    .select('id, org_id')
-    .eq('id', lojaId)
-    .maybeSingle();
+  const [{ data: loja }, minhas] = await Promise.all([
+    supabase.from('stores').select('id, org_id').eq('id', lojaId).maybeSingle(),
+    minhasOrganizacoes(supabase),
+  ]);
 
-  if (loja == null) {
+  if (loja == null || !minhas.has(loja.org_id)) {
     throw new Error('Loja não encontrada ou sem permissão de acesso.');
   }
 
@@ -50,13 +71,9 @@ export async function trocarLojaAtiva(lojaId: string): Promise<void> {
 /** Define a organização ativa e limpa a loja, que pertence à anterior. */
 export async function trocarOrganizacaoAtiva(orgId: string): Promise<void> {
   const supabase = await criarClientServidor();
-  const { data: vinculo } = await supabase
-    .from('memberships')
-    .select('org_id')
-    .eq('org_id', orgId)
-    .maybeSingle();
+  const minhas = await minhasOrganizacoes(supabase);
 
-  if (vinculo == null) {
+  if (!minhas.has(orgId)) {
     throw new Error('Organização não encontrada ou sem permissão de acesso.');
   }
 

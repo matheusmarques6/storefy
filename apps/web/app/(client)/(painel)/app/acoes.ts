@@ -22,6 +22,7 @@ import { exigirContextoCliente } from '@/lib/contexto';
 import { guardarAsset, removerAsset } from '@/lib/assets-da-loja';
 import { garantirRascunho, salvarRascunho } from '@/lib/configs-servidor';
 import { validarConfig, type Problema } from '@/lib/editor-de-config';
+import { FALHA_GENERICA, mensagemDaFalha } from '@/lib/erros';
 
 export interface EstadoDoEditor {
   ok?: boolean;
@@ -39,7 +40,7 @@ function traduzirErro(codigo: string | undefined, mensagem: string): string {
   if (codigo === 'P0002') {
     return 'Não encontramos o rascunho deste app. Recarregue a página e tente de novo.';
   }
-  return mensagem !== '' ? mensagem : 'Não foi possível concluir. Tente novamente.';
+  return mensagemDaFalha('app', { code: codigo, message: mensagem }, FALHA_GENERICA);
 }
 
 /**

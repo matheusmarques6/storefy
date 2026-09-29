@@ -61,6 +61,8 @@ interface Props {
   pushConfigurado: boolean;
   /** Presets de tema curados pela equipe (A10). Vazio some da tela. */
   presets: Preset[];
+  /** O fuso da loja, para as datas do histórico de versões. */
+  fuso: string;
   /** Links assinados das imagens atuais. O bucket é privado. */
   urlDoIcone: string | null;
   urlDaSplash: string | null;
@@ -75,6 +77,7 @@ export function Editor({
   somenteLeitura,
   pushConfigurado,
   presets,
+  fuso,
   urlDoIcone,
   urlDaSplash,
 }: Props) {
@@ -309,6 +312,7 @@ export function Editor({
                   storeId={storeId}
                   versoes={historico}
                   somenteLeitura={somenteLeitura}
+                  fuso={fuso}
                 />
               ) : null}
             </CardContent>

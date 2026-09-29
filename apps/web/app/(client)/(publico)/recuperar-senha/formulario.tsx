@@ -45,6 +45,7 @@ export function FormularioRecuperar() {
           <Campo id="email" rotulo="E-mail" erro={estado.erros?.email}>
             <Input
               {...propsDoCampo('email', estado.erros?.email)}
+              defaultValue={estado.valores?.email}
               type="email"
               autoComplete="email"
               placeholder="voce@suaempresa.com.br"

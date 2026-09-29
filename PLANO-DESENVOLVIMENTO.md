@@ -933,6 +933,29 @@ O que continua sem dar para conferir aqui:
 - **O ponta a ponta com a Shopify, a EAS, a Apple e a Google**: continua dependendo das contas
   reais, como a Fase 5 já registrava.
 
+### Segunda rodada do e2e (29/09/2026): push pela tela, fuso e formulários
+
+O e2e passou a cobrir as campanhas de ponta a ponta (`e2e/push.spec.ts`: agendar, rascunho,
+editar, cancelar, excluir, confirmar envio) e os formulários depois de um erro. Foram 22 testes
+verdes contra o Supabase local, e o que eles e a revisão acharam:
+
+| Defeito | Gravidade | Como ficou |
+|---|---|---|
+| **Campanha agendada saía 3 horas antes.** O `datetime-local` manda "…T20:00" sem fuso, e o servidor lia no fuso DO PROCESSO — UTC na Vercel. A edição convertia de volta em UTC e mostrava "20:00" de novo: o erro era invisível dos dois lados | Alta | `lib/fuso.ts` lê a hora no fuso da LOJA. O e2e agenda 20:00 e confere 23:00 UTC no banco; troca a loja para Manaus e confere que a mesma campanha aparece às 19:00 |
+| **Dezessete telas mostravam hora em UTC**, e as de cliente trocavam o texto na hidratação | Média | Todas passam pelo fuso da loja (ou o padrão, no admin). `datas-com-fuso.test.ts` varre o código e falha em `toLocale…` sem `timeZone` |
+| **Editar um RASCUNHO e clicar "Salvar alterações" ENVIAVA a campanha para todos os clientes.** O formulário abria com "Agora" marcado e o único botão agendava | Alta | Rascunho tem "Salvar rascunho" separado; o botão principal diz o que faz ("Enviar agora", "Agendar campanha"); enviar agora pede confirmação dizendo para quantos aparelhos vai |
+| **"Agendar para" com a data em branco enviava na hora** — horário vazio queria dizer "agora" | Alta | É erro no campo. Teste de unidade e e2e |
+| **Cancelar, excluir e editar diziam "pronto" quando nada tinha mudado** — RLS recusa em silêncio, e o job pode pegar a campanha entre a leitura e o clique | Média | As três conferem a linha gravada; o papel é conferido antes, com mensagem clara |
+| **O fuso da loja não tinha tela**, apesar de "o lojista ajusta" no comentário da coluna. E um fuso inválido gravado direto pela API derrubava o `consolidar_analytics` de TODAS as lojas (o laço é um só) | Alta (entre clientes) | Campo "Fuso horário" na loja, com os estados do Brasil e a diferença para Brasília; trigger `conferir_fuso_da_loja` recusa no banco. A asserção de RLS mostra o job caindo sem a trigger |
+| **Formulário se apagava depois de um erro.** O React 19 limpa todo `<form action>` no fim da ação, erro ou não: errar a senha apagava o e-mail; a Shopify recusar a credencial apagava o Client ID colado. Num `<select>` era pior: voltava ao valor inicial calado, e o papel "superadmin" virava "suporte" no envio seguinte | Média | A ação devolve o que foi digitado (`valoresDigitados`, lista explícita — senha nunca volta) e o campo usa como `defaultValue`; `<select>` remonta pela `key`. `formularios-controlados.test.ts` varre os formulários; e2e cobre login, cadastro, loja e o preenchimento automático antes da hidratação |
+| **Mensagem crua do banco na tela** ("new row violates row-level security policy…", em inglês). E o login do admin respondia "senha incorreta" para qualquer falha, inclusive limite de tentativas | Média | `mensagemDaFalha`: só atravessa o texto das NOSSAS funções SQL (P0001); o resto vira frase em português e o original vai para o log. `erros.test.ts` varre o código atrás de `.message` montando mensagem |
+| **Admin da plataforma no painel do cliente caía na organização de OUTRO cliente**, com o papel de outra pessoa. O contexto buscava os vínculos confiando só na RLS — e a RLS deixa a equipe ler todos | Alta (entre clientes) | `user_id` explícito no contexto e na troca de loja/organização. O e2e cria um cliente antes do admin e confere que o admin vê a própria organização |
+| **A13 mostrava as integrações OPCIONAIS como "Faltando"**, com a chave tracejada em vermelho, ao lado de "Nada quebra" | Baixa | Três níveis (essencial, recurso, opcional); opcional desligada é "Não usado", neutro, e não entra na conta |
+| **A prévia devolvia 415 para loja fora do ar** e o analytics mostrava "America/Sao_Paulo" cru | Baixa | Resposta de erro da loja explica o que houve; o analytics diz "horário de Brasília" e leva à tela da loja |
+
+Travas novas: `formularios-controlados.test.ts`, `erros.test.ts` (varredura de `.message`),
+`datas-com-fuso.test.ts`, o grupo "fuso" do `rls.test.sql` e os 9 testes novos do e2e.
+
 ### Fase 6 — Painel Admin completo (4–6 dias)
 - Telas A02–A13, impersonação com auditoria, presets por tema (A10), feature flags e reexecução de builds.
 - Reaproveitar do admin Convertfy os padrões de tabela, filtros, página de detalhe com abas e notas internas.
@@ -951,7 +974,7 @@ O que continua sem dar para conferir aqui:
 | **A08 — Push global** | ✅ envios, falhas e aparelhos ativos por app, ordenado por ativos (é o que a OneSignal cobra). "App com problema" é RAZÃO com piso de volume, não contagem: 1 falha em 1 envio não acusa ninguém |
 | **A11 — Equipe interna** | ✅ convidar, trocar papel e remover, com três travas — só superadmin mexe, ninguém altera a si mesmo, e o último superadmin não sai. Conferidas de novo no servidor, com a contagem vinda do banco |
 | A12 — Logs de auditoria | ✅ |
-| **A13 — Configurações do sistema** | ⚠️ o bloco de CHAVES está pronto: as 19 variáveis que a aplicação lê, agrupadas pelo que quebra sem cada uma, com um teste que varre o código e falha quando alguém soma uma variável sem descrevê-la. Feature flags e versão mínima ainda não |
+| **A13 — Configurações do sistema** | ⚠️ o bloco de CHAVES está pronto: as 19 variáveis que a aplicação lê, em três níveis (essencial, por recurso, opcional) pelo que quebra sem cada uma, com um teste que varre o código e falha quando alguém soma uma variável sem descrevê-la. Opcional desligada aparece como "Não usado", e não como falta. Feature flags e versão mínima ainda não |
 | **A10 — Presets por tema** | ✅ os dois lados: a equipe cria o preset COPIANDO de uma loja publicada, e o lojista aplica no editor com a troca descrita antes de confirmar |
 | A09 | ⬜ ainda não (depende da cobrança, Fase 7) |
 

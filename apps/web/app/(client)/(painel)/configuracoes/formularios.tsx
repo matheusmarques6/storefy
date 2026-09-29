@@ -40,7 +40,7 @@ export function FormularioOrganizacao({
       <Campo id="nome" rotulo="Nome da empresa" erro={estado.erros?.nome}>
         <Input
           {...propsDoCampo('nome', estado.erros?.nome)}
-          defaultValue={nomeInicial}
+          defaultValue={estado.valores?.nome ?? nomeInicial}
           disabled={somenteLeitura}
           required
         />
@@ -65,7 +65,7 @@ export function FormularioNome({ nomeInicial }: { nomeInicial: string }) {
       <Campo id="nome" rotulo="Seu nome" erro={estado.erros?.nome}>
         <Input
           {...propsDoCampo('nome', estado.erros?.nome)}
-          defaultValue={nomeInicial}
+          defaultValue={estado.valores?.nome ?? nomeInicial}
           autoComplete="name"
           placeholder="Como podemos te chamar"
         />
@@ -90,7 +90,7 @@ export function FormularioEmail({ emailAtual }: { emailAtual: string }) {
         <Input
           {...propsDoCampo('email', estado.erros?.email, true)}
           type="email"
-          defaultValue={emailAtual}
+          defaultValue={estado.valores?.email ?? emailAtual}
           autoComplete="email"
           required
         />

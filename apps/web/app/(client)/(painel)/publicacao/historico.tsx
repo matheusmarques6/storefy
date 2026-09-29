@@ -7,6 +7,7 @@
  */
 import { Download, History } from 'lucide-react';
 import type { BuildNaLista } from '@/lib/publicacao-servidor';
+import { formatarDataHora } from '@/lib/fuso';
 import { ROTULO_STATUS_BUILD, type Database } from '@storefy/db';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
@@ -54,7 +55,14 @@ const COR: Record<Status, 'default' | 'secondary' | 'destructive' | 'outline'> =
   canceled: 'outline',
 };
 
-export function HistoricoDeBuilds({ builds }: { builds: readonly BuildNaLista[] }) {
+export function HistoricoDeBuilds({
+  builds,
+  fuso,
+}: {
+  builds: readonly BuildNaLista[];
+  /** O fuso da loja: a hora de um build é lida por quem está nela. */
+  fuso: string;
+}) {
   if (builds.length === 0) {
     return (
       <div className="space-y-3">
@@ -113,8 +121,10 @@ export function HistoricoDeBuilds({ builds }: { builds: readonly BuildNaLista[] 
                 )}
 
                 <p className="text-muted-foreground text-xs">
-                  <time dateTime={build.createdAt}>{formatar(build.createdAt)}</time>
-                  {build.finishedAt === null ? null : ` · terminou ${formatar(build.finishedAt)}`}
+                  <time dateTime={build.createdAt}>{formatar(build.createdAt, fuso)}</time>
+                  {build.finishedAt === null
+                    ? null
+                    : ` · terminou ${formatar(build.finishedAt, fuso)}`}
                 </p>
               </div>
 
@@ -155,8 +165,6 @@ export function HistoricoDeBuilds({ builds }: { builds: readonly BuildNaLista[] 
   );
 }
 
-function formatar(iso: string): string {
-  const data = new Date(iso);
-  if (Number.isNaN(data.getTime())) return '';
-  return data.toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
+function formatar(iso: string, fuso: string): string {
+  return formatarDataHora(iso, fuso);
 }

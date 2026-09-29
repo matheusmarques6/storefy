@@ -370,3 +370,37 @@ avisarPronto();
 }catch(err){}
 })();`;
 }
+
+export type LeituraDaResposta = { ok: true } | { ok: false; status: number; mensagem: string };
+
+/**
+ * O que fazer com a resposta da loja, antes de mostrar na prévia.
+ *
+ * TRÊS CASOS, e a primeira versão juntava dois deles. Ela conferia só o TIPO:
+ * uma resposta que não fosse HTML virava "Este endereço não é uma página da
+ * loja" — inclusive um 403 de CDN ou um 502 de uma loja fora do ar, em que o
+ * endereço É uma página da loja e o problema é outro. O lojista iria conferir
+ * o endereço, que estava certo.
+ *
+ *   HTML, com QUALQUER status, aparece. A página de 404 da Shopify para um
+ *   produto que não existe é exatamente o que o app vai mostrar, e esconder
+ *   isso atrás de um aviso nosso tiraria a prévia do papel de prévia;
+ *
+ *   não-HTML com status de erro diz que a LOJA respondeu com erro, e qual;
+ *
+ *   não-HTML com sucesso é o caso original: um endereço de imagem, de JSON,
+ *   de arquivo — não uma página.
+ */
+export function avaliarRespostaDaLoja(status: number, tipo: string): LeituraDaResposta {
+  if (tipo.toLowerCase().includes('html')) return { ok: true };
+
+  if (status >= 400) {
+    return {
+      ok: false,
+      status: 502,
+      mensagem: `A sua loja respondeu com um erro (${String(status)}). Confira se ela está no ar e aberta ao público.`,
+    };
+  }
+
+  return { ok: false, status: 415, mensagem: 'Este endereço não é uma página da loja.' };
+}

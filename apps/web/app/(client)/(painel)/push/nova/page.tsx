@@ -6,11 +6,12 @@ import { exigirContextoCliente } from '@/lib/contexto';
 import { criarClientServidor } from '@/lib/supabase/server';
 import { criarClientServiceRole } from '@/lib/supabase/admin';
 import { estadoDasNotificacoes } from '@/lib/ativar-push';
-import { aparelhosRecentes, appDaLoja } from '@/lib/push-servidor';
+import { aparelhosRecentes, appDaLoja, contarAparelhos } from '@/lib/push-servidor';
 import { EstadoVazio } from '@/components/estado-vazio';
 import { Button } from '@/components/ui/button';
 import { PushNaoConfigurado } from '../nao-configurado';
 import { NovaCampanha } from './nova-campanha';
+import { nomeDoFuso } from '@/lib/fuso';
 
 export const metadata: Metadata = { title: 'Nova campanha' };
 
@@ -49,8 +50,9 @@ export default async function PaginaDeNovaCampanha() {
 
   const supabase = await criarClientServidor();
   const app = await appDaLoja(supabase, lojaAtiva.id);
-  const [aparelhos, notificacoes] = await Promise.all([
+  const [aparelhos, alcance, notificacoes] = await Promise.all([
     app == null ? Promise.resolve([]) : aparelhosRecentes(supabase, app.id),
+    app == null ? Promise.resolve(null) : contarAparelhos(supabase, app.id),
     estadoDasNotificacoes(criarClientServiceRole(), lojaAtiva.id),
   ]);
 
@@ -77,7 +79,11 @@ export default async function PaginaDeNovaCampanha() {
       <NovaCampanha
         nomeDoApp={lojaAtiva.name}
         urlDaLoja={lojaAtiva.primary_url}
+        fuso={lojaAtiva.timezone}
+        nomeDoFuso={nomeDoFuso(lojaAtiva.timezone)}
         aparelhos={aparelhos}
+        alcance={alcance}
+        notificacoesLigadas={notificacoes.ligado}
       />
     </div>
   );

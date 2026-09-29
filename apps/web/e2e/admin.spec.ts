@@ -85,3 +85,48 @@ test('platform admin enxerga organizações e lojas de todos os clientes', async
   await contextoCliente.close();
   await contextoAdmin.close();
 });
+
+/*
+ * A equipe da plataforma também é cliente: tem a própria organização. Ao abrir
+ * o painel do cliente, é ELA que precisa aparecer.
+ *
+ * O defeito: o contexto do painel buscava os vínculos confiando só na RLS, e a
+ * RLS deixa a equipe ler os vínculos de TODO mundo. O admin caía na
+ * organização mais antiga da plataforma — de outro cliente —, com o papel de
+ * outra pessoa.
+ */
+test('admin no painel do cliente vê a própria organização, e não a de outro cliente', async ({
+  browser,
+}) => {
+  const contextoCliente = await browser.newContext();
+  const contextoAdmin = await browser.newContext();
+  const paginaCliente = await contextoCliente.newPage();
+  const paginaAdmin = await contextoAdmin.newPage();
+
+  // O cliente vem PRIMEIRO: a organização dele é mais antiga que a do admin.
+  const sufixo = Math.random().toString(36).slice(2, 8);
+  const emailCliente = emailDeTeste('cliente-alheio');
+  await criarUsuarioConfirmado(emailCliente, `Empresa Alheia ${sufixo}`);
+  await entrar(paginaCliente, emailCliente);
+  await paginaCliente.goto('/lojas/nova');
+  await paginaCliente.getByLabel('Nome da loja').fill(`Loja Alheia ${sufixo}`);
+  await paginaCliente.getByLabel('Endereço da loja').fill(`loja-alheia-${sufixo}.com.br`);
+  await paginaCliente.getByRole('button', { name: 'Criar loja' }).click();
+  await paginaCliente.waitForURL(/\/lojas\/[0-9a-f-]+/);
+
+  const emailAdmin = emailDeTeste('equipe-cliente');
+  const idAdmin = await criarUsuarioConfirmado(emailAdmin, `Equipe Propria ${sufixo}`);
+  await tornarPlatformAdmin(idAdmin);
+  await entrar(paginaAdmin, emailAdmin);
+
+  await expect(
+    paginaAdmin.getByText(`Storefy by Convertfy · Equipe Propria ${sufixo}`),
+  ).toBeVisible();
+
+  await paginaAdmin.goto('/lojas');
+  await expect(paginaAdmin.getByText(`Loja Alheia ${sufixo}`)).toHaveCount(0);
+  await expect(paginaAdmin.getByText(`Empresa Alheia ${sufixo}`)).toHaveCount(0);
+
+  await contextoCliente.close();
+  await contextoAdmin.close();
+});

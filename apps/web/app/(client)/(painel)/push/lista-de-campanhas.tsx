@@ -18,6 +18,7 @@ import {
   type StatusDaCampanha,
 } from '@/lib/campanha';
 import type { CampanhaNaLista } from '@/lib/push-servidor';
+import { formatarDataHora } from '@/lib/fuso';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -54,9 +55,16 @@ type Confirmacao = { tipo: 'cancelar' | 'excluir'; campanha: CampanhaNaLista } |
 export function ListaDeCampanhas({
   campanhas,
   podeEscrever,
+  fuso,
 }: {
   campanhas: readonly CampanhaNaLista[];
   podeEscrever: boolean;
+  /**
+   * O fuso da loja. Este componente é renderizado no servidor e hidratado no
+   * navegador: sem um fuso explícito, o servidor escrevia a hora em UTC, o
+   * navegador reescrevia no fuso local, e o texto mudava na frente do lojista.
+   */
+  fuso: string;
 }) {
   const router = useRouter();
   const [confirmacao, setConfirmacao] = useState<Confirmacao>(null);
@@ -123,7 +131,7 @@ export function ListaDeCampanhas({
                 <p className="text-muted-foreground line-clamp-2 text-sm">{campanha.body}</p>
                 <p className="text-muted-foreground text-xs">
                   {EXPLICACAO_DO_STATUS[campanha.status]}{' '}
-                  <time dateTime={quando}>{formatar(quando)}</time>
+                  <time dateTime={quando}>{formatar(quando, fuso)}</time>
                 </p>
               </div>
 
@@ -220,8 +228,6 @@ function Metrica({ rotulo, valor }: { rotulo: string; valor: string }) {
   );
 }
 
-function formatar(iso: string): string {
-  const data = new Date(iso);
-  if (Number.isNaN(data.getTime())) return '';
-  return data.toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
+function formatar(iso: string, fuso: string): string {
+  return formatarDataHora(iso, fuso);
 }

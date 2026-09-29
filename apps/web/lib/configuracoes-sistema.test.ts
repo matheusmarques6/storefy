@@ -53,6 +53,8 @@ describe('conferir', () => {
 });
 
 describe('resumo', () => {
+  const necessarias = INTEGRACOES.filter((i) => i.nivel !== 'opcional').length;
+
   it('conta as completas e separa as essenciais que faltam', () => {
     const presentes = tudoPresente();
     presentes.ENCRYPTION_KEY = false;
@@ -60,14 +62,51 @@ describe('resumo', () => {
 
     const r = resumo(conferir(presentes));
 
-    expect(r.total).toBe(INTEGRACOES.length);
-    expect(r.completas).toBe(INTEGRACOES.length - 2);
+    expect(r.total).toBe(necessarias);
+    expect(r.completas).toBe(necessarias - 2);
     // Só a criptografia é essencial das duas que faltam.
     expect(r.essenciaisFaltando).toBe(1);
   });
 
   it('ambiente completo não tem essencial faltando', () => {
     expect(resumo(conferir(tudoPresente())).essenciaisFaltando).toBe(0);
+  });
+
+  /*
+   * O defeito: Google e domínios próprios desligados apareciam como
+   * "Faltando", com a chave tracejada em vermelho, ao lado de "Nada quebra".
+   * Opcional desligada não é pendência, e não entra na conta de nada.
+   */
+  it('opcional desligada não falta, nem pesa na conta', () => {
+    const presentes = tudoPresente();
+    presentes.NEXT_PUBLIC_GOOGLE_OAUTH_ENABLED = false;
+    presentes.NEXT_PUBLIC_CLIENT_HOST = false;
+    presentes.NEXT_PUBLIC_ADMIN_HOST = false;
+
+    const r = resumo(conferir(presentes));
+
+    expect(r.completas).toBe(r.total);
+    expect(r.essenciaisFaltando).toBe(0);
+    expect(r.opcionaisEmUso).toBe(0);
+  });
+});
+
+describe('os níveis', () => {
+  it('o que derruba o painel é essencial; o que é escolha é opcional', () => {
+    const nivel = (chave: string) => INTEGRACOES.find((i) => i.chave === chave)?.nivel;
+
+    expect(nivel('supabase')).toBe('essencial');
+    expect(nivel('cripto')).toBe('essencial');
+    expect(nivel('site')).toBe('essencial');
+    expect(nivel('onesignal')).toBe('recurso');
+    expect(nivel('google')).toBe('opcional');
+    expect(nivel('dominios')).toBe('opcional');
+  });
+
+  it('opcional diz que nada deixa de funcionar sem ela', () => {
+    for (const integracao of INTEGRACOES.filter((i) => i.nivel === 'opcional')) {
+      expect(integracao.oQueQuebra, integracao.chave).toMatch(/continuam funcionando|Nada quebra/);
+    }
   });
 });
 
