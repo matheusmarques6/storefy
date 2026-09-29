@@ -57,7 +57,7 @@ export default async function PaginaDoEditor() {
     historicoDeVersoes(supabase, rascunho.rascunho.appId),
     supabase
       .from('apps')
-      .select('onesignal_app_id, icon_path, splash_path')
+      .select('display_name, onesignal_app_id, icon_path, splash_path')
       .eq('id', rascunho.rascunho.appId)
       .maybeSingle(),
     /*
@@ -118,6 +118,7 @@ export default async function PaginaDoEditor() {
       configInicialDoServidor={rascunho.rascunho.config}
       versao={rascunho.rascunho.version}
       publicada={publicada}
+      nomeDoApp={app?.display_name ?? lojaAtiva.name}
       urlDoIcone={urlDoIcone}
       urlDaSplash={urlDaSplash}
       ondeBaixarAPrevia={ondeBaixarAPrevia(plataforma)}

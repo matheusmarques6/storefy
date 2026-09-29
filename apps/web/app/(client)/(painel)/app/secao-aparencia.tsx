@@ -1,9 +1,10 @@
 'use client';
 
-/** Cores e barra de status (C06a). */
+/** Nome, ícone, tela de abertura, cores e barra de status (C06a). */
 import type { AppConfig } from '@storefy/config-schema';
 import { CampoDeCor } from './campo-de-cor';
 import { CampoDeImagem } from './campo-de-imagem';
+import { CampoDeNome } from './campo-de-nome';
 import { Label } from '@/components/ui/label';
 import { Select } from '@/components/ui/select';
 import { editarTema } from '@/lib/editor-de-config';
@@ -26,6 +27,7 @@ export function SecaoAparencia({
   aoMudar,
   somenteLeitura,
   storeId,
+  nomeDoApp,
   urlDoIcone,
   urlDaSplash,
 }: {
@@ -33,11 +35,14 @@ export function SecaoAparencia({
   aoMudar: (config: AppConfig) => void;
   somenteLeitura: boolean;
   storeId: string;
+  nomeDoApp: string;
   urlDoIcone: string | null;
   urlDaSplash: string | null;
 }) {
   return (
     <div className="space-y-6">
+      <CampoDeNome nomeAtual={nomeDoApp} somenteLeitura={somenteLeitura} />
+
       {/*
         As imagens vêm antes das cores porque são o que a loja de aplicativos
         exige, e o que mais rejeita app. A cor o lojista muda quando quiser.

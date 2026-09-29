@@ -15,6 +15,7 @@ const PRONTO: EstadoDaPublicacao = {
   splashPronta: true,
   bundleIdIos: 'com.oakvintage.app',
   packageAndroid: 'com.oakvintage.app',
+  appNaApple: true,
   appleConectada: true,
   googleConectada: true,
   pushLigado: true,
@@ -94,6 +95,26 @@ describe('montarChecklist', () => {
     expect(podePublicar(itens, 'ios')).toBe(false);
   });
 
+  /*
+   * O envio à Apple precisa do app criado no App Store Connect, e isso a API
+   * não faz por ninguém. Travar antes evita um build de vinte minutos que
+   * morre no envio — e não segura o Android, que não depende disso.
+   */
+  it('sem o app criado na Apple não publica no iOS, mas publica no Android', () => {
+    const itens = montarChecklist({ ...PRONTO, appNaApple: false });
+    expect(podePublicar(itens, 'ios')).toBe(false);
+    expect(pendencias(itens, 'ios').map((item) => item.chave)).toEqual(['app-na-apple']);
+    expect(podePublicar(itens, 'android')).toBe(true);
+  });
+
+  it('identificador sem definir leva ao cartão dele, no topo da Publicação', () => {
+    const itens = montarChecklist({ ...PRONTO, bundleIdIos: null, packageAndroid: null });
+    for (const plataforma of ['ios', 'android'] as const) {
+      const pendente = pendencias(itens, plataforma)[0];
+      expect(pendente?.caminho).toBe('/publicacao#identificador');
+    }
+  });
+
   it('o checklist de cada plataforma traz os gerais mais os dela', () => {
     const itens = montarChecklist(PRONTO);
     const ios = checklistDaPlataforma(itens, 'ios').map((item) => item.chave);
@@ -112,6 +133,7 @@ describe('montarChecklist', () => {
       splashPronta: false,
       bundleIdIos: null,
       packageAndroid: null,
+      appNaApple: false,
       appleConectada: false,
       googleConectada: false,
       pushLigado: false,

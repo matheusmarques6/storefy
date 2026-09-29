@@ -125,6 +125,7 @@ export const ROTULO_STATUS_LOJA: Record<StoreStatus, string> = {
   draft: 'Rascunho',
   building: 'Gerando app',
   in_review: 'Em revisão',
+  rejected: 'Revisão recusada',
   live: 'No ar',
   paused: 'Pausada',
 };

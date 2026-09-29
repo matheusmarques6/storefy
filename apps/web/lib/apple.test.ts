@@ -17,7 +17,10 @@ import {
   derParaJose,
   lerRespostaDaApple,
   montarToken,
+  nomeParaAApple,
   pareceChaveP8,
+  procurarAppNaApple,
+  registrarIdentificadorNaApple,
   validarChaveDaApple,
 } from '@/lib/apple';
 
@@ -294,5 +297,163 @@ describe('validarChaveDaApple', () => {
     const r = await validarChaveDaApple(CREDENCIAL, recusado, AGORA);
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.motivo).not.toContain('PRIVATE KEY');
+  });
+});
+
+/** Uma App Store Connect de teste: responde, na ordem, o que cada chamada recebe. */
+function apple(...respostas: (Response | Error)[]) {
+  const chamadas: { url: string; metodo: string; corpo: unknown; autorizacao: string }[] = [];
+  const buscador = vi.fn((url: string, init?: RequestInit) => {
+    const cabecalhos = new Headers(init?.headers);
+    chamadas.push({
+      url,
+      metodo: init?.method ?? 'GET',
+      corpo: typeof init?.body === 'string' ? JSON.parse(init.body) : null,
+      autorizacao: cabecalhos.get('Authorization') ?? '',
+    });
+    const proxima = respostas.shift();
+    if (proxima === undefined) throw new Error('chamada a mais');
+    if (proxima instanceof Error) return Promise.reject(proxima);
+    return Promise.resolve(proxima);
+  });
+  return { buscador: buscador as unknown as typeof fetch, chamadas };
+}
+
+function json(status: number, corpo: unknown): Response {
+  return new Response(JSON.stringify(corpo), { status });
+}
+
+const ID = 'br.com.oakvintage.app';
+
+describe('registrarIdentificadorNaApple', () => {
+  it('já registrado nesta conta: pronto, sem registrar de novo', async () => {
+    const { buscador, chamadas } = apple(
+      json(200, { data: [{ id: 'X1', attributes: { identifier: ID } }] }),
+    );
+    expect(await registrarIdentificadorNaApple(CREDENCIAL, ID, 'Oak', buscador, AGORA)).toEqual({
+      ok: true,
+      jaExistia: true,
+    });
+    expect(chamadas).toHaveLength(1);
+    expect(chamadas[0]?.url).toBe(
+      `${BASE_DA_API}/v1/bundleIds?filter[identifier]=${encodeURIComponent(ID)}&limit=200`,
+    );
+    expect(jwtConfere(chamadas[0]?.autorizacao.replace('Bearer ', '') ?? '', CHAVES.publica)).toBe(
+      true,
+    );
+  });
+
+  it('o filtro da Apple devolve os que começam igual: só o idêntico conta, e o resto registra', async () => {
+    const { buscador, chamadas } = apple(
+      json(200, { data: [{ id: 'X2', attributes: { identifier: `${ID}2` } }] }),
+      json(201, { data: { id: 'X3' } }),
+    );
+    expect(
+      await registrarIdentificadorNaApple(
+        CREDENCIAL,
+        ID,
+        "Oak Vintage d'Água & Cia",
+        buscador,
+        AGORA,
+      ),
+    ).toEqual({ ok: true, jaExistia: false });
+    expect(chamadas[1]).toMatchObject({
+      url: `${BASE_DA_API}/v1/bundleIds`,
+      metodo: 'POST',
+      corpo: {
+        data: {
+          type: 'bundleIds',
+          attributes: { identifier: ID, name: 'Oak Vintage d Agua Cia', platform: 'IOS' },
+        },
+      },
+    });
+  });
+
+  it('409: o identificador é de outra conta Apple, e a saída é trocar', async () => {
+    const { buscador } = apple(json(200, { data: [] }), json(409, { errors: [{ status: '409' }] }));
+    const resultado = await registrarIdentificadorNaApple(CREDENCIAL, ID, 'Oak', buscador, AGORA);
+    expect(resultado).toEqual({
+      ok: false,
+      motivo:
+        'Esse identificador já está registrado em outra conta Apple. Troque o identificador aqui na Publicação e tente de novo.',
+    });
+  });
+
+  it('chave sem papel suficiente e chave revogada pedem coisas diferentes', async () => {
+    const semPapel = await registrarIdentificadorNaApple(
+      CREDENCIAL,
+      ID,
+      'Oak',
+      apple(json(403, {})).buscador,
+      AGORA,
+    );
+    expect(!semPapel.ok && semPapel.motivo).toContain('papel "Admin"');
+    const revogada = await registrarIdentificadorNaApple(
+      CREDENCIAL,
+      ID,
+      'Oak',
+      apple(json(401, {})).buscador,
+      AGORA,
+    );
+    expect(!revogada.ok && revogada.motivo).toContain('Conecte a conta Apple de novo');
+  });
+
+  it('sem rede, diz que é momentâneo', async () => {
+    const resultado = await registrarIdentificadorNaApple(
+      CREDENCIAL,
+      ID,
+      'Oak',
+      apple(new Error('ECONNRESET')).buscador,
+      AGORA,
+    );
+    expect(resultado).toEqual({
+      ok: false,
+      motivo: 'Não conseguimos falar com a Apple agora. Tente de novo em instantes.',
+    });
+  });
+});
+
+describe('procurarAppNaApple', () => {
+  it('acha o app pelo identificador e devolve o número dele', async () => {
+    const { buscador, chamadas } = apple(
+      json(200, {
+        data: [
+          { id: '6478000001', attributes: { bundleId: `${ID}2`, name: 'Outro' } },
+          { id: '6478123456', attributes: { bundleId: ID, name: 'Oak Vintage' } },
+        ],
+      }),
+    );
+    expect(await procurarAppNaApple(CREDENCIAL, ID, buscador, AGORA)).toEqual({
+      ok: true,
+      app: { id: '6478123456', nome: 'Oak Vintage' },
+    });
+    expect(chamadas[0]?.url).toContain(`/v1/apps?filter[bundleId]=${encodeURIComponent(ID)}`);
+  });
+
+  it('app ainda não criado: nenhum, sem erro', async () => {
+    const resultado = await procurarAppNaApple(
+      CREDENCIAL,
+      ID,
+      apple(json(200, { data: [] })).buscador,
+      AGORA,
+    );
+    expect(resultado).toEqual({ ok: true, app: null });
+  });
+
+  it('a Apple fora do ar não vira "app não encontrado"', async () => {
+    const resultado = await procurarAppNaApple(
+      CREDENCIAL,
+      ID,
+      apple(json(500, {})).buscador,
+      AGORA,
+    );
+    expect(resultado.ok).toBe(false);
+  });
+});
+
+describe('nomeParaAApple', () => {
+  it('só letras sem acento, números e espaços; vazio vira um nome genérico', () => {
+    expect(nomeParaAApple('Café & Cia.')).toBe('Cafe Cia');
+    expect(nomeParaAApple('***')).toBe('Storefy app');
   });
 });

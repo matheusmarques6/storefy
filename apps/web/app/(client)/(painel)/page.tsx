@@ -47,10 +47,15 @@ const DIAS_DO_RESUMO = 30;
 
 export const metadata: Metadata = { title: 'Início' };
 
-const VARIANTE_POR_STATUS: Record<StoreStatus, 'secondary' | 'warning' | 'success'> = {
+const VARIANTE_POR_STATUS: Record<
+  StoreStatus,
+  'secondary' | 'warning' | 'success' | 'destructive'
+> = {
   draft: 'secondary',
   building: 'warning',
   in_review: 'warning',
+  // Recusado pede ação do lojista: não pode parecer "andando".
+  rejected: 'destructive',
   live: 'success',
   paused: 'secondary',
 };
@@ -181,6 +186,12 @@ export default async function PaginaInicio() {
                     </Badge>
                   </div>
                   <CardDescription className="truncate">{loja.primary_url}</CardDescription>
+                  {loja.status === 'rejected' ? (
+                    <p className="text-destructive text-xs">
+                      A revisão recusou o app. O motivo e o que corrigir estão na Publicação desta
+                      loja.
+                    </p>
+                  ) : null}
                 </CardHeader>
                 <CardContent className="flex items-center justify-between gap-2 pt-0">
                   <span className="text-muted-foreground text-xs">

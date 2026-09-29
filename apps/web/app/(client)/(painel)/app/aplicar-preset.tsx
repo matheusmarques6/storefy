@@ -13,7 +13,8 @@
  * exatamente o que sai e o que entra.
  *
  * Nada é publicado aqui: a troca acontece no RASCUNHO, e continua reversível
- * pelo botão de descartar do editor enquanto ele não publicar.
+ * pelo "Desfazer mudanças" da barra do editor enquanto ele não publicar — que
+ * volta o rascunho ao que está no ar.
  */
 import { useState } from 'react';
 import { Layers } from 'lucide-react';
@@ -121,8 +122,9 @@ export function AplicarPreset({
                       ))}
                     </ul>
                     <p>
-                      Suas cores, nome, ícone e recursos ficam como estão. Nada é publicado agora —
-                      dá para descartar antes de publicar.
+                      Suas cores, nome, ícone e recursos ficam como estão. Nada é publicado agora, e
+                      &quot;Desfazer mudanças&quot;, na barra de baixo do editor, volta ao que está
+                      no ar.
                     </p>
                   </>
                 )}

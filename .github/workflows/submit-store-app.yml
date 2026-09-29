@@ -88,6 +88,13 @@ jobs:
               echo "::error::A conta Apple desta loja não está conectada."
               exit 1
             fi
+            # Com chave de API, o `eas submit` não cria o app na Apple: sem o
+            # número dele, o envio morreria no fim. O painel só libera o botão
+            # com o app criado, então chegar aqui sem ele é estado inconsistente.
+            if [ -z "$(jq -r '.iosAscAppId // empty' /tmp/submit.json)" ]; then
+              echo "::error::O app ainda não foi criado no App Store Connect. Siga o passo na tela de Publicação."
+              exit 1
+            fi
           else
             jq -r '.credenciais.googleServiceAccount // empty' /tmp/submit.json > /tmp/cred/google.json
             if [ ! -s /tmp/cred/google.json ]; then
@@ -114,6 +121,7 @@ jobs:
           export EXPO_ASC_KEY_ID=$(jq -r '.credenciais.ascKeyId // empty' /tmp/submit.json)
           export EXPO_ASC_ISSUER_ID=$(jq -r '.credenciais.ascIssuerId // empty' /tmp/submit.json)
           export EXPO_APPLE_TEAM_ID=$(jq -r '.credenciais.appleTeamId // empty' /tmp/submit.json)
+          export EXPO_ASC_APP_ID=$(jq -r '.iosAscAppId // empty' /tmp/submit.json)
           export EXPO_GOOGLE_SERVICE_ACCOUNT_PATH=/tmp/cred/google.json
           export EAS_PROJECT_ID=$(jq -r '.expoProjectId // empty' /tmp/submit.json)
           # O slug é por loja, e o EAS o confere contra o do projeto.

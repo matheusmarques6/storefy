@@ -305,6 +305,12 @@ async function main(): Promise<void> {
     'agendar_inativos',
     'definir_chave_do_webhook',
     'remover_chave_do_webhook',
+    // Fase 8j: a identidade do app (identificador, registro na Apple e nome).
+    'definir_identificador_do_app',
+    'registrar_app_na_apple',
+    'renomear_app',
+    // Fase 8k: o status da loja pelos builds.
+    'status_da_loja_pelos_builds',
     'ler_webhook_de_automacao',
     'agendar_pelo_webhook',
     'batimentos_publicos',

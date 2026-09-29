@@ -17,8 +17,40 @@ import type { DadosDosLinks } from '@/lib/links-do-app';
 import { ESCOPO_DOS_LINKS } from '@/lib/links-do-app';
 import { escoposPedidos } from '@/lib/shopify-servidor';
 import { lido } from '@/lib/leitura';
+import { alternativasDoIdentificador, identificadorSugerido } from '@/lib/identificador-do-app';
 
 type Client = SupabaseClient<Database>;
+
+/**
+ * A sugestão de identificador que ainda está livre entre os apps da Storefy.
+ *
+ * Lê com a SERVICE ROLE porque precisa ver os identificadores das outras
+ * organizações — e só eles: a consulta pede as duas colunas dos candidatos, e
+ * nada mais sai daqui além do texto escolhido.
+ */
+export async function identificadorLivre(
+  servico: Client,
+  urlDaLoja: string,
+  nomeDaLoja: string,
+): Promise<string> {
+  const candidatos = alternativasDoIdentificador(identificadorSugerido(urlDaLoja, nomeDaLoja));
+  const [lidaIos, lidaAndroid] = await Promise.all([
+    servico.from('apps').select('bundle_id_ios').in('bundle_id_ios', candidatos),
+    servico.from('apps').select('package_android').in('package_android', candidatos),
+  ]);
+  const { data: noIos } = lido(lidaIos, 'os identificadores em uso');
+  const { data: noAndroid } = lido(lidaAndroid, 'os identificadores em uso');
+
+  const usados = new Set<string>();
+  for (const linha of noIos ?? []) {
+    if (linha.bundle_id_ios !== null) usados.add(linha.bundle_id_ios);
+  }
+  for (const linha of noAndroid ?? []) {
+    if (linha.package_android !== null) usados.add(linha.package_android);
+  }
+  // Com as nove tomadas (improvável), fica a primeira: o banco recusa, e o lojista edita.
+  return candidatos.find((candidato) => !usados.has(candidato)) ?? candidatos[0] ?? '';
+}
 
 export type AcaoManualDoBuild = 'play_primeiro_envio' | 'envio_manual';
 
@@ -62,7 +94,21 @@ export interface DadosDaPublicacao {
   configPublicada: AppConfig | null;
   /** Links da loja abrindo no app (Universal Links e App Links). */
   links: DadosDosLinks & { erro: string | null; dominio: string };
+  /** O identificador do app nas lojas e o registro na Apple (C12). */
+  identidade: {
+    identificador: string | null;
+    /** O número do app no App Store Connect, quando a Storefy já o achou. */
+    iosAscAppId: string | null;
+    /**
+     * Já chegou a uma loja de aplicativos e não muda mais. O banco é quem
+     * trava de verdade (migration 51); a tela só não oferece o que ele recusa.
+     */
+    travado: boolean;
+  };
 }
+
+/** Status de build que já passaram pela loja de aplicativos (ver a trava no banco). */
+const CHEGOU_A_LOJA = new Set(['finished', 'submitted', 'in_review', 'approved', 'rejected']);
 
 /**
  * Ainda há build acontecendo?
@@ -90,7 +136,7 @@ export async function dadosDaPublicacao(
   const { data: app, error: erroDoApp } = await supabase
     .from('apps')
     .select(
-      'id, display_name, icon_path, splash_path, bundle_id_ios, package_android, onesignal_app_id, current_config_version, apple_team_id, android_cert_fingerprints, ios_links_linked_at, android_links_linked_at, links_error',
+      'id, display_name, icon_path, splash_path, bundle_id_ios, package_android, ios_asc_app_id, onesignal_app_id, current_config_version, apple_team_id, android_cert_fingerprints, ios_links_linked_at, android_links_linked_at, links_error',
     )
     .eq('store_id', storeId)
     .maybeSingle();
@@ -132,9 +178,19 @@ export async function dadosDaPublicacao(
   const contaApple = (contas ?? []).find((conta) => conta.platform === 'apple');
   const pushLigado = app.onesignal_app_id !== null && app.onesignal_app_id !== '';
 
+  const usado = (plataforma: 'ios' | 'android'): boolean =>
+    (builds ?? []).some(
+      (build) => build.platform === plataforma && CHEGOU_A_LOJA.has(build.status),
+    );
+
   return {
     appId: app.id,
     configPublicada: lida?.success === true ? lida.data : null,
+    identidade: {
+      identificador: app.bundle_id_ios ?? app.package_android,
+      iosAscAppId: app.ios_asc_app_id,
+      travado: app.ios_asc_app_id !== null || usado('ios') || usado('android'),
+    },
     links: {
       plataformaDaLoja: loja?.platform === 'other' ? 'other' : 'shopify',
       // O sinal de "conectada" é a coluna de escopos: a do token é invisível
@@ -167,6 +223,7 @@ export async function dadosDaPublicacao(
       splashPronta: app.splash_path !== null && app.splash_path !== '',
       bundleIdIos: app.bundle_id_ios,
       packageAndroid: app.package_android,
+      appNaApple: app.ios_asc_app_id !== null,
       appleConectada: verificada('apple'),
       googleConectada: verificada('google'),
       pushLigado,

@@ -55,7 +55,14 @@ export function LinhaCopiavel({
   }
 
   return (
-    <div className="bg-muted/50 flex items-start gap-2 rounded-lg border p-2.5">
+    /*
+     * Centralizado com o botão, menos no bloco de código: numa linha só, o
+     * texto ficava grudado no topo e o botão sobrava embaixo, desalinhados.
+     * O código de várias linhas continua começando do alto, junto do botão.
+     */
+    <div
+      className={`bg-muted/50 flex gap-2 rounded-lg border p-2.5 ${codigo ? 'items-start' : 'items-center'}`}
+    >
       <pre
         data-texto
         /*

@@ -79,6 +79,8 @@ interface Props {
   presets: Preset[];
   /** O fuso da loja, para as datas do histórico de versões. */
   fuso: string;
+  /** O nome embaixo do ícone (C06a). Fora da config: muda no próximo envio às lojas. */
+  nomeDoApp: string;
   /** Links assinados das imagens atuais. O bucket é privado. */
   urlDoIcone: string | null;
   urlDaSplash: string | null;
@@ -97,6 +99,7 @@ export function Editor({
   numeroExigivel,
   presets,
   fuso,
+  nomeDoApp,
   urlDoIcone,
   urlDaSplash,
   ondeBaixarAPrevia,
@@ -107,6 +110,7 @@ export function Editor({
   const [abaEscolhidaNaPrevia, setAbaDaPrevia] = useState<string | null>(null);
   const [problemasDoServidor, setProblemasDoServidor] = useState<Problema[]>([]);
   const [confirmandoPublicacao, setConfirmandoPublicacao] = useState(false);
+  const [confirmandoDesfazer, setConfirmandoDesfazer] = useState(false);
   const [selecionando, setSelecionando] = useState(false);
   const [publicando, iniciarPublicar] = useTransition();
   /** Só o que a gravação diz: salvo, salvando ou erro. O resto é derivado. */
@@ -261,6 +265,20 @@ export function Editor({
     };
   }, [storeId]);
 
+  /*
+   * Desfazer é trazer o conteúdo da versão no ar para a tela — e o salvamento
+   * automático grava, pela mesma fila de sempre. Sem ida ao servidor para
+   * "restaurar", não há como uma gravação que esperava a pausa chegar DEPOIS e
+   * desfazer o desfazer. `version` e `store` ficam os do rascunho: são do
+   * servidor, e ele os reescreve de qualquer forma.
+   */
+  function desfazer() {
+    if (publicada?.config == null) return;
+    setConfig({ ...publicada.config, version: config.version, store: config.store });
+    setConfirmandoDesfazer(false);
+    toast.success('Mudanças desfeitas: o rascunho voltou a ser igual à versão no ar.');
+  }
+
   function publicar() {
     iniciarPublicar(() => {
       void publicarConfig(storeId).then((estado) => {
@@ -395,6 +413,7 @@ export function Editor({
                   aoMudar={setConfig}
                   somenteLeitura={somenteLeitura}
                   storeId={storeId}
+                  nomeDoApp={nomeDoApp}
                   urlDoIcone={urlDoIcone}
                   urlDaSplash={urlDaSplash}
                 />
@@ -482,8 +501,30 @@ export function Editor({
           aoPublicar={() => {
             setConfirmandoPublicacao(true);
           }}
+          aoDesfazer={() => {
+            setConfirmandoDesfazer(true);
+          }}
         />
       )}
+
+      <AlertDialog open={confirmandoDesfazer} onOpenChange={setConfirmandoDesfazer}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {mudancas === 1 ? 'Desfazer a mudança?' : `Desfazer as ${String(mudancas)} mudanças?`}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              O rascunho volta a ser igual à versão {publicada?.version}, a que está no ar. O que
+              foi mudado desde a última publicação se perde. Nome, ícone e tela de abertura não
+              mudam: eles não fazem parte do rascunho.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={desfazer}>Desfazer mudanças</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <AlertDialog open={confirmandoPublicacao} onOpenChange={setConfirmandoPublicacao}>
         <AlertDialogContent>

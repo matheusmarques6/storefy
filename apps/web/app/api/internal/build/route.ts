@@ -237,7 +237,9 @@ async function montarEnvio(buildId: string): Promise<DadosParaOEnvio | null> {
   const { data: app } = lido(
     await servico
       .from('apps')
-      .select('id, store_id, display_name, bundle_id_ios, package_android, expo_project_id')
+      .select(
+        'id, store_id, display_name, bundle_id_ios, package_android, ios_asc_app_id, expo_project_id',
+      )
       .eq('id', build.app_id)
       .maybeSingle(),
     'o app',
@@ -268,6 +270,7 @@ async function montarEnvio(buildId: string): Promise<DadosParaOEnvio | null> {
     easBuildId: build.eas_build_id,
     bundleIdIos: app.bundle_id_ios,
     packageAndroid: app.package_android,
+    iosAscAppId: app.ios_asc_app_id,
     expoProjectId: app.expo_project_id,
     slug: slugDoProjeto(loja.id),
     nomeDoApp: app.display_name,

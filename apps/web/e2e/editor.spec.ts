@@ -134,6 +134,21 @@ test('o rascunho se salva sozinho, e o botão de publicar conta as mudanças', a
   const restaurado = await rascunhoNoBanco(lojaId);
   expect(restaurado.theme.primary).toBe(corOriginal);
   expect(restaurado.tabs.find((aba) => aba.id === 'busca')?.label).toBe('Buscar');
+
+  // "Desfazer mudanças" volta o rascunho ao que está no ar — com confirmação
+  // que diz quantas se perdem —, e o salvamento automático grava.
+  await barra.getByRole('button', { name: 'Desfazer mudanças' }).click();
+  const confirmacao = page.getByRole('alertdialog');
+  await expect(confirmacao.getByText('Desfazer as 2 mudanças?')).toBeVisible();
+  await confirmacao.getByRole('button', { name: 'Desfazer mudanças' }).click();
+  await expect(page.getByText('Mudanças desfeitas', { exact: false })).toBeVisible();
+  await expect(cor).toHaveValue('#be123c');
+  await expect(barra.getByText('Igual à versão no ar')).toBeVisible();
+  await expect(barra.getByRole('button', { name: 'Desfazer mudanças' })).toHaveCount(0);
+  await expect.poll(async () => (await rascunhoNoBanco(lojaId)).theme.primary).toBe('#be123c');
+  expect((await rascunhoNoBanco(lojaId)).tabs.find((aba) => aba.id === 'busca')?.label).toBe(
+    'Procurar',
+  );
 });
 
 test('o que se digita com uma gravação a caminho não se perde quando ela volta', async ({

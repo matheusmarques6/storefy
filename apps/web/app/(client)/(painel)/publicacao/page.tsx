@@ -4,7 +4,12 @@ import Link from 'next/link';
 import { Rocket, Smartphone } from 'lucide-react';
 import { exigirContextoCliente } from '@/lib/contexto';
 import { criarClientServidor } from '@/lib/supabase/server';
-import { dadosDaPublicacao, temBuildEmAndamento } from '@/lib/publicacao-servidor';
+import { criarClientServiceRole } from '@/lib/supabase/admin';
+import {
+  dadosDaPublicacao,
+  identificadorLivre,
+  temBuildEmAndamento,
+} from '@/lib/publicacao-servidor';
 import { montarChecklist } from '@/lib/checklist-de-publicacao';
 import { montarFicha } from '@/lib/ficha-da-loja';
 import { montarNotasDaRevisao } from '@/lib/notas-da-revisao';
@@ -18,6 +23,7 @@ import { ChecklistDaPlataforma } from './checklist';
 import { HistoricoDeBuilds } from './historico';
 import { BuildsAoVivo } from './ao-vivo';
 import { FichaDaLoja } from './ficha';
+import { IdentificadorDoApp } from './identificador';
 import { LinksDaLoja } from './links-da-loja';
 
 export const metadata: Metadata = { title: 'Publicação' };
@@ -55,6 +61,11 @@ export default async function PaginaDePublicacao() {
 
   const itens = montarChecklist(dados.estado);
   const podeEscrever = papel === 'owner' || papel === 'admin';
+  // A sugestão só é calculada enquanto não há identificador: depois, não há o que sugerir.
+  const sugestao =
+    dados.identidade.identificador === null
+      ? await identificadorLivre(criarClientServiceRole(), dados.loja.url, dados.loja.nome)
+      : null;
 
   return (
     <div className="space-y-8">
@@ -71,6 +82,16 @@ export default async function PaginaDePublicacao() {
         */}
         <BuildsAoVivo appId={dados.appId} emAndamento={temBuildEmAndamento(dados.builds)} />
       </div>
+
+      <IdentificadorDoApp
+        identificador={dados.identidade.identificador}
+        sugestao={sugestao}
+        travado={dados.identidade.travado}
+        appleConectada={dados.estado.appleConectada}
+        iosAscAppId={dados.identidade.iosAscAppId}
+        nomeDoApp={dados.estado.nomeDoApp}
+        podeEscrever={podeEscrever}
+      />
 
       <div className="grid gap-6 lg:grid-cols-2">
         <ChecklistDaPlataforma plataforma="ios" itens={itens} podeEscrever={podeEscrever} />

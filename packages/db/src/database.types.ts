@@ -1695,6 +1695,10 @@ export type Database = {
         Args: { p_automacao: string; p_ator: string; p_hash: string; p_dica: string };
         Returns: unknown;
       };
+      definir_identificador_do_app: {
+        Args: { p_app_id: string; p_ator: string; p_identificador: string };
+        Returns: unknown;
+      };
       desconectar_shopify: {
         Args: { p_shop_domain: string };
         Returns: boolean;
@@ -1787,6 +1791,10 @@ export type Database = {
         Args: { p_app_id: string; p_subscription: string; p_platform: Database["public"]["Enums"]["device_platform"]; p_app_version?: string; p_external_id?: string; p_email_hash?: string };
         Returns: { device_id: string | null; limitado: boolean | null; novo: boolean | null; boas_vindas: boolean | null }[];
       };
+      registrar_app_na_apple: {
+        Args: { p_app_id: string; p_ator: string; p_asc_app_id: string };
+        Returns: unknown;
+      };
       registrar_assinatura: {
         Args: { p_org_id: string; p_provider: Database["public"]["Enums"]["billing_provider"]; p_assinatura: string; p_plan_id: string; p_valor_centavos: number; p_ator: string };
         Returns: unknown;
@@ -1814,6 +1822,10 @@ export type Database = {
       remover_chave_do_webhook: {
         Args: { p_automacao: string; p_ator: string };
         Returns: boolean;
+      };
+      renomear_app: {
+        Args: { p_app_id: string; p_ator: string; p_nome: string };
+        Returns: unknown;
       };
       reservar_aviso: {
         Args: { p_id: string; p_status: Database["public"]["Enums"]["build_status"] };
@@ -1846,6 +1858,10 @@ export type Database = {
       situacao_da_cobranca: {
         Args: { p_org_id: string };
         Returns: { em_dia: boolean | null; liberado_ate: string | null; teste_ate: string | null; assinatura: Database["public"]["Enums"]["subscription_status"] | null; plano_id: string | null; plano_nome: string | null; valor_centavos: number | null; pago_ate: string | null; inadimplente_desde: string | null; cancelada_em: string | null; limites_do_teste: boolean | null; limite_lojas: number | null; limite_aparelhos: number | null; limite_campanhas_mes: number | null; hoje: string | null }[];
+      };
+      status_da_loja_pelos_builds: {
+        Args: { p_app_id: string };
+        Returns: Database["public"]["Enums"]["store_status"];
       };
       trocar_plano_da_assinatura: {
         Args: { p_org_id: string; p_plan_id: string; p_valor_centavos: number; p_ator: string };
@@ -1882,7 +1898,7 @@ export type Database = {
       push_campaign_status: "draft" | "scheduled" | "sending" | "sent" | "failed" | "canceled";
       shopify_conexao: "oauth" | "manual";
       store_platform: "shopify" | "other";
-      store_status: "draft" | "building" | "in_review" | "live" | "paused";
+      store_status: "draft" | "building" | "in_review" | "rejected" | "live" | "paused";
       subscription_status: "pending" | "active" | "past_due" | "canceled";
       ticket_status: "aberto" | "respondido" | "fechado";
       ticket_topic: "publicacao" | "notificacoes" | "shopify" | "app" | "cobranca" | "outro";

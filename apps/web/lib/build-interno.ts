@@ -193,6 +193,12 @@ export interface DadosParaOEnvio {
   easBuildId: string | null;
   bundleIdIos: string | null;
   packageAndroid: string | null;
+  /**
+   * O número do app no App Store Connect. Com chave de API, o `eas submit` não
+   * cria o app na Apple nem garante achá-lo sozinho: sem este número, o envio
+   * ao iPhone morria no fim, depois do build pronto.
+   */
+  iosAscAppId: string | null;
   expoProjectId: string | null;
   /** Slug do projeto EAS desta loja. Ver `slugDoProjeto`. */
   slug: string;

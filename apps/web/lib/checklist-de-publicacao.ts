@@ -23,6 +23,8 @@ export interface EstadoDaPublicacao {
   splashPronta: boolean;
   bundleIdIos: string | null;
   packageAndroid: string | null;
+  /** O app já foi criado no App Store Connect (a Storefy achou o número dele). */
+  appNaApple: boolean;
   appleConectada: boolean;
   googleConectada: boolean;
   /** Push é opcional para publicar, mas vale avisar. */
@@ -114,12 +116,29 @@ export function montarChecklist(estado: EstadoDaPublicacao): ItemDoChecklist[] {
     },
     {
       chave: 'bundle',
-      titulo: 'Identificador do app (iOS)',
-      comoResolver: 'A Storefy define este identificador ao criar o registro do app na Apple.',
+      titulo: 'Identificador do app',
+      comoResolver:
+        'Confirme o identificador do app no topo desta página. Já deixamos um sugerido, a partir do endereço da loja.',
       pronto: estado.bundleIdIos !== null && estado.bundleIdIos !== '',
       obrigatorio: true,
       plataforma: 'ios',
-      caminho: null,
+      caminho: '/publicacao#identificador',
+    },
+    {
+      /*
+       * Criar o app no App Store Connect é o único passo que a API da Apple não
+       * deixa fazer por ninguém. Sem ele o envio à Apple falha — depois de um
+       * build de vinte minutos. Por isso trava ANTES, com o passo a passo no
+       * topo da página.
+       */
+      chave: 'app-na-apple',
+      titulo: 'App criado no App Store Connect',
+      comoResolver:
+        'Crie o app no App Store Connect com o identificador da Storefy e clique em "Já criei o app", no topo desta página.',
+      pronto: estado.appNaApple,
+      obrigatorio: true,
+      plataforma: 'ios',
+      caminho: '/publicacao#identificador',
     },
     {
       chave: 'google',
@@ -132,12 +151,13 @@ export function montarChecklist(estado: EstadoDaPublicacao): ItemDoChecklist[] {
     },
     {
       chave: 'package',
-      titulo: 'Identificador do app (Android)',
-      comoResolver: 'A Storefy define este identificador ao preparar o primeiro build.',
+      titulo: 'Identificador do app',
+      comoResolver:
+        'Confirme o identificador do app no topo desta página. Já deixamos um sugerido, a partir do endereço da loja.',
       pronto: estado.packageAndroid !== null && estado.packageAndroid !== '',
       obrigatorio: true,
       plataforma: 'android',
-      caminho: null,
+      caminho: '/publicacao#identificador',
     },
     {
       chave: 'ajustes',

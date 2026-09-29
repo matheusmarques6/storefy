@@ -1085,7 +1085,7 @@ select tests.ok('segredo',
       join pg_class c on c.oid = a.attrelid
       join pg_namespace n on n.oid = c.relnamespace
      where n.nspname = 'public' and c.relkind = 'r'
-       and c.relname in ('stores', 'apps', 'developer_accounts')
+       and c.relname in ('stores', 'developer_accounts')
        and a.attnum > 0 and not a.attisdropped
        and a.attname not like '%\_enc'
        -- Só o servidor grava: quem conecta é a rota, com a resposta da Shopify.
@@ -1093,15 +1093,36 @@ select tests.ok('segredo',
          ('stores', 'shopify_conexao'),
          ('stores', 'shopify_client_id'),
          ('stores', 'shopify_token_expires_at'),
-         -- O vínculo dos links é gravado depois de a Shopify confirmar.
-         ('apps', 'ios_links_linked_at'),
-         ('apps', 'android_links_linked_at'),
-         ('apps', 'links_error')
+         -- O status vem dos builds, por gatilho (migration 53): o dono não se
+         -- declara "No ar".
+         ('stores', 'status')
        )
        and not (has_column_privilege('authenticated', c.oid, a.attnum, 'insert')
             and has_column_privilege('authenticated', c.oid, a.attnum, 'update'))
   ),
   'e toda coluna que NÃO é segredo continua gravável pelo painel');
+
+-- `apps` é o contrário (migration 51): o app nasce com a loja, e o que ele tem
+-- — identificador, nome, projeto do Expo, app do OneSignal, vínculo dos links —
+-- só o servidor escreve, depois de conferir. A sessão grava DUAS colunas, e a
+-- lista é nominal: uma terceira aqui é uma decisão, não um acidente.
+select tests.ok('segredo',
+  (select array_agg(a.attname::text order by a.attname)
+     from pg_attribute a
+    where a.attrelid = 'public.apps'::regclass
+      and a.attnum > 0 and not a.attisdropped
+      and has_column_privilege('authenticated', a.attrelid, a.attnum, 'update'))
+  = array['android_cert_fingerprints', 'current_config_version'],
+  'no app, a sessão só grava as impressões do Android e a versão no ar');
+
+select tests.ok('segredo',
+  not exists (
+    select 1 from pg_attribute a
+     where a.attrelid = 'public.apps'::regclass
+       and a.attnum > 0 and not a.attisdropped
+       and has_column_privilege('authenticated', a.attrelid, a.attnum, 'insert')
+  ),
+  'e não cria app: ele nasce com a loja');
 
 -- E as três da exceção precisam ser LEGÍVEIS: a tela mostra por qual caminho a
 -- loja conectou e qual app é. Sem o select, a página quebraria inteira — o
@@ -2437,13 +2458,21 @@ select tests.ok('revisão',
  * Sem bundle não há o que perguntar: a Apple é consultada POR bundle. Deixar
  * o build na fila faria o cron gastar uma chamada por hora para descobrir a
  * mesma coisa toda vez.
+ *
+ * O app enviado não perde o identificador (a migration 51 trava), então o
+ * caso é montado numa loja NOVA da mesma organização — com a mesma conta
+ * Apple —, com um build de iPhone esperando decisão e sem identificador.
  */
-update public.apps set bundle_id_ios = null where id = (select app_a from tests.lojas);
+insert into public.stores (org_id, name, primary_url)
+select org_a, 'Loja sem Bundle', 'https://sembundle.teste' from tests.ids;
+insert into public.builds (app_id, platform, profile, status, submitted_at)
+select a.id, 'ios', 'production', 'submitted', now()
+  from public.apps a join public.stores s on s.id = a.store_id
+ where s.name = 'Loja sem Bundle';
 select tests.ok('revisão',
-  tests.contar('select count(*) from public.builds_em_revisao(50)') = 0,
-  'app sem bundle sai da fila: não há o que perguntar à Apple');
-update public.apps set bundle_id_ios = 'br.com.lojaa'
- where id = (select app_a from tests.lojas);
+  tests.contar('select count(*) from public.builds_em_revisao(50)') = 1,
+  'app sem bundle fica fora da fila: não há o que perguntar à Apple');
+delete from public.stores where name = 'Loja sem Bundle';
 
 select tests.ok('revisão',
   tests.erro($q$select public.gravar_revisao(
@@ -3925,8 +3954,13 @@ select tests.logout();
  * loja em nenhum dos dois estados. Um teste que não sabe falhar não é um teste.
  */
 update public.organizations set status = 'active' where id = (select org_a from tests.ids);
-update public.stores set status = 'live' where id = (select loja_a from tests.lojas);
-update public.stores set status = 'in_review' where id = (select loja_b from tests.lojas);
+-- O status da loja vem dos builds (migration 53): no ar é ter um aprovado, e
+-- em revisão é ter um enviado. Plantar o status direto seria desfeito pelo
+-- primeiro build abaixo.
+insert into public.builds (app_id, platform, profile, status)
+select app_a, 'ios', 'production', 'approved' from tests.lojas;
+insert into public.builds (app_id, platform, profile, status, submitted_at)
+select app_b, 'ios', 'production', 'submitted', now() from tests.lojas;
 
 insert into public.builds (app_id, platform, profile, status)
 select app_a, 'ios', 'production', 'queued' from tests.lojas;
@@ -7024,6 +7058,299 @@ drop table tests.webhook, tests.webhook_lido, tests.webhook_nao_achado, tests.we
   tests.webhook_sem_id_1, tests.webhook_sem_id_2, tests.webhook_despacho, tests.webhook_velha,
   tests.webhook_nova, tests.webhook_remocao_1, tests.webhook_remocao_2, tests.webhook_depois,
   tests.webhook_tipo_errado, tests.webhook_hash_errado;
+
+-- ============================== grupo: a identidade do app (migration 51)
+--
+-- O identificador nas lojas de aplicativos, o número do app na Apple e o nome.
+-- Só o servidor escreve, pela função que confere e credita quem pediu; o
+-- identificador tem o formato das duas lojas, é único entre os apps da
+-- Storefy e não muda depois de chegar a uma delas. Duas empresas novas, com
+-- uma loja cada, para a trava não depender do que os grupos anteriores
+-- deixaram nos apps (e cada empresa em teste só tem direito a uma loja).
+
+reset role;
+select tests.logout();
+
+insert into auth.users (email, raw_user_meta_data, email_confirmed_at) values
+  ('id-dono@teste.local',  '{"company_name":"Empresa da Identidade"}'::jsonb, now()),
+  ('id-apple@teste.local', '{"company_name":"Empresa da Apple"}'::jsonb,      now());
+
+insert into public.stores (org_id, name, primary_url)
+select m.org_id, 'Loja da Identidade', 'https://identidade.teste'
+  from public.memberships m join auth.users u on u.id = m.user_id
+ where u.email = 'id-dono@teste.local';
+insert into public.stores (org_id, name, primary_url)
+select m.org_id, 'Loja da Apple', 'https://naapple.teste'
+  from public.memberships m join auth.users u on u.id = m.user_id
+ where u.email = 'id-apple@teste.local';
+
+drop table if exists tests.identidade;
+create table tests.identidade as
+select
+  (select id from auth.users where email = 'id-dono@teste.local') as u_dono,
+  (select a.id from public.apps a join public.stores s on s.id = a.store_id
+    where s.name = 'Loja da Identidade') as app,
+  (select s.id from public.stores s where s.name = 'Loja da Identidade') as loja,
+  (select a.id from public.apps a join public.stores s on s.id = a.store_id
+    where s.name = 'Loja da Apple') as app_apple;
+grant select on tests.identidade to anon, authenticated, service_role;
+
+select tests.login('id-dono@teste.local');
+set role authenticated;
+
+select tests.ok('identidade',
+  tests.erro($q$update public.apps set bundle_id_ios = 'br.com.direto.app'
+                where id = (select app from tests.identidade)$q$),
+  'o dono NÃO grava o identificador direto: só pela função do servidor');
+
+select tests.ok('identidade',
+  tests.erro($q$update public.apps set display_name = 'Outro nome'
+                where id = (select app from tests.identidade)$q$),
+  'nem o nome do app');
+
+select tests.ok('identidade',
+  tests.erro($q$update public.apps set expo_project_id = 'projeto-de-outro'
+                where id = (select app from tests.identidade)$q$),
+  'nem o projeto do Expo, que decide onde o binário é gerado');
+
+select tests.ok('identidade',
+  tests.erro($q$update public.apps set onesignal_app_id = 'app-de-outro'
+                where id = (select app from tests.identidade)$q$),
+  'nem o app do OneSignal');
+
+select tests.ok('identidade',
+  tests.erro($q$insert into public.apps (store_id, display_name)
+                values ((select loja from tests.identidade), 'Segundo app')$q$),
+  'nem cria app por fora: o app nasce com a loja');
+
+select tests.ok('identidade',
+  tests.erro($q$select public.definir_identificador_do_app(
+                 (select app from tests.identidade), (select u_dono from tests.identidade),
+                 'br.com.x.app')$q$),
+  'o dono NÃO chama a função do identificador por conta própria');
+
+select tests.ok('identidade',
+  tests.erro($q$select public.renomear_app(
+                 (select app from tests.identidade), (select u_dono from tests.identidade), 'Nome')$q$),
+  'nem a do nome');
+
+select tests.ok('identidade',
+  tests.erro($q$select public.registrar_app_na_apple(
+                 (select app from tests.identidade), (select u_dono from tests.identidade),
+                 '6478123456')$q$),
+  'nem a do número na Apple, que só vale depois de a Apple responder');
+
+reset role;
+set role service_role;
+
+select public.definir_identificador_do_app(
+  (select app from tests.identidade), (select u_dono from tests.identidade),
+  '  BR.com.Identidade.app ');
+
+reset role;
+
+select tests.ok('identidade',
+  (select bundle_id_ios = 'br.com.identidade.app' and package_android = 'br.com.identidade.app'
+     from public.apps where id = (select app from tests.identidade)),
+  'a função grava o mesmo identificador nas duas lojas, em minúsculas e sem espaço');
+
+select tests.ok('identidade',
+  exists (select 1 from public.audit_logs
+           where entity = 'apps' and entity_id = (select app from tests.identidade)
+             and actor_id = (select u_dono from tests.identidade)
+             and diff ? 'bundle_id_ios'),
+  'e a trilha credita quem pediu');
+
+set role service_role;
+
+select tests.ok('identidade',
+  tests.erro($q$select public.definir_identificador_do_app(
+                 (select app from tests.identidade), null, 'br.com.loja-x.app')$q$),
+  'hífen é recusado: o Google não aceita');
+
+select tests.ok('identidade',
+  tests.erro($q$select public.definir_identificador_do_app(
+                 (select app from tests.identidade), null, 'semponto')$q$),
+  'identificador de uma parte só é recusado');
+
+select tests.ok('identidade',
+  tests.erro($q$select public.definir_identificador_do_app(
+                 (select app_apple from tests.identidade), null, 'br.com.identidade.app')$q$),
+  'o mesmo identificador em dois apps da Storefy é recusado');
+
+select tests.ok('identidade',
+  tests.erro($q$select public.registrar_app_na_apple(
+                 (select app from tests.identidade), null, 'abc123')$q$),
+  'número de app da Apple fora do formato é recusado');
+
+select tests.ok('identidade',
+  tests.erro($q$select public.renomear_app((select app from tests.identidade), null, '   ')$q$),
+  'nome vazio é recusado');
+
+select tests.ok('identidade',
+  tests.erro($q$select public.renomear_app(
+                 (select app from tests.identidade), null, repeat('a', 31))$q$),
+  'nome acima de 30 caracteres é recusado: a App Store cortaria');
+
+select public.renomear_app(
+  (select app from tests.identidade), (select u_dono from tests.identidade), '  Minha   Loja  ');
+
+reset role;
+
+select tests.ok('identidade',
+  (select display_name = 'Minha Loja'
+     from public.apps where id = (select app from tests.identidade)),
+  'o nome é gravado sem os espaços sobrando');
+
+-- Um build que morreu antes de gerar o binário não trava nada.
+insert into public.builds (app_id, platform, profile, status)
+select app, 'ios', 'production', 'errored' from tests.identidade;
+
+set role service_role;
+select tests.ok('identidade',
+  tests.permitido($q$select public.definir_identificador_do_app(
+                     (select app from tests.identidade), null, 'br.com.identidade.loja')$q$),
+  'antes de o app chegar a uma loja, o identificador ainda troca');
+reset role;
+
+-- O binário gerado para o iPhone, sim: dali em diante o app é daquele identificador.
+insert into public.builds (app_id, platform, profile, status)
+select app, 'ios', 'production', 'finished' from tests.identidade;
+
+set role service_role;
+select tests.ok('identidade',
+  tests.erro($q$select public.definir_identificador_do_app(
+                 (select app from tests.identidade), null, 'br.com.outro.app')$q$),
+  'depois do binário gerado, o identificador não muda mais');
+reset role;
+
+select tests.ok('identidade',
+  tests.erro($q$update public.apps set bundle_id_ios = 'br.com.outro.app'
+                where id = (select app from tests.identidade)$q$),
+  'a trava vale para qualquer um, até para quem escreve direto no banco');
+
+-- O app criado na Apple também trava, mesmo sem build nenhum.
+set role service_role;
+select public.definir_identificador_do_app(
+  (select app_apple from tests.identidade), null, 'br.com.naapple.app');
+select public.registrar_app_na_apple(
+  (select app_apple from tests.identidade), (select u_dono from tests.identidade), '6478123456');
+select tests.ok('identidade',
+  tests.erro($q$select public.definir_identificador_do_app(
+                 (select app_apple from tests.identidade), null, 'br.com.outronome.app')$q$),
+  'com o app criado no App Store Connect, o identificador não muda mais');
+reset role;
+
+select tests.ok('identidade',
+  (select ios_asc_app_id = '6478123456'
+     from public.apps where id = (select app_apple from tests.identidade)),
+  'o número do app na Apple fica guardado para o envio e o banner');
+
+select tests.logout();
+delete from public.stores where name in ('Loja da Identidade', 'Loja da Apple');
+drop table tests.identidade;
+
+-- ============================== grupo: o status da loja (migration 53)
+--
+-- O status vem dos builds do app, por gatilho; a sessão não o escreve. Uma
+-- empresa nova por caso, porque cada empresa em teste só tem uma loja.
+
+reset role;
+select tests.logout();
+
+insert into auth.users (email, raw_user_meta_data, email_confirmed_at) values
+  ('st-dono@teste.local',  '{"company_name":"Empresa do Status"}'::jsonb,  now()),
+  ('st-pausa@teste.local', '{"company_name":"Empresa Pausada"}'::jsonb,    now());
+
+insert into public.stores (org_id, name, primary_url)
+select m.org_id, 'Loja do Status', 'https://status.teste'
+  from public.memberships m join auth.users u on u.id = m.user_id
+ where u.email = 'st-dono@teste.local';
+insert into public.stores (org_id, name, primary_url)
+select m.org_id, 'Loja Pausada', 'https://pausada.teste'
+  from public.memberships m join auth.users u on u.id = m.user_id
+ where u.email = 'st-pausa@teste.local';
+
+drop table if exists tests.status;
+create table tests.status as
+select
+  (select s.id from public.stores s where s.name = 'Loja do Status') as loja,
+  (select a.id from public.apps a join public.stores s on s.id = a.store_id
+    where s.name = 'Loja do Status') as app,
+  (select s.id from public.stores s where s.name = 'Loja Pausada') as loja_pausada,
+  (select a.id from public.apps a join public.stores s on s.id = a.store_id
+    where s.name = 'Loja Pausada') as app_pausado;
+grant select on tests.status to anon, authenticated, service_role;
+
+select tests.ok('status da loja',
+  (select status = 'draft' from public.stores where id = (select loja from tests.status)),
+  'loja nova, sem build, é rascunho');
+
+select tests.login('st-dono@teste.local');
+set role authenticated;
+select tests.ok('status da loja',
+  tests.erro($q$update public.stores set status = 'live'
+                where id = (select loja from tests.status)$q$),
+  'o dono NÃO se declara "No ar" pela API');
+reset role;
+select tests.logout();
+
+insert into public.builds (app_id, platform, profile, status)
+select app, 'ios', 'production', 'queued' from tests.status;
+select tests.ok('status da loja',
+  (select status = 'building' from public.stores where id = (select loja from tests.status)),
+  'com um build na fila, gerando app');
+
+update public.builds set status = 'submitted', submitted_at = now()
+ where app_id = (select app from tests.status);
+select tests.ok('status da loja',
+  (select status = 'in_review' from public.stores where id = (select loja from tests.status)),
+  'enviado à loja de aplicativos, em revisão');
+
+update public.builds set status = 'rejected'
+ where app_id = (select app from tests.status);
+select tests.ok('status da loja',
+  (select status = 'rejected' from public.stores where id = (select loja from tests.status)),
+  'recusado, e nada novo em curso: revisão recusada');
+
+insert into public.builds (app_id, platform, profile, status)
+select app, 'ios', 'production', 'building' from tests.status;
+select tests.ok('status da loja',
+  (select status = 'building' from public.stores where id = (select loja from tests.status)),
+  'um build novo depois da recusa: gerando app de novo');
+
+update public.builds set status = 'approved'
+ where app_id = (select app from tests.status) and status = 'building';
+select tests.ok('status da loja',
+  (select status = 'live' from public.stores where id = (select loja from tests.status)),
+  'aprovado: no ar');
+
+insert into public.builds (app_id, platform, profile, status, submitted_at)
+select app, 'android', 'production', 'submitted', now() from tests.status;
+select tests.ok('status da loja',
+  (select status = 'live' from public.stores where id = (select loja from tests.status)),
+  'uma atualização em revisão não tira do ar o que já está aprovado');
+
+select tests.ok('status da loja',
+  exists (select 1 from public.audit_logs
+           where entity = 'stores' and entity_id = (select loja from tests.status)
+             and diff ? 'status'),
+  'cada mudança de status fica na trilha');
+
+-- A pausa é decisão de pessoa: o gatilho não a desfaz.
+update public.stores set status = 'paused' where id = (select loja_pausada from tests.status);
+insert into public.builds (app_id, platform, profile, status)
+select app_pausado, 'ios', 'production', 'approved' from tests.status;
+select tests.ok('status da loja',
+  (select status = 'paused' from public.stores where id = (select loja_pausada from tests.status)),
+  'loja pausada continua pausada, mesmo com o app aprovado');
+
+select tests.ok('status da loja',
+  public.status_da_loja_pelos_builds((select app_pausado from tests.status)) = 'live',
+  'mas o cálculo diz o que os builds dizem');
+
+delete from public.stores where name in ('Loja do Status', 'Loja Pausada');
+drop table tests.status;
 
 -- ============================== grupo: varredura de segurança (Fase 8)
 --

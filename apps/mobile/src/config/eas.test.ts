@@ -64,4 +64,13 @@ describe('eas.json', () => {
   it('tem um perfil de envio para as lojas', () => {
     expect(lerEasJson().submit).toHaveProperty('production');
   });
+
+  it('o envio ao iPhone leva o número do app na Apple', () => {
+    // Com chave de API, o `eas submit` não cria o app no App Store Connect:
+    // sem `ascAppId`, o envio morreria no fim, com o binário já pronto. O
+    // workflow preenche a variável com o número que o painel achou.
+    const ios = (lerEasJson().submit?.production as { ios?: Record<string, string> } | undefined)
+      ?.ios;
+    expect(ios?.ascAppId).toBe('$EXPO_ASC_APP_ID');
+  });
 });

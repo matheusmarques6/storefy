@@ -8,6 +8,9 @@
  * mesmo. "Publicar alterações" mostra quantas mudanças vão ao ar, e só
  * funciona com o rascunho salvo: publicar lê o rascunho DO BANCO, e publicar
  * com uma alteração ainda não gravada poria no ar a versão anterior dela.
+ *
+ * "Desfazer mudanças" é o descarte que o salvamento automático tirou: volta o
+ * rascunho ao que está no ar. Só aparece quando há o que desfazer.
  */
 import { AlertCircle, Check, Loader2, Rocket } from 'lucide-react';
 import { formatarHora } from '@/lib/fuso';
@@ -35,6 +38,7 @@ interface Props {
   fuso: string;
   aoTentarDeNovo: () => void;
   aoPublicar: () => void;
+  aoDesfazer: () => void;
 }
 
 export function BarraDePublicacao({
@@ -45,9 +49,11 @@ export function BarraDePublicacao({
   fuso,
   aoTentarDeNovo,
   aoPublicar,
+  aoDesfazer,
 }: Props) {
   const temOQuePublicar = versaoNoAr === null || mudancas === null || mudancas > 0;
   const podePublicar = situacao.tipo === 'salvo' && temOQuePublicar && !publicando;
+  const podeDesfazer = versaoNoAr !== null && mudancas !== null && mudancas > 0 && !publicando;
 
   return (
     <div
@@ -80,22 +86,29 @@ export function BarraDePublicacao({
           </p>
         </div>
 
-        <Button type="button" disabled={!podePublicar} onClick={aoPublicar}>
-          {publicando ? (
-            <Loader2 className="size-4 animate-spin" aria-hidden />
-          ) : (
-            <Rocket className="size-4" aria-hidden />
-          )}
-          {publicando ? 'Publicando…' : 'Publicar alterações'}
-          {mudancas !== null && mudancas > 0 && !publicando ? (
-            <span
-              aria-hidden
-              className="bg-primary-foreground/20 rounded-full px-1.5 text-xs tabular-nums"
-            >
-              {mudancas}
-            </span>
+        <div className="flex items-center gap-2">
+          {podeDesfazer ? (
+            <Button type="button" variant="ghost" onClick={aoDesfazer}>
+              Desfazer mudanças
+            </Button>
           ) : null}
-        </Button>
+          <Button type="button" disabled={!podePublicar} onClick={aoPublicar}>
+            {publicando ? (
+              <Loader2 className="size-4 animate-spin" aria-hidden />
+            ) : (
+              <Rocket className="size-4" aria-hidden />
+            )}
+            {publicando ? 'Publicando…' : 'Publicar alterações'}
+            {mudancas !== null && mudancas > 0 && !publicando ? (
+              <span
+                aria-hidden
+                className="bg-primary-foreground/20 rounded-full px-1.5 text-xs tabular-nums"
+              >
+                {mudancas}
+              </span>
+            ) : null}
+          </Button>
+        </div>
       </div>
     </div>
   );

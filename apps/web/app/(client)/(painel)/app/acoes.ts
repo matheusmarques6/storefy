@@ -68,11 +68,12 @@ export async function enviarAsset(
    * enxerga esta loja. Um `storeId` forjado simplesmente não volta, e sem ele
    * o caminho do arquivo nunca é montado.
    */
-  const { data: app } = await supabase
+  const { data: app, error: erroDoApp } = await supabase
     .from('apps')
     .select('id')
     .eq('store_id', storeId)
     .maybeSingle();
+  if (erroDoApp != null) return { mensagem: traduzirErro(erroDoApp.code, erroDoApp.message) };
   if (app == null) return { mensagem: 'Loja não encontrada.' };
 
   const arquivo = formulario.get('arquivo');
@@ -113,11 +114,13 @@ export async function removerAssetDaLoja(
   }
 
   const supabase = await criarClientServidor();
-  const { data: app } = await supabase
+  const { data: app, error } = await supabase
     .from('apps')
     .select('id')
     .eq('store_id', storeId)
     .maybeSingle();
+  // Banco fora do ar não é "loja não encontrada": o lojista iria procurar a loja.
+  if (error != null) return { mensagem: traduzirErro(error.code, error.message) };
   if (app == null) return { mensagem: 'Loja não encontrada.' };
 
   const resultado = await removerAsset(criarClientServiceRole(), storeId, app.id, tipo);
@@ -126,6 +129,46 @@ export async function removerAssetDaLoja(
   revalidatePath('/app');
   revalidatePath('/publicacao');
   return { ok: true, mensagem: 'Imagem removida.' };
+}
+
+/**
+ * Troca o nome do app (C06a) — o que aparece embaixo do ícone e na loja de
+ * aplicativos. Fora do rascunho: vale no próximo envio às lojas.
+ *
+ * A gravação é da função do banco, que confere o tamanho de novo e credita
+ * quem pediu na trilha de auditoria; o papel é conferido aqui, antes dela.
+ */
+export async function renomearApp(nome: string): Promise<EstadoDoEditor> {
+  const { lojaAtiva, papel, usuario } = await exigirContextoCliente();
+  if (lojaAtiva == null) return { mensagem: 'Cadastre uma loja primeiro.' };
+  if (papel !== 'owner' && papel !== 'admin') {
+    return { mensagem: 'Apenas proprietários e administradores trocam o nome do app.' };
+  }
+
+  const supabase = await criarClientServidor();
+  const { data: app, error } = await supabase
+    .from('apps')
+    .select('id')
+    .eq('store_id', lojaAtiva.id)
+    .maybeSingle();
+  if (error != null) return { mensagem: traduzirErro(error.code, error.message) };
+  if (app == null) return { mensagem: 'Não encontramos o app desta loja.' };
+
+  const { error: erroAoGravar } = await criarClientServiceRole().rpc('renomear_app', {
+    p_app_id: app.id,
+    p_ator: usuario.id,
+    p_nome: nome,
+  });
+  if (erroAoGravar != null) {
+    return { mensagem: traduzirErro(erroAoGravar.code, erroAoGravar.message) };
+  }
+
+  revalidatePath('/app');
+  revalidatePath('/publicacao');
+  return {
+    ok: true,
+    mensagem: 'Nome do app salvo. Ele muda no celular dos clientes no próximo envio às lojas.',
+  };
 }
 
 export async function salvarConfig(storeId: string, configBruta: unknown): Promise<EstadoDoEditor> {

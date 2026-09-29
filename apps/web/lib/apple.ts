@@ -226,3 +226,221 @@ export function lerRespostaDaApple(status: number, texto: string): ResultadoDaVa
     return { ok: true, apps: 0 };
   }
 }
+
+// ------------------------------------------- o identificador e o app (C12)
+
+/** O que voltou de uma chamada à App Store Connect, ou o motivo de não ter voltado. */
+type Chamada = { ok: true; status: number; corpo: unknown } | { ok: false; motivo: string };
+
+async function chamarApple(
+  chave: ChaveDaAppStore,
+  caminho: string,
+  init: { method?: 'GET' | 'POST'; corpo?: unknown },
+  buscador: typeof fetch,
+  agoraS: number,
+): Promise<Chamada> {
+  let token: string;
+  try {
+    token = montarToken(chave, agoraS);
+  } catch {
+    return {
+      ok: false,
+      motivo: 'Não conseguimos usar a chave da Apple guardada. Conecte a conta Apple de novo.',
+    };
+  }
+
+  const controle = new AbortController();
+  const relogio = setTimeout(() => {
+    controle.abort();
+  }, TIMEOUT_MS);
+
+  try {
+    const resposta = await buscador(`${BASE_DA_API}${caminho}`, {
+      method: init.method ?? 'GET',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        ...(init.corpo === undefined ? {} : { 'Content-Type': 'application/json' }),
+      },
+      body: init.corpo === undefined ? undefined : JSON.stringify(init.corpo),
+      signal: controle.signal,
+    });
+    const texto = await resposta.text();
+    let corpo: unknown = null;
+    try {
+      corpo = texto === '' ? null : JSON.parse(texto);
+    } catch {
+      corpo = null;
+    }
+    return { ok: true, status: resposta.status, corpo };
+  } catch {
+    return {
+      ok: false,
+      motivo: 'Não conseguimos falar com a Apple agora. Tente de novo em instantes.',
+    };
+  } finally {
+    clearTimeout(relogio);
+  }
+}
+
+/** Os itens de `data` numa resposta da Apple, como registros soltos. */
+function itensDe(corpo: unknown): Record<string, unknown>[] {
+  const dados =
+    corpo !== null && typeof corpo === 'object' ? (corpo as Record<string, unknown>).data : null;
+  if (!Array.isArray(dados)) return [];
+  return dados.filter(
+    (item): item is Record<string, unknown> => item !== null && typeof item === 'object',
+  );
+}
+
+function atributo(item: Record<string, unknown>, nome: string): string | null {
+  const atributos = item.attributes;
+  if (atributos === null || typeof atributos !== 'object') return null;
+  const valor = (atributos as Record<string, unknown>)[nome];
+  return typeof valor === 'string' ? valor : null;
+}
+
+/** 401 e 403 dizem coisas diferentes, e pedem instruções diferentes. */
+function motivoDeAcesso(status: number, oQue: string): string | null {
+  if (status === 401) {
+    return 'A Apple não aceitou mais a chave guardada. Conecte a conta Apple de novo em Publicação › Contas.';
+  }
+  if (status === 403) {
+    return `A chave da Apple não tem permissão para ${oQue}. Gere outra com o papel "Admin" e conecte de novo.`;
+  }
+  return null;
+}
+
+/**
+ * O nome que a Apple aceita na descrição do identificador: letras sem acento,
+ * números e espaços. Qualquer símbolo ("&", "'") derruba o registro inteiro.
+ */
+export function nomeParaAApple(nome: string): string {
+  const limpo = nome
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .replace(/[^A-Za-z0-9 ]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 50)
+    .trim();
+  return limpo === '' ? 'Storefy app' : limpo;
+}
+
+export type ResultadoDoRegistro = { ok: true; jaExistia: boolean } | { ok: false; motivo: string };
+
+/**
+ * Registra o identificador na conta Apple do lojista (Certificates,
+ * Identifiers & Profiles).
+ *
+ * É o que faz o identificador aparecer na lista "ID do pacote" quando o
+ * lojista cria o app no App Store Connect — criar o app em si a API da Apple
+ * não deixa, e esse passo é guiado na tela. Registrar duas vezes não dá erro:
+ * se já existe nesta conta, está pronto.
+ */
+export async function registrarIdentificadorNaApple(
+  chave: ChaveDaAppStore,
+  identificador: string,
+  nomeDoApp: string,
+  buscador: typeof fetch = fetch,
+  agoraS: number = Math.floor(Date.now() / 1000),
+): Promise<ResultadoDoRegistro> {
+  const busca = await chamarApple(
+    chave,
+    `/v1/bundleIds?filter[identifier]=${encodeURIComponent(identificador)}&limit=200`,
+    {},
+    buscador,
+    agoraS,
+  );
+  if (!busca.ok) return busca;
+  const negadaNaBusca = motivoDeAcesso(busca.status, 'registrar o identificador do app');
+  if (negadaNaBusca !== null) return { ok: false, motivo: negadaNaBusca };
+  if (busca.status >= 200 && busca.status < 300) {
+    // O filtro da Apple também devolve os que COMEÇAM pelo texto: confere igual.
+    const existe = itensDe(busca.corpo).some(
+      (item) => atributo(item, 'identifier') === identificador,
+    );
+    if (existe) return { ok: true, jaExistia: true };
+  }
+
+  const criacao = await chamarApple(
+    chave,
+    '/v1/bundleIds',
+    {
+      method: 'POST',
+      corpo: {
+        data: {
+          type: 'bundleIds',
+          attributes: {
+            identifier: identificador,
+            name: nomeParaAApple(nomeDoApp),
+            platform: 'IOS',
+          },
+        },
+      },
+    },
+    buscador,
+    agoraS,
+  );
+  if (!criacao.ok) return criacao;
+  if (criacao.status === 201 || criacao.status === 200) return { ok: true, jaExistia: false };
+
+  const negada = motivoDeAcesso(criacao.status, 'registrar o identificador do app');
+  if (negada !== null) return { ok: false, motivo: negada };
+  if (criacao.status === 409) {
+    /*
+     * 409 é a Apple dizendo que o identificador não está livre: outra conta
+     * Apple já o registrou (o identificador é único no mundo inteiro, e não só
+     * na conta de cada um). A saída é outro identificador.
+     */
+    return {
+      ok: false,
+      motivo:
+        'Esse identificador já está registrado em outra conta Apple. Troque o identificador aqui na Publicação e tente de novo.',
+    };
+  }
+  return {
+    ok: false,
+    motivo: 'A Apple não registrou o identificador agora. Tente de novo em instantes.',
+  };
+}
+
+export type ResultadoDaBusca =
+  { ok: true; app: { id: string; nome: string | null } | null } | { ok: false; motivo: string };
+
+/**
+ * Procura, na conta Apple do lojista, o app criado com este identificador.
+ *
+ * O número que volta (o "Apple ID" do app) é o que o envio à App Store e o
+ * banner "baixe o app" usam. `null` quando o lojista ainda não criou o app.
+ */
+export async function procurarAppNaApple(
+  chave: ChaveDaAppStore,
+  identificador: string,
+  buscador: typeof fetch = fetch,
+  agoraS: number = Math.floor(Date.now() / 1000),
+): Promise<ResultadoDaBusca> {
+  const busca = await chamarApple(
+    chave,
+    `/v1/apps?filter[bundleId]=${encodeURIComponent(identificador)}&fields[apps]=bundleId,name&limit=200`,
+    {},
+    buscador,
+    agoraS,
+  );
+  if (!busca.ok) return busca;
+  const negada = motivoDeAcesso(busca.status, 'ver os apps da conta');
+  if (negada !== null) return { ok: false, motivo: negada };
+  if (busca.status < 200 || busca.status >= 300) {
+    return {
+      ok: false,
+      motivo: 'A Apple não respondeu à busca agora. Tente de novo em instantes.',
+    };
+  }
+
+  const achado = itensDe(busca.corpo).find(
+    (item) => atributo(item, 'bundleId') === identificador && typeof item.id === 'string',
+  );
+  if (achado === undefined || typeof achado.id !== 'string' || !/^[0-9]{6,15}$/.test(achado.id)) {
+    return { ok: true, app: null };
+  }
+  return { ok: true, app: { id: achado.id, nome: atributo(achado, 'name') } };
+}

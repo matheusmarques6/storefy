@@ -14,8 +14,10 @@ import 'server-only';
  */
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '@storefy/db';
-import { criptografar } from '@/lib/cripto';
+import type { ChaveDaAppStore } from '@/lib/apple';
+import { criptografar, descriptografar } from '@/lib/cripto';
 import { FALHA_GENERICA, mensagemDaFalha } from '@/lib/erros';
+import { log } from '@/lib/log';
 
 type Client = SupabaseClient<Database>;
 
@@ -101,6 +103,61 @@ export async function guardarChaveDaApple(
   return error == null
     ? { ok: true }
     : { ok: false, motivo: mensagemDaFalha('contas', error, FALHA_GENERICA) };
+}
+
+/**
+ * A chave da App Store Connect da organização, aberta, para o servidor falar
+ * com a Apple em nome do lojista (registrar o identificador, achar o app).
+ *
+ * Só com a conta VERIFICADA: uma chave que falhou na validação não tem por que
+ * ser usada. A chave aberta nunca sai do servidor.
+ */
+export async function chaveDaAppleDaOrganizacao(
+  servico: Client,
+  orgId: string,
+): Promise<
+  { ok: true; chave: ChaveDaAppStore } | { ok: false; motivo: string; conectada: boolean }
+> {
+  const { data, error } = await servico
+    .from('developer_accounts')
+    .select('status, asc_key_id, asc_issuer_id, asc_key_enc')
+    .eq('org_id', orgId)
+    .eq('platform', 'apple')
+    .maybeSingle();
+  if (error != null) throw new Error(`Não foi possível ler a conta Apple: ${error.message}`);
+
+  if (
+    data?.status !== 'verified' ||
+    data.asc_key_enc == null ||
+    data.asc_key_id == null ||
+    data.asc_issuer_id == null
+  ) {
+    return {
+      ok: false,
+      conectada: false,
+      motivo: 'Conecte a conta Apple da empresa em Publicação › Contas primeiro.',
+    };
+  }
+
+  try {
+    return {
+      ok: true,
+      chave: {
+        p8: descriptografar(data.asc_key_enc),
+        keyId: data.asc_key_id,
+        issuerId: data.asc_issuer_id,
+      },
+    };
+  } catch {
+    // Quase sempre a ENCRYPTION_KEY do servidor mudou: não é algo que o
+    // lojista resolve tentando de novo, mas reconectar a conta resolve.
+    log.erro('contas.chave-da-apple-ilegivel', { orgId });
+    return {
+      ok: false,
+      conectada: true,
+      motivo: 'Não conseguimos abrir a chave da Apple guardada. Conecte a conta Apple de novo.',
+    };
+  }
 }
 
 /** Guarda a conta de serviço do Google já validada. */

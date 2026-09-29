@@ -16,15 +16,22 @@
 import { revalidatePath } from 'next/cache';
 import { exigirContextoCliente } from '@/lib/contexto';
 import { mensagemDaFalha } from '@/lib/erros';
+import { log } from '@/lib/log';
 import { criarClientServiceRole } from '@/lib/supabase/admin';
 import { criarClientServidor } from '@/lib/supabase/server';
 import { dadosDaPublicacao } from '@/lib/publicacao-servidor';
 import { montarChecklist, pendencias, podePublicar } from '@/lib/checklist-de-publicacao';
 import { dispararBuild, faltaConfiguracaoDoDisparo } from '@/lib/disparo-de-build';
 import { criptografiaConfigurada } from '@/lib/cripto';
-import { pareceChaveP8, validarChaveDaApple } from '@/lib/apple';
+import {
+  pareceChaveP8,
+  procurarAppNaApple,
+  registrarIdentificadorNaApple,
+  validarChaveDaApple,
+} from '@/lib/apple';
 import { validarContaDoGoogle } from '@/lib/google';
 import {
+  chaveDaAppleDaOrganizacao,
   desconectar,
   guardarChaveDaApple,
   guardarContaDoGoogle,
@@ -32,6 +39,7 @@ import {
   type Plataforma,
 } from '@/lib/contas-de-desenvolvedor';
 import { appIdDaApple, lerImpressaoDigital, situacaoDosLinks } from '@/lib/links-do-app';
+import { normalizarIdentificador, problemaDoIdentificador } from '@/lib/identificador-do-app';
 import { tokenDaLoja } from '@/lib/shopify-conexao';
 import { vincularAppNoDominio } from '@/lib/shopify-servidor';
 
@@ -174,6 +182,187 @@ export async function publicarApp(plataforma: 'ios' | 'android'): Promise<Estado
   };
 }
 
+// ------------------------------------------- o identificador do app (C12)
+
+export interface EstadoDoIdentificador {
+  ok?: boolean;
+  mensagem?: string;
+  /** Deu certo, mas um passo seguinte (o registro na Apple) não: vai num aviso à parte. */
+  aviso?: string;
+}
+
+/**
+ * O app da loja ativa, para as ações do identificador. Lido pela SESSÃO: é a
+ * RLS que decide se esta pessoa enxerga esta loja.
+ */
+async function appParaIdentidade(): Promise<
+  | {
+      ok: true;
+      app: {
+        id: string;
+        display_name: string;
+        bundle_id_ios: string | null;
+        ios_asc_app_id: string | null;
+      };
+      orgId: string;
+      usuarioId: string;
+    }
+  | { ok: false; motivo: string }
+> {
+  const { lojaAtiva, organizacao, papel, usuario } = await exigirContextoCliente();
+  if (lojaAtiva == null) return { ok: false, motivo: 'Cadastre uma loja primeiro.' };
+  if (papel !== 'owner' && papel !== 'admin') {
+    return {
+      ok: false,
+      motivo: 'Apenas proprietários e administradores cuidam do identificador do app.',
+    };
+  }
+
+  const supabase = await criarClientServidor();
+  const { data: app, error } = await supabase
+    .from('apps')
+    .select('id, display_name, bundle_id_ios, ios_asc_app_id')
+    .eq('store_id', lojaAtiva.id)
+    .maybeSingle();
+  if (error != null) {
+    return {
+      ok: false,
+      motivo: mensagemDaFalha(
+        'publicacao',
+        error,
+        'Não conseguimos ler o app agora. Tente de novo.',
+      ),
+    };
+  }
+  if (app == null) return { ok: false, motivo: 'Não encontramos o app desta loja.' };
+  return { ok: true, app, orgId: organizacao.id, usuarioId: usuario.id };
+}
+
+/**
+ * Define o identificador do app nas duas lojas (C12, "preenchemos para você").
+ *
+ * Com a conta Apple conectada, o identificador segue na hora para ela: é o que
+ * o faz aparecer na lista "ID do pacote" quando o lojista cria o app no App
+ * Store Connect. Se esse registro falhar, o identificador fica salvo e a tela
+ * diz o motivo — o botão "Registrar na Apple" tenta de novo.
+ */
+export async function definirIdentificador(texto: string): Promise<EstadoDoIdentificador> {
+  const problema = problemaDoIdentificador(texto);
+  if (problema !== null) return { mensagem: problema };
+  const identificador = normalizarIdentificador(texto);
+
+  const base = await appParaIdentidade();
+  if (!base.ok) return { mensagem: base.motivo };
+  if (base.app.bundle_id_ios === identificador) {
+    return { ok: true, mensagem: 'Esse já é o identificador do app.' };
+  }
+
+  const servico = criarClientServiceRole();
+  const { error } = await servico.rpc('definir_identificador_do_app', {
+    p_app_id: base.app.id,
+    p_ator: base.usuarioId,
+    p_identificador: identificador,
+  });
+  if (error != null) {
+    // O índice único do banco: outro app da Storefy já usa esse identificador.
+    if (error.code === '23505') {
+      return { mensagem: 'Esse identificador já é de outro app da Storefy. Escolha outro.' };
+    }
+    return {
+      mensagem: mensagemDaFalha(
+        'publicacao',
+        error,
+        'Não conseguimos salvar o identificador. Tente de novo.',
+      ),
+    };
+  }
+  revalidatePath('/publicacao');
+
+  const chave = await chaveDaAppleDaOrganizacao(servico, base.orgId);
+  if (!chave.ok) return { ok: true, mensagem: 'Identificador salvo.' };
+
+  const registro = await registrarIdentificadorNaApple(
+    chave.chave,
+    identificador,
+    base.app.display_name,
+  );
+  return registro.ok
+    ? { ok: true, mensagem: 'Identificador salvo e registrado na sua conta Apple.' }
+    : {
+        ok: true,
+        mensagem: 'Identificador salvo.',
+        aviso: `Ainda não está registrado na sua conta Apple: ${registro.motivo}`,
+      };
+}
+
+/** Registra (de novo) o identificador na conta Apple — o botão do passo 1. */
+export async function registrarNaApple(): Promise<EstadoDoIdentificador> {
+  const base = await appParaIdentidade();
+  if (!base.ok) return { mensagem: base.motivo };
+  if (base.app.bundle_id_ios === null)
+    return { mensagem: 'Defina o identificador do app primeiro.' };
+
+  const chave = await chaveDaAppleDaOrganizacao(criarClientServiceRole(), base.orgId);
+  if (!chave.ok) return { mensagem: chave.motivo };
+
+  const registro = await registrarIdentificadorNaApple(
+    chave.chave,
+    base.app.bundle_id_ios,
+    base.app.display_name,
+  );
+  if (!registro.ok) return { mensagem: registro.motivo };
+  return {
+    ok: true,
+    mensagem: registro.jaExistia
+      ? 'O identificador já estava registrado na sua conta Apple. Siga para criar o app.'
+      : 'Identificador registrado na sua conta Apple. Siga para criar o app.',
+  };
+}
+
+/**
+ * "Já criei o app": procura, na conta Apple do lojista, o app com este
+ * identificador, e guarda o número dele. É o que libera o envio à App Store.
+ */
+export async function conferirAppNaApple(): Promise<EstadoDoIdentificador> {
+  const base = await appParaIdentidade();
+  if (!base.ok) return { mensagem: base.motivo };
+  const identificador = base.app.bundle_id_ios;
+  if (identificador === null) return { mensagem: 'Defina o identificador do app primeiro.' };
+  if (base.app.ios_asc_app_id !== null) {
+    return { ok: true, mensagem: 'O app já está ligado ao App Store Connect.' };
+  }
+
+  const servico = criarClientServiceRole();
+  const chave = await chaveDaAppleDaOrganizacao(servico, base.orgId);
+  if (!chave.ok) return { mensagem: chave.motivo };
+
+  const busca = await procurarAppNaApple(chave.chave, identificador);
+  if (!busca.ok) return { mensagem: busca.motivo };
+  if (busca.app === null) {
+    return {
+      mensagem: `Ainda não encontramos, na sua conta Apple, um app com o identificador ${identificador}. Confira se ele foi escolhido em "ID do pacote" ao criar o app — e se o app foi criado na mesma conta que está conectada.`,
+    };
+  }
+
+  const { error } = await servico.rpc('registrar_app_na_apple', {
+    p_app_id: base.app.id,
+    p_ator: base.usuarioId,
+    p_asc_app_id: busca.app.id,
+  });
+  if (error != null) {
+    return {
+      mensagem: mensagemDaFalha(
+        'publicacao',
+        error,
+        'Achamos o app, mas não conseguimos guardar. Tente de novo.',
+      ),
+    };
+  }
+
+  revalidatePath('/publicacao');
+  return { ok: true, mensagem: `Encontramos o app na sua conta Apple (número ${busca.app.id}).` };
+}
+
 export async function conectarApple(entrada: {
   ascP8: string;
   ascKeyId: string;
@@ -233,6 +422,37 @@ export async function conectarApple(entrada: {
 
   revalidatePath('/publicacao/contas');
   revalidatePath('/push');
+
+  /*
+   * Com o identificador já definido e o app ainda não criado na Apple, ele
+   * segue para a conta recém-conectada — é o que o faz aparecer na lista ao
+   * criar o app no App Store Connect. Falhar aqui não desfaz a conexão: a
+   * Publicação mostra o passo e o botão para tentar de novo.
+   */
+  const { lojaAtiva } = await exigirContextoCliente();
+  if (lojaAtiva != null) {
+    const { data: app, error } = await servico
+      .from('apps')
+      .select('display_name, bundle_id_ios, ios_asc_app_id')
+      .eq('store_id', lojaAtiva.id)
+      .maybeSingle();
+    // A conexão já deu certo; sem conseguir ler o app, o registro fica para o botão da Publicação.
+    if (error != null) log.erro('publicacao.ler-app-ao-conectar', { texto: error.message });
+    if (error == null && app?.bundle_id_ios != null && app.ios_asc_app_id == null) {
+      const registro = await registrarIdentificadorNaApple(
+        { p8: entrada.ascP8, keyId: entrada.ascKeyId.trim(), issuerId: entrada.ascIssuerId.trim() },
+        app.bundle_id_ios,
+        app.display_name,
+      );
+      revalidatePath('/publicacao');
+      return {
+        ok: true,
+        mensagem: registro.ok
+          ? 'Conta Apple conectada, e o identificador do app já foi registrado nela.'
+          : `Conta Apple conectada. O identificador do app ainda não foi registrado nela: ${registro.motivo}`,
+      };
+    }
+  }
   return { ok: true, mensagem: 'Conta Apple conectada.' };
 }
 

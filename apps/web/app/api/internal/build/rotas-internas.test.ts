@@ -70,6 +70,7 @@ const LINHA_DO_APP = {
   display_name: 'Loja de Teste',
   bundle_id_ios: 'br.com.loja',
   package_android: 'br.com.loja',
+  ios_asc_app_id: '6478123456',
   expo_project_id: null,
   onesignal_app_id: 'os-1',
   device_secret_enc: null as string | null,
@@ -218,6 +219,7 @@ describe('POST /api/internal/build — etapa de envio', () => {
       'credenciais',
       'easBuildId',
       'expoProjectId',
+      'iosAscAppId',
       'nomeDoApp',
       'packageAndroid',
       'platform',
@@ -225,6 +227,9 @@ describe('POST /api/internal/build — etapa de envio', () => {
       'slug',
       'storeId',
     ]);
+    // O número do app na Apple: sem ele, o `eas submit` com chave de API
+    // não acha o app e o envio ao iPhone morre no fim.
+    expect(dados.iosAscAppId).toBe('6478123456');
     expect(dados).not.toHaveProperty('config');
     expect(dados).not.toHaveProperty('deviceSecret');
     expect(dados).not.toHaveProperty('urlDoIcone');
