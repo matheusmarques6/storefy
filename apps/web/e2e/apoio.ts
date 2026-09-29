@@ -105,6 +105,6 @@ export async function entrar(page: Page, email: string): Promise<void> {
   await page.goto('/entrar');
   await page.getByLabel('E-mail').fill(email);
   await page.getByLabel('Senha').fill(SENHA_PADRAO);
-  await page.getByRole('button', { name: 'Entrar' }).click();
+  await page.getByRole('button', { name: 'Entrar', exact: true }).click();
   await page.waitForURL('/');
 }

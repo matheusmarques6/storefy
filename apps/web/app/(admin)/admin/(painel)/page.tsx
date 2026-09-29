@@ -18,6 +18,7 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { Building2, CheckCircle2, CreditCard, TriangleAlert } from 'lucide-react';
+import { exigirPlatformAdmin } from '@/lib/contexto';
 import { criarClientServidor } from '@/lib/supabase/server';
 import { pendencias, panorama, plataformaVazia, type NumeroDoResumo } from '@/lib/resumo-admin';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -26,6 +27,7 @@ import { EstadoVazio } from '@/components/estado-vazio';
 export const metadata: Metadata = { title: 'Visão geral · Admin' };
 
 export default async function PaginaVisaoGeral() {
+  await exigirPlatformAdmin();
   const supabase = await criarClientServidor();
   const { data, error } = await supabase.rpc('resumo_do_admin');
 

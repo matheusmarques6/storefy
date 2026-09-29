@@ -4,34 +4,42 @@ import { entrarComGoogle } from './acoes';
 import { Button } from '@/components/ui/button';
 
 /**
- * Entrar com Google.
+ * Entrar com Google — e o divisor "ou" que o antecede.
  *
- * Quando `habilitado` é falso, o botão aparece desabilitado com a explicação do
- * que falta, em vez de sumir: o lojista entende que a opção existe e ainda não
- * foi configurada (regra 1 — integração ausente mostra estado claro).
+ * SEM O GOOGLE CONFIGURADO, NADA APARECE. Esta já foi a decisão contrária:
+ * o botão aparecia desabilitado com "Login com Google ainda não configurado
+ * neste ambiente". A intenção era a da regra 1 — integração ausente mostra
+ * estado claro —, mas a regra fala de integração que QUEM ESTÁ NA TELA pode
+ * configurar. Esta é uma chave da plataforma: o lojista não tem o que fazer
+ * com o aviso, e "neste ambiente" é jargão de operador na primeira tela do
+ * produto. O estado de "não configurado" mora onde alguém pode agir sobre
+ * ele: a A13, no admin, que lista `NEXT_PUBLIC_GOOGLE_OAUTH_ENABLED`.
+ *
+ * O divisor vem junto porque, sem o botão, ele sobraria como um "ou" órfão
+ * separando o formulário de nada. Quem descobriu isso foi o e2e, na primeira
+ * vez que rodou: a tela tinha dois botões "Entrar", e um deles não fazia nada.
  */
 export function BotaoGoogle({ habilitado }: { habilitado: boolean }) {
-  if (!habilitado) {
-    return (
-      <div className="space-y-2">
-        <Button type="button" variant="outline" className="w-full" disabled>
+  if (!habilitado) return null;
+
+  return (
+    <>
+      <div className="relative">
+        <div className="absolute inset-0 flex items-center">
+          <span className="w-full border-t" />
+        </div>
+        <div className="relative flex justify-center text-xs uppercase">
+          <span className="bg-muted/30 text-muted-foreground px-2">ou</span>
+        </div>
+      </div>
+
+      <form action={entrarComGoogle}>
+        <Button type="submit" variant="outline" className="w-full">
           <IconeGoogle />
           Entrar com Google
         </Button>
-        <p className="text-muted-foreground text-center text-xs">
-          Login com Google ainda não configurado neste ambiente.
-        </p>
-      </div>
-    );
-  }
-
-  return (
-    <form action={entrarComGoogle}>
-      <Button type="submit" variant="outline" className="w-full">
-        <IconeGoogle />
-        Entrar com Google
-      </Button>
-    </form>
+      </form>
+    </>
   );
 }
 

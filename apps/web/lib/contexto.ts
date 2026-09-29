@@ -9,6 +9,7 @@ import 'server-only';
  * adulterado com o id de outra organização simplesmente não encontra a loja,
  * porque a RLS já filtrou a consulta.
  */
+import { cache } from 'react';
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import type { User } from '@supabase/supabase-js';
@@ -131,36 +132,49 @@ export async function exigirPlatformAdmin(): Promise<User> {
 /**
  * O mesmo crivo, devolvendo também o PAPEL.
  *
+ * TODA PÁGINA DO ADMIN CHAMA ISTO, E NÃO SÓ O LAYOUT. No App Router o layout
+ * e a página renderizam EM PARALELO: o `redirect` do layout não impede a
+ * página de executar. Enquanto só o layout se guardava, um usuário comum que
+ * abrisse `/admin` fazia a A02 rodar `resumo_do_admin` — que recusa com
+ * exceção —, e cada visita virava um erro 500 no log por trás de um redirect
+ * que parecia funcionar. O e2e achou isso na primeira vez que rodou contra um
+ * Supabase de verdade; `admin-guardado.test.ts` impede que volte.
+ *
+ * O `cache()` do React faz layout e página dividirem UMA consulta por
+ * request: chamar duas vezes não custa duas idas ao banco.
+ *
  * O papel já era lido aqui e jogado fora. A A11 precisa dele: `support` lê a
  * equipe, `superadmin` mexe nela. Uma função separada em vez de mudar o
  * retorno de `exigirPlatformAdmin` porque os dez chamadores existentes não
  * precisam do papel, e trocar o tipo de todos para ganhar um campo que nove
  * ignoram é barulho no diff de quem vier depois.
  */
-export async function exigirPlatformAdminComPapel(): Promise<{
-  usuario: User;
-  papel: PlatformAdminRole;
-}> {
-  const supabase = await criarClientServidor();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+export const exigirPlatformAdminComPapel = cache(
+  async function exigirPlatformAdminComPapel(): Promise<{
+    usuario: User;
+    papel: PlatformAdminRole;
+  }> {
+    const supabase = await criarClientServidor();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
 
-  if (user == null) redirect('/admin/entrar');
+    if (user == null) redirect('/admin/entrar');
 
-  const { data: registro, error } = await supabase
-    .from('platform_admins')
-    .select('user_id, role')
-    .eq('user_id', user.id)
-    .maybeSingle();
+    const { data: registro, error } = await supabase
+      .from('platform_admins')
+      .select('user_id, role')
+      .eq('user_id', user.id)
+      .maybeSingle();
 
-  if (error != null) {
-    throw new Error(`Não foi possível validar seu acesso de administrador: ${error.message}`);
-  }
-  if (registro == null) redirect('/admin/sem-acesso');
+    if (error != null) {
+      throw new Error(`Não foi possível validar seu acesso de administrador: ${error.message}`);
+    }
+    if (registro == null) redirect('/admin/sem-acesso');
 
-  return { usuario: user, papel: registro.role };
-}
+    return { usuario: user, papel: registro.role };
+  },
+);
 
 /** True se o usuário pertence à equipe Storefy. Usado para exibir o atalho do admin. */
 export async function ehPlatformAdmin(userId: string): Promise<boolean> {

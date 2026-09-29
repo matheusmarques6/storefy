@@ -3,6 +3,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { Store } from 'lucide-react';
 import { ROTULO_STATUS_LOJA } from '@storefy/db';
+import { exigirPlatformAdmin } from '@/lib/contexto';
 import { criarClientServidor } from '@/lib/supabase/server';
 import { CampoBusca, Paginacao, lerParams } from '../paginacao';
 import { termoParaIlike } from '@/lib/listagem';
@@ -26,6 +27,7 @@ export default async function PaginaLojasAdmin({
 }: {
   searchParams: Promise<{ q?: string; pagina?: string }>;
 }) {
+  await exigirPlatformAdmin();
   const { busca, pagina, de, ate } = lerParams(await searchParams);
   const supabase = await criarClientServidor();
 

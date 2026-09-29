@@ -909,10 +909,27 @@ O que foi conferido RODANDO, e não só lido:
 | `catch` que engole erro | ✅ nenhum na nossa lógica; os que existem estão em script injetado na página do lojista, onde estourar quebraria a loja dele |
 | RPC declarada e nunca chamada | ✅ nenhuma; `contar_abertura` e `dia_da_loja` são chamadas de dentro de outras funções SQL |
 
-O que **não** deu para conferir aqui, e continua em aberto:
+### O e2e rodou pela primeira vez (29/09/2026) — e achou o que nenhum outro teste achava
 
-- **e2e (Playwright)**: precisa de um Supabase alcançável, e este ambiente não tem Docker para
-  `supabase start`. Os specs foram atualizados para as rotas novas, mas não rodaram.
+`./scripts/e2e-local.sh` sobe a pilha OFICIAL do Supabase (Postgres 17, Auth, REST, Storage)
+no Docker, aplica as migrations, faz o build de PRODUÇÃO apontando para ela e roda o Playwright
+contra `next start`. As 35 migrations aplicaram limpas no Postgres do Supabase — até então só
+tinham rodado contra os stubs da suíte de RLS. O script também reprova a rodada se o servidor
+registrar erro, mesmo com todo teste verde.
+
+| Defeito achado pelo e2e | Por que nada antes pegava |
+|---|---|
+| **O "Sair" não funcionava.** Era um `<form action={sair}>` dentro de um `DropdownMenuItem`: o Radix fecha o menu e desmonta o formulário antes do submit | Nenhum teste de unidade renderiza o menu e clica |
+| **A navegação saía da tela** em toda largura abaixo de 1440px. No celular, seis das oito seções e o menu da conta ficavam inalcançáveis | Cada fase somou uma seção ao cabeçalho, e ninguém voltou a medir |
+| **Páginas do admin executavam para quem não era admin.** No App Router, layout e página renderizam em paralelo: o redirect do layout não impede a página de rodar, e a A02 estourava `resumo_do_admin` num 500 por trás de um redirect que parecia funcionar | O teste via o redirect e passava; o erro só aparecia no log do servidor |
+| **Botão "Entrar com Google" desabilitado** na tela de login, com "ainda não configurado neste ambiente" — jargão de operador que o lojista não pode resolver. E a A13 afirmava o contrário ("o botão não aparece") | Ninguém tinha olhado a tela sem o Google configurado |
+| **Dica e erro repetindo a mesma regra** em todo formulário ("Pelo menos 8 caracteres." em cima de "A senha precisa de pelo menos 8 caracteres."), e o leitor de tela lia as duas | O componente `Campo` nunca tinha sido renderizado com erro num navegador |
+
+Travas que ficaram, para não voltar: `admin-guardado.test.ts` exige guarda em toda página do
+admin (e antes da primeira consulta); `campo-de-formulario.test.ts` exige que o
+`aria-describedby` só aponte para o que está na tela.
+
+O que continua sem dar para conferir aqui:
 - **O ponta a ponta com a Shopify, a EAS, a Apple e a Google**: continua dependendo das contas
   reais, como a Fase 5 já registrava.
 

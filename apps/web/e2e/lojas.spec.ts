@@ -90,5 +90,7 @@ test('recusa duas lojas com o mesmo endereço na mesma empresa', async ({ page }
     if (tentativa === 1) await expect(page.getByText('Loja criada')).toBeVisible();
   }
 
-  await expect(page.getByRole('alert')).toContainText('Já existe uma loja com este endereço');
+  await expect(
+    page.getByRole('alert').filter({ hasText: 'Já existe uma loja com este endereço' }),
+  ).toBeVisible();
 });

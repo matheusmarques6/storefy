@@ -14,6 +14,7 @@
 import type { Metadata } from 'next';
 import { ShieldCheck, TriangleAlert } from 'lucide-react';
 import { ROTULO_STATUS_BUILD } from '@storefy/db';
+import { exigirPlatformAdmin } from '@/lib/contexto';
 import { criarClientServidor } from '@/lib/supabase/server';
 import { diasEsperando, revisaoParada } from '@/lib/builds-admin';
 import { Paginacao, lerParams } from '../paginacao';
@@ -38,6 +39,7 @@ export default async function PaginaRevisoes({
 }: {
   searchParams: Promise<{ pagina?: string }>;
 }) {
+  await exigirPlatformAdmin();
   const { pagina, de, ate } = lerParams(await searchParams);
   const supabase = await criarClientServidor();
 

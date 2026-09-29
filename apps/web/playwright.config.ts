@@ -28,6 +28,16 @@ export default defineConfig({
     timezoneId: 'America/Sao_Paulo',
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',
+    /*
+     * Um Chromium já instalado, quando o ambiente tem um e não pode baixar
+     * outro — é o caso do ambiente remoto onde esta suíte rodou pela primeira
+     * vez, com a rede fechada para o CDN do Playwright. Sem a variável, o
+     * Playwright usa o navegador que ele mesmo instala, como sempre.
+     */
+    ...(process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE != null &&
+    process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE !== ''
+      ? { launchOptions: { executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE } }
+      : {}),
   },
 
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],

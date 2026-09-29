@@ -64,7 +64,7 @@ export function SeletorLoja({
           variant="outline"
           size="sm"
           disabled={pendente}
-          className="max-w-[16rem] justify-between"
+          className="max-w-full justify-between sm:max-w-[16rem]"
           aria-label="Trocar de loja"
         >
           <span className="flex min-w-0 items-center gap-2">

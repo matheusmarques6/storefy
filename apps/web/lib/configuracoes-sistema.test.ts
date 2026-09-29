@@ -95,7 +95,15 @@ describe('a lista descreve o que precisa ser descrito', () => {
  * ambiente de execução e apoio de teste. Ficam nomeadas aqui em vez de
  * filtradas por prefixo para que somar uma nova exija um ato consciente.
  */
-const FORA_DA_TELA = new Set(['NODE_ENV', 'CI', 'VERCEL_URL', 'E2E_BASE_URL', 'E2E_SEM_SERVIDOR']);
+const FORA_DA_TELA = new Set([
+  'NODE_ENV',
+  'CI',
+  'VERCEL_URL',
+  'E2E_BASE_URL',
+  'E2E_SEM_SERVIDOR',
+  // O Chromium do e2e, quando o ambiente já tem um e não pode baixar outro.
+  'PLAYWRIGHT_CHROMIUM_EXECUTABLE',
+]);
 
 /**
  * O arquivo sem comentários.

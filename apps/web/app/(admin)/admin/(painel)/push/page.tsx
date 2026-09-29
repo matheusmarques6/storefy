@@ -15,6 +15,7 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { BellRing, CreditCard, TriangleAlert } from 'lucide-react';
+import { exigirPlatformAdmin } from '@/lib/contexto';
 import { criarClientServidor } from '@/lib/supabase/server';
 import { PERIODOS, lerLinha, lerPeriodo, totais } from '@/lib/push-admin';
 import { numeroOuTraco, porcentagemOuTraco } from '@/lib/campanha';
@@ -38,6 +39,7 @@ export default async function PaginaPushGlobal({
 }: {
   searchParams: Promise<{ dias?: string }>;
 }) {
+  await exigirPlatformAdmin();
   const dias = lerPeriodo((await searchParams).dias);
   const supabase = await criarClientServidor();
 

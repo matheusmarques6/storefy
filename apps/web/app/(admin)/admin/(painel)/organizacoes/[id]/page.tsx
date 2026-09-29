@@ -21,6 +21,7 @@ import {
   ROTULO_STATUS_LOJA,
   ROTULO_STATUS_ORG,
 } from '@storefy/db';
+import { exigirPlatformAdmin } from '@/lib/contexto';
 import { criarClientServidor } from '@/lib/supabase/server';
 import { lerNotas } from '@/lib/notas-internas';
 import { Notas } from './notas';
@@ -43,6 +44,7 @@ function dataHora(valor: string | null): string {
 }
 
 export default async function PaginaOrganizacao({ params }: { params: Promise<{ id: string }> }) {
+  await exigirPlatformAdmin();
   const { id } = await params;
   const supabase = await criarClientServidor();
 

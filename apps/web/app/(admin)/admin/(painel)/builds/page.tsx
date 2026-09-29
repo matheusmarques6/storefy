@@ -15,6 +15,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { ExternalLink, Hammer } from 'lucide-react';
 import { ROTULO_STATUS_BUILD } from '@storefy/db';
+import { exigirPlatformAdmin } from '@/lib/contexto';
 import { criarClientServidor } from '@/lib/supabase/server';
 import {
   FILTROS,
@@ -48,6 +49,7 @@ export default async function PaginaBuilds({
 }: {
   searchParams: Promise<{ filtro?: string; pagina?: string }>;
 }) {
+  await exigirPlatformAdmin();
   const params = await searchParams;
   const { pagina, de, ate } = lerParams(params);
   const filtro = lerFiltro(params.filtro);

@@ -2,7 +2,7 @@
 import Link from 'next/link';
 import { ehPlatformAdmin, exigirContextoCliente } from '@/lib/contexto';
 import { MenuUsuario } from './menu-usuario';
-import { Navegacao } from './navegacao';
+import { NavegacaoAbas, NavegacaoMovel } from './navegacao';
 import { SeletorLoja } from './seletor-loja';
 
 export default async function LayoutPainel({ children }: { children: React.ReactNode }) {
@@ -12,17 +12,25 @@ export default async function LayoutPainel({ children }: { children: React.React
   return (
     <div className="flex min-h-dvh flex-col">
       <header className="bg-background/95 sticky top-0 z-40 border-b backdrop-blur">
-        <div className="mx-auto flex h-16 max-w-6xl items-center gap-4 px-4">
-          <Link href="/" className="text-lg font-semibold tracking-tight">
+        {/*
+         * Linha 1: o que é da CONTA — marca, loja ativa e usuário. Linha 2 (a
+         * partir de 1024px): as seções. Abaixo disso, as seções viram o menu
+         * do botão à esquerda. Nenhuma combinação rola a página para o lado.
+         */}
+        <div className="mx-auto flex h-14 max-w-6xl items-center gap-2 px-4 sm:gap-4">
+          <NavegacaoMovel />
+          <Link href="/" className="shrink-0 text-lg font-semibold tracking-tight">
             Storefy
           </Link>
           <div className="bg-border hidden h-6 w-px sm:block" />
-          <SeletorLoja lojas={contexto.lojas} lojaAtiva={contexto.lojaAtiva} />
-          <div className="ml-auto flex items-center gap-2">
-            <Navegacao />
-            <MenuUsuario email={contexto.usuario.email ?? ''} ehAdmin={admin} />
+          {/* `min-w-0` deixa o seletor encolher e truncar o nome da loja, em
+              vez de empurrar o menu da conta para fora da tela. */}
+          <div className="min-w-0 flex-1">
+            <SeletorLoja lojas={contexto.lojas} lojaAtiva={contexto.lojaAtiva} />
           </div>
+          <MenuUsuario email={contexto.usuario.email ?? ''} ehAdmin={admin} />
         </div>
+        <NavegacaoAbas />
       </header>
 
       <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-8">{children}</main>

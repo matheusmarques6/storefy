@@ -16,6 +16,7 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { KeyRound } from 'lucide-react';
+import { exigirPlatformAdmin } from '@/lib/contexto';
 import { criarClientServidor } from '@/lib/supabase/server';
 import { Paginacao, lerParams } from '../paginacao';
 import { Badge } from '@/components/ui/badge';
@@ -54,6 +55,7 @@ export default async function PaginaContas({
 }: {
   searchParams: Promise<{ pagina?: string }>;
 }) {
+  await exigirPlatformAdmin();
   const { pagina, de, ate } = lerParams(await searchParams);
   const supabase = await criarClientServidor();
 
