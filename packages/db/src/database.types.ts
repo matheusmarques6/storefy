@@ -1625,6 +1625,10 @@ export type Database = {
         Args: { p_org_id: string; p_limite?: number };
         Returns: { id: string | null; body: string | null; created_at: string | null; author_id: string | null; author_email: string | null }[];
       };
+      admin_organizacoes: {
+        Args: { p_busca?: string; p_situacao?: Database["public"]["Enums"]["org_status"]; p_plano?: string; p_etapa?: string; p_saude?: string; p_limite?: number; p_deslocamento?: number };
+        Returns: { id: string | null; nome: string | null; identificador: string | null; situacao: Database["public"]["Enums"]["org_status"] | null; teste_ate: string | null; criada_em: string | null; plano_id: string | null; plano: string | null; assinatura_cancelada: boolean | null; lojas: number | null; etapa: string | null; saude: string | null; motivos: string[] | null; ultima_atividade: string | null; total: number | null }[];
+      };
       admin_redefinir_segundo_fator: {
         Args: { p_ator: string; p_alvo: string };
         Returns: number;

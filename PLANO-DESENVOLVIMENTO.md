@@ -1771,6 +1771,18 @@ Também achado pela auditoria das telas contra o plano.
 | Achado no caminho: SSRF por redirecionamento | ❌→✅ a detecção buscava o site com `redirect: 'follow'`: um site público podia mandar o nosso servidor, com um 302, para `169.254.169.254` ou `localhost`. A detecção e o logo passam por uma busca pública que confere cada salto, com teto de tempo e de tamanho |
 | Testes | ✅ busca pública: 6 (salto para host interno recusado antes de buscar, saída interna, laço de redirecionamento, tamanho, erro e rede); ícone do logo: 7 com imagens reais (escuro no branco, miolo seguro sem a margem, branco na marca ou no quase preto, fundo próprio, pequeno, não-imagem) e a regra do fundo; logo do site: 9 (original da Shopify, ordem dos candidatos, fluxo inteiro com o ícone passando na régua, só pequeno, sem logo, fora do ar, logo apontando para endereço interno); rascunho: 2 (bloco da loja atualizado mantendo o resto; só a plataforma); RLS: 5 (cadastrar e trocar, membro não troca, conectada não vira outra nem pela service role); e2e: plataforma no cadastro e na edição até o rascunho, campo travado com a Shopify conectada, o botão do logo com o site fora do ar e o membro sem o botão |
 
+#### Fase 8t — Entregue (29/09/2026): A03 — filtros e saúde de cada cliente
+
+| Item | Estado |
+|---|---|
+| O que faltava | ❌→✅ a A03 tinha busca e paginação; o plano pede filtros por plano, situação e etapa do começo, e a saúde de cada cliente — o que deixa a equipe achar quem está em atraso, quem parou no meio e quem precisa de alguém |
+| No banco, numa função só | ✅ `admin_organizacoes` (só a equipe, com o segundo fator) calcula a etapa e a saúde e filtra ANTES de paginar — filtrar depois mostraria páginas meio vazias e um total errado. A busca trata `%` e `_` digitados como letras |
+| Etapa do começo | ✅ pela loja mais adiantada: sem loja → montando o app → publicado no painel → enviado às lojas → no ar |
+| Saúde, com o porquê | ✅ Crítica: cobrança em atraso, teste que acabou sem assinatura. Atenção: app recusado na revisão, build com erro nos últimos 7 dias, conta de desenvolvedor com erro, mais aparelhos do que o plano permite, ninguém da empresa mexe no painel há 30 dias (a equipe da plataforma mexendo na conta não conta como cliente ativo). Cada linha mostra o selo e os motivos |
+| Filtros na URL | ✅ situação, plano (ou "em teste, sem plano"), etapa e saúde, por GET: o link de "clientes em atraso" se compartilha. Valor desconhecido na URL é ignorado; a busca e a paginação carregam os filtros, e "Limpar filtros" mantém a busca |
+| Defeito achado no caminho | ❌→✅ os seletores (e o campo de busca do admin) só liam o valor da URL ao montar: depois de "Limpar filtros", a lista vinha inteira e os seletores ainda marcavam o filtro antigo. Os formulários remontam quando a URL muda |
+| Testes | ✅ unidade: 5 (filtros lidos e ignorados, rótulos); RLS: 8 (cliente e equipe sem o segundo fator barrados, crítica, atenção com o motivo, boa, filtros combinados, paginação depois do filtro, curingas na busca); e2e: o filtro de saúde acha só o cliente parado com o motivo e a etapa, filtro sem resultado diz "nada encontrado", limpar volta os seletores a "Todos" e mantém a busca, filtro inventado na URL é ignorado |
+
 **Estimativa total:** cerca de 7 a 9 semanas para uma pessoa com Claude Code em ritmo forte. O MVP vendável (Fases 0–4) leva cerca de 4 a 5 semanas.
 
 ---

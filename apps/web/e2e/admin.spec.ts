@@ -3,6 +3,7 @@ import { expect, test } from '@playwright/test';
 import {
   MOTIVO_PULO,
   SUPABASE_DISPONIVEL,
+  bancoDeTeste,
   criarUsuarioConfirmado,
   emailDeTeste,
   entrar,
@@ -143,4 +144,82 @@ test('admin no painel do cliente vê a própria organização, e não a de outro
 
   await contextoCliente.close();
   await contextoAdmin.close();
+});
+
+/*
+ * A03: a equipe anda pela base pelos filtros — plano, situação, etapa do
+ * começo e saúde —, e cada linha diz se o cliente precisa de alguém e por quê.
+ */
+test('A03: os filtros acham o cliente que precisa de alguém, e dizem por quê', async ({ page }) => {
+  const sufixo = Math.random().toString(36).slice(2, 8);
+  const emailParado = emailDeTeste('a03-parado');
+  const idParado = await criarUsuarioConfirmado(emailParado, `Cliente Parado ${sufixo}`);
+  const emailEmDia = emailDeTeste('a03-em-dia');
+  await criarUsuarioConfirmado(emailEmDia, `Cliente Em Dia ${sufixo}`);
+
+  // O teste do "parado" acabou ontem, e ele não assinou.
+  const banco = bancoDeTeste();
+  const { data: vinculo } = await banco
+    .from('memberships')
+    .select('org_id')
+    .eq('user_id', idParado)
+    .single();
+  const { error } = await banco
+    .from('organizations')
+    .update({ trial_ends_at: new Date(Date.now() - 86_400_000).toISOString() })
+    .eq('id', vinculo?.org_id ?? '');
+  expect(error).toBeNull();
+
+  const emailAdmin = emailDeTeste('equipe-a03');
+  const idAdmin = await criarUsuarioConfirmado(emailAdmin, 'Equipe A03');
+  await tornarPlatformAdmin(idAdmin);
+  await entrar(page, emailAdmin);
+
+  await page.goto(`/admin/organizacoes?q=${encodeURIComponent(sufixo)}`);
+  await expect(
+    page.getByRole('row', { name: new RegExp(`Cliente Parado ${sufixo}`) }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole('row', { name: new RegExp(`Cliente Em Dia ${sufixo}`) }),
+  ).toBeVisible();
+
+  // Saúde crítica: só o parado, com o motivo e a etapa na linha.
+  await page.getByLabel('Saúde').selectOption('critica');
+  await page.getByRole('button', { name: 'Filtrar' }).click();
+  await expect(page).toHaveURL(/saude=critica/);
+  await expect(page).toHaveURL(new RegExp(`q=${sufixo}`));
+  const parado = page.getByRole('row', { name: new RegExp(`Cliente Parado ${sufixo}`) });
+  await expect(parado).toBeVisible();
+  await expect(parado.getByText('Crítica')).toBeVisible();
+  await expect(parado.getByText('O teste acabou sem assinatura')).toBeVisible();
+  await expect(parado.getByText('Sem loja')).toBeVisible();
+  await expect(page.getByRole('row', { name: new RegExp(`Cliente Em Dia ${sufixo}`) })).toHaveCount(
+    0,
+  );
+
+  // A busca mantém o filtro; filtro sem resultado diz "nada encontrado".
+  await page.getByLabel('Etapa do começo').selectOption('no_ar');
+  await page.getByRole('button', { name: 'Filtrar' }).click();
+  await expect(page.getByText('Nada encontrado')).toBeVisible();
+  await expect(
+    page.getByText('Nenhuma organização corresponde à busca e aos filtros escolhidos.'),
+  ).toBeVisible();
+
+  // Limpar tira os filtros e mantém a busca — e os seletores voltam a "Todos".
+  await page.getByRole('link', { name: 'Limpar filtros' }).click();
+  await expect(page).toHaveURL(new RegExp(`/admin/organizacoes\\?q=${sufixo}$`));
+  await expect(page.getByLabel('Saúde')).toHaveValue('');
+  await expect(page.getByLabel('Etapa do começo')).toHaveValue('');
+  await expect(
+    page.getByRole('row', { name: new RegExp(`Cliente Em Dia ${sufixo}`) }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole('row', { name: new RegExp(`Cliente Em Dia ${sufixo}`) }).getByText('Boa'),
+  ).toBeVisible();
+
+  // Filtro inventado na URL é ignorado, e não vira erro.
+  await page.goto(`/admin/organizacoes?q=${sufixo}&saude=hackeada&etapa=%27%3B`);
+  await expect(
+    page.getByRole('row', { name: new RegExp(`Cliente Parado ${sufixo}`) }),
+  ).toBeVisible();
 });

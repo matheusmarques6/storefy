@@ -8118,6 +8118,110 @@ select tests.ok('plataforma da loja',
     'stores_conectada_e_shopify'),
   'nem pela service role: é regra da loja, e não do painel');
 
+-- ============================== grupo: A03 — clientes com etapa e saúde (migration 60)
+--
+-- A lista do admin calcula a etapa do começo e a saúde de cada cliente, e
+-- filtra por elas antes de paginar. Só a equipe, com o segundo fator.
+
+reset role;
+select tests.logout();
+
+insert into auth.users (email, raw_user_meta_data, email_confirmed_at) values
+  ('saude-a@teste.local', '{"company_name":"Saude Alfa"}'::jsonb, now()),
+  ('saude-b@teste.local', '{"company_name":"Saude Beta"}'::jsonb, now()),
+  ('saude-c@teste.local', '{"company_name":"Saude Gama"}'::jsonb, now());
+
+drop table if exists tests.saude;
+create table tests.saude as
+select
+  (select m.org_id from public.memberships m join auth.users u on u.id = m.user_id
+    where u.email = 'saude-a@teste.local') as org_a,
+  (select m.org_id from public.memberships m join auth.users u on u.id = m.user_id
+    where u.email = 'saude-b@teste.local') as org_b,
+  (select m.org_id from public.memberships m join auth.users u on u.id = m.user_id
+    where u.email = 'saude-c@teste.local') as org_c;
+grant select on tests.saude to anon, authenticated, service_role;
+
+-- A: o teste acabou ontem e ninguém assinou; nenhuma loja.
+update public.organizations set trial_ends_at = now() - interval '1 day'
+ where id = (select org_a from tests.saude);
+
+-- B: o app foi recusado na revisão.
+insert into public.stores (org_id, name, primary_url)
+select org_b, 'Loja Saude Beta', 'https://saude-beta.com.br' from tests.saude;
+update public.stores set status = 'rejected' where name = 'Loja Saude Beta';
+
+-- C: o app foi publicado no painel, e nada foi às lojas.
+insert into public.stores (org_id, name, primary_url)
+select org_c, 'Loja Saude Gama', 'https://saude-gama.com.br' from tests.saude;
+update public.apps set current_config_version = 1
+ where store_id = (select id from public.stores where name = 'Loja Saude Gama');
+
+select tests.login('saude-a@teste.local');
+set role authenticated;
+
+select tests.ok('A03 clientes',
+  tests.erro($q$select * from public.admin_organizacoes()$q$),
+  'cliente não chama a lista de clientes do admin');
+
+reset role;
+select tests.login('equipe@teste.local', 'aal1');
+set role authenticated;
+
+select tests.ok('A03 clientes',
+  tests.erro($q$select * from public.admin_organizacoes()$q$),
+  'nem a equipe só com a senha (aal1)');
+
+reset role;
+select tests.login('equipe@teste.local');
+set role authenticated;
+
+select tests.ok('A03 clientes',
+  (select etapa = 'sem_loja' and saude = 'critica' and 'teste_acabou' = any(motivos)
+          and plano is null
+     from public.admin_organizacoes(p_busca => 'Saude Alfa')),
+  'teste acabado sem assinatura: crítica, e a etapa é "sem loja"');
+
+select tests.ok('A03 clientes',
+  (select etapa = 'enviado' and saude = 'atencao' and motivos = array['revisao_recusada']
+          and lojas = 1
+     from public.admin_organizacoes(p_busca => 'Saude Beta')),
+  'app recusado: atenção, com o motivo, e a etapa "enviado"');
+
+select tests.ok('A03 clientes',
+  (select etapa = 'publicado' and saude = 'boa' and cardinality(motivos) = 0
+     from public.admin_organizacoes(p_busca => 'Saude Gama')),
+  'publicado no painel e sem pendência: saúde boa');
+
+select tests.ok('A03 clientes',
+  (select count(*) = 1 and bool_and(nome = 'Saude Alfa')
+     from public.admin_organizacoes(p_busca => 'Saude', p_saude => 'critica'))
+  and (select count(*) = 1 and bool_and(nome = 'Saude Gama')
+         from public.admin_organizacoes(p_busca => 'Saude', p_etapa => 'publicado'))
+  and (select count(*) = 3
+         from public.admin_organizacoes(p_busca => 'Saude', p_plano => 'teste'))
+  and (select count(*) = 1 and bool_and(nome = 'Saude Beta')
+         from public.admin_organizacoes(p_busca => 'Saude', p_situacao => 'trialing',
+                                        p_etapa => 'enviado')),
+  'os filtros de saúde, etapa, plano e situação valem juntos com a busca');
+
+select tests.ok('A03 clientes',
+  (select count(*) = 1 and bool_and(total = 3)
+     from public.admin_organizacoes(p_busca => 'Saude', p_limite => 1))
+  and (select count(*) = 1
+         from public.admin_organizacoes(p_busca => 'Saude', p_limite => 1, p_deslocamento => 2))
+  and (select count(*) = 0
+         from public.admin_organizacoes(p_busca => 'Saude', p_limite => 1, p_deslocamento => 3)),
+  'a paginação corta depois de filtrar, e o total é o dos filtrados');
+
+select tests.ok('A03 clientes',
+  (select count(*) = 0 from public.admin_organizacoes(p_busca => '%'))
+  and (select count(*) = 0 from public.admin_organizacoes(p_busca => 'Saude_Alfa')),
+  '% e _ digitados na busca são letras, e não curingas');
+
+reset role;
+select tests.logout();
+
 -- ============================== grupo: varredura de segurança (Fase 8)
 --
 -- Duas travas que valem para o schema inteiro, e não para uma tabela: uma

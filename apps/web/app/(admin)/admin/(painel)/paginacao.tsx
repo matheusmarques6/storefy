@@ -24,7 +24,9 @@ export function CampoBusca({
   extras?: Record<string, string>;
 }) {
   return (
-    <form action={acao} method="get" className="flex gap-2">
+    // A `key` segue a busca da URL: o campo só lê o `defaultValue` ao montar,
+    // e voltar pelo menu à lista inteira deixaria o termo antigo escrito nele.
+    <form key={valor} action={acao} method="get" className="flex gap-2">
       {Object.entries(extras ?? {}).map(([nome, conteudo]) => (
         <input key={nome} type="hidden" name={nome} value={conteudo} />
       ))}

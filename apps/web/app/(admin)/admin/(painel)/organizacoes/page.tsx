@@ -1,12 +1,22 @@
-/** A03 — Organizações, com busca e paginação. */
+/** A03 — Organizações: busca, filtros (plano, situação, etapa, saúde) e paginação. */
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { Building2 } from 'lucide-react';
 import { ROTULO_STATUS_ORG } from '@storefy/db';
 import { exigirPlatformAdmin } from '@/lib/contexto';
 import { criarClientServidor } from '@/lib/supabase/server';
-import { CampoBusca, Paginacao, lerParams } from '../paginacao';
-import { termoParaIlike } from '@/lib/listagem';
+import { CampoBusca, POR_PAGINA, Paginacao, lerParams } from '../paginacao';
+import {
+  ETAPAS,
+  ROTULO_DA_ETAPA,
+  ROTULO_DA_SAUDE,
+  SAUDES,
+  lerFiltros,
+  rotuloDoMotivo,
+  temFiltro,
+  type Etapa,
+  type Saude,
+} from '@/lib/clientes-do-admin';
 import { FUSO_PADRAO, formatarData } from '@/lib/fuso';
 import { emailConfigurado } from '@/lib/email';
 import { configuracoesDaPlataforma } from '@/lib/configuracoes-da-plataforma-servidor';
@@ -18,6 +28,7 @@ import { lerConvitesDaPlataforma } from '../_convites/ler';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Select } from '@/components/ui/select';
 import { EstadoVazio } from '@/components/estado-vazio';
 import {
   Table,
@@ -33,61 +44,49 @@ export const metadata: Metadata = { title: 'Organizações · Admin' };
 export default async function PaginaOrganizacoes({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; pagina?: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   await exigirPlatformAdmin();
-  const { busca, pagina, de, ate } = lerParams(await searchParams);
+  const params = await searchParams;
+  const { busca, pagina, de } = lerParams({
+    q: typeof params.q === 'string' ? params.q : undefined,
+    pagina: typeof params.pagina === 'string' ? params.pagina : undefined,
+  });
+  const { filtros, extras } = lerFiltros(params);
   const supabase = await criarClientServidor();
 
-  let consulta = supabase
-    .from('organizations')
-    .select('id, name, slug, status, trial_ends_at, created_at', { count: 'exact' })
-    .order('created_at', { ascending: false })
-    .range(de, ate);
-
-  if (busca !== '') {
-    // Escapa a vírgula, que separa cláusulas na sintaxe `or` do PostgREST.
-    const termo = termoParaIlike(busca);
-    consulta = consulta.or(`name.ilike.%${termo}%,slug.ilike.%${termo}%`);
-  }
-
-  const [{ data: organizacoes, count, error }, convites, { cadastroAberto }] = await Promise.all([
-    consulta,
+  const [lidos, lidosPlanos, convites, { cadastroAberto }] = await Promise.all([
+    supabase.rpc('admin_organizacoes', {
+      ...(busca === '' ? {} : { p_busca: busca }),
+      ...(filtros.situacao === undefined ? {} : { p_situacao: filtros.situacao }),
+      ...(filtros.plano === undefined ? {} : { p_plano: filtros.plano }),
+      ...(filtros.etapa === undefined ? {} : { p_etapa: filtros.etapa }),
+      ...(filtros.saude === undefined ? {} : { p_saude: filtros.saude }),
+      p_limite: POR_PAGINA,
+      p_deslocamento: de,
+    }),
+    supabase.from('plans').select('id, nome').order('nome'),
     lerConvitesDaPlataforma('conta'),
     configuracoesDaPlataforma(),
   ]);
-  if (error != null) throw new Error(`Não foi possível carregar as organizações: ${error.message}`);
-
-  const lista = organizacoes;
-
-  // O plano de cada uma, da assinatura (a da página, numa consulta só).
-  const { data: assinaturas, error: erroAssinaturas } =
-    lista.length === 0
-      ? { data: [], error: null }
-      : await supabase
-          .from('subscriptions')
-          .select('org_id, cancelada_em, plans(nome)')
-          .in(
-            'org_id',
-            lista.map((org) => org.id),
-          );
-  if (erroAssinaturas != null) {
-    throw new Error(`Não foi possível carregar os planos: ${erroAssinaturas.message}`);
+  if (lidos.error != null) {
+    throw new Error(`Não foi possível carregar as organizações: ${lidos.error.message}`);
   }
-  const planoDe = new Map(
-    assinaturas.map((assinatura) => [
-      assinatura.org_id,
-      assinatura.cancelada_em === null
-        ? assinatura.plans.nome
-        : `${assinatura.plans.nome} (cancelada)`,
-    ]),
-  );
+  if (lidosPlanos.error != null) {
+    throw new Error(`Não foi possível carregar os planos: ${lidosPlanos.error.message}`);
+  }
+
+  const lista = lidos.data;
+  const total = lista[0]?.total ?? 0;
+  const filtrado = temFiltro(filtros, busca);
 
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Organizações</h1>
-        <p className="text-muted-foreground mt-1 text-sm">Todos os clientes da plataforma.</p>
+        <p className="text-muted-foreground mt-1 text-sm">
+          Todos os clientes da plataforma, com a etapa em que cada um está e se precisa de alguém.
+        </p>
       </div>
 
       <Card>
@@ -112,20 +111,84 @@ export default async function PaginaOrganizacoes({
         </CardContent>
       </Card>
 
-      <CampoBusca
-        acao="/admin/organizacoes"
-        valor={busca}
-        placeholder="Buscar por nome ou identificador"
-      />
+      <div className="space-y-3">
+        <CampoBusca
+          acao="/admin/organizacoes"
+          valor={busca}
+          placeholder="Buscar por nome ou identificador"
+          extras={extras}
+        />
+
+        {/*
+          Por GET, como a busca: o filtro vive na URL e o link se compartilha.
+          A `key` segue os filtros da URL: o `<select>` só lê o `defaultValue`
+          ao montar, e sem ela "Limpar filtros" mostraria a lista inteira com
+          os seletores ainda marcando o filtro de antes.
+        */}
+        <form
+          key={JSON.stringify(extras)}
+          action="/admin/organizacoes"
+          method="get"
+          className="flex flex-wrap items-end gap-3"
+          aria-label="Filtros"
+        >
+          {busca === '' ? null : <input type="hidden" name="q" value={busca} />}
+          <Filtro id="filtro-situacao" nome="situacao" rotulo="Situação" valor={filtros.situacao}>
+            {Object.entries(ROTULO_STATUS_ORG).map(([valor, rotulo]) => (
+              <option key={valor} value={valor}>
+                {rotulo}
+              </option>
+            ))}
+          </Filtro>
+          <Filtro id="filtro-plano" nome="plano" rotulo="Plano" valor={filtros.plano}>
+            <option value="teste">Em teste (sem plano)</option>
+            {lidosPlanos.data.map((plano) => (
+              <option key={plano.id} value={plano.id}>
+                {plano.nome}
+              </option>
+            ))}
+          </Filtro>
+          <Filtro id="filtro-etapa" nome="etapa" rotulo="Etapa do começo" valor={filtros.etapa}>
+            {ETAPAS.map((etapa) => (
+              <option key={etapa} value={etapa}>
+                {ROTULO_DA_ETAPA[etapa]}
+              </option>
+            ))}
+          </Filtro>
+          <Filtro id="filtro-saude" nome="saude" rotulo="Saúde" valor={filtros.saude}>
+            {SAUDES.map((saude) => (
+              <option key={saude} value={saude}>
+                {ROTULO_DA_SAUDE[saude]}
+              </option>
+            ))}
+          </Filtro>
+          <Button type="submit" variant="outline">
+            Filtrar
+          </Button>
+          {Object.keys(filtros).length === 0 ? null : (
+            <Button variant="ghost" asChild>
+              <Link
+                href={
+                  busca === ''
+                    ? '/admin/organizacoes'
+                    : `/admin/organizacoes?q=${encodeURIComponent(busca)}`
+                }
+              >
+                Limpar filtros
+              </Link>
+            </Button>
+          )}
+        </form>
+      </div>
 
       {lista.length === 0 ? (
         <EstadoVazio
           icone={Building2}
-          titulo={busca === '' ? 'Nenhuma organização ainda' : 'Nada encontrado'}
+          titulo={filtrado ? 'Nada encontrado' : 'Nenhuma organização ainda'}
           descricao={
-            busca === ''
-              ? 'As organizações aparecem aqui conforme os clientes se cadastram.'
-              : `Nenhuma organização corresponde a “${busca}”.`
+            filtrado
+              ? 'Nenhuma organização corresponde à busca e aos filtros escolhidos.'
+              : 'As organizações aparecem aqui conforme os clientes se cadastram.'
           }
         />
       ) : (
@@ -135,36 +198,57 @@ export default async function PaginaOrganizacoes({
               <TableHeader>
                 <TableRow>
                   <TableHead>Nome</TableHead>
-                  <TableHead>Identificador</TableHead>
                   <TableHead>Plano</TableHead>
                   <TableHead>Situação</TableHead>
-                  <TableHead>Criada em</TableHead>
+                  <TableHead>Etapa</TableHead>
+                  <TableHead>Saúde</TableHead>
+                  <TableHead>Última atividade</TableHead>
                   <TableHead className="text-right">Ações</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {lista.map((org) => (
                   <TableRow key={org.id}>
-                    <TableCell className="font-medium">{org.name}</TableCell>
-                    <TableCell className="text-muted-foreground font-mono text-xs">
-                      {org.slug}
+                    <TableCell>
+                      <p className="font-medium">{org.nome}</p>
+                      <p className="text-muted-foreground font-mono text-xs">{org.identificador}</p>
                     </TableCell>
                     <TableCell>
-                      {planoDe.get(org.id) ?? (
+                      {org.plano === null ? (
                         <span className="text-muted-foreground">
-                          Teste até {formatarData(org.trial_ends_at, FUSO_PADRAO)}
+                          Teste até {formatarData(org.teste_ate, FUSO_PADRAO)}
                         </span>
+                      ) : org.assinatura_cancelada === true ? (
+                        `${org.plano} (cancelada)`
+                      ) : (
+                        org.plano
                       )}
                     </TableCell>
                     <TableCell>
-                      <Badge variant="secondary">{ROTULO_STATUS_ORG[org.status]}</Badge>
+                      {org.situacao === null ? null : (
+                        <Badge variant="secondary">{ROTULO_STATUS_ORG[org.situacao]}</Badge>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      {ROTULO_DA_ETAPA[(org.etapa ?? 'sem_loja') as Etapa]}
+                      <p className="text-muted-foreground text-xs">
+                        {org.lojas === 1 ? '1 loja' : `${String(org.lojas ?? 0)} lojas`}
+                      </p>
+                    </TableCell>
+                    <TableCell>
+                      <SeloDaSaude
+                        saude={(org.saude ?? 'boa') as Saude}
+                        motivos={org.motivos ?? []}
+                      />
                     </TableCell>
                     <TableCell className="text-muted-foreground">
-                      {formatarData(org.created_at, FUSO_PADRAO)}
+                      {org.ultima_atividade === null
+                        ? 'Nenhuma ainda'
+                        : formatarData(org.ultima_atividade, FUSO_PADRAO)}
                     </TableCell>
                     <TableCell className="text-right">
                       <Button variant="ghost" size="sm" asChild>
-                        <Link href={`/admin/organizacoes/${org.id}`}>Detalhes</Link>
+                        <Link href={`/admin/organizacoes/${org.id ?? ''}`}>Detalhes</Link>
                       </Button>
                     </TableCell>
                   </TableRow>
@@ -172,8 +256,62 @@ export default async function PaginaOrganizacoes({
               </TableBody>
             </Table>
           </Card>
-          <Paginacao pagina={pagina} total={count ?? 0} base="/admin/organizacoes" busca={busca} />
+          <Paginacao
+            pagina={pagina}
+            total={total}
+            base="/admin/organizacoes"
+            busca={busca}
+            extras={extras}
+          />
         </>
+      )}
+    </div>
+  );
+}
+
+function Filtro({
+  id,
+  nome,
+  rotulo,
+  valor,
+  children,
+}: {
+  id: string;
+  nome: string;
+  rotulo: string;
+  valor: string | undefined;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="space-y-1">
+      <label htmlFor={id} className="text-muted-foreground text-xs font-medium">
+        {rotulo}
+      </label>
+      <Select id={id} name={nome} defaultValue={valor ?? ''} className="w-48">
+        <option value="">Todos</option>
+        {children}
+      </Select>
+    </div>
+  );
+}
+
+/** A saúde em uma palavra, e embaixo o porquê — é o porquê que a equipe resolve. */
+function SeloDaSaude({ saude, motivos }: { saude: Saude; motivos: readonly string[] }) {
+  return (
+    <div className="space-y-1">
+      <Badge
+        variant={
+          saude === 'critica' ? 'destructive' : saude === 'atencao' ? 'outline' : 'secondary'
+        }
+      >
+        {ROTULO_DA_SAUDE[saude]}
+      </Badge>
+      {motivos.length === 0 ? null : (
+        <ul className="text-muted-foreground space-y-0.5 text-xs">
+          {motivos.map((motivo) => (
+            <li key={motivo}>{rotuloDoMotivo(motivo)}</li>
+          ))}
+        </ul>
       )}
     </div>
   );
