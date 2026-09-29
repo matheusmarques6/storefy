@@ -14,7 +14,11 @@ import { revalidatePath } from 'next/cache';
 import type { Json } from '@storefy/db';
 import { exigirPlatformAdminComPapel } from '@/lib/contexto';
 import { criarClientServiceRole } from '@/lib/supabase/admin';
-import { conferirAviso, lerConfiguracoes } from '@/lib/configuracoes-da-plataforma';
+import {
+  conferirAviso,
+  conferirLinkDaPrevia,
+  lerConfiguracoes,
+} from '@/lib/configuracoes-da-plataforma';
 import { valoresDigitados, type ValoresDigitados } from '@/lib/validacao';
 import { log } from '@/lib/log';
 
@@ -33,15 +37,22 @@ export async function salvarChavesDaPlataforma(
   const { usuario, papel } = await exigirPlatformAdminComPapel();
   // O checkbox só vai no envio quando marcado: ausência é "fechado".
   const cadastroAberto = dados.get('cadastroAberto') === 'on';
-  const valores = valoresDigitados(dados, ['aviso']);
+  const valores = valoresDigitados(dados, ['aviso', 'previaNoIphone', 'previaNoAndroid']);
 
   if (papel !== 'superadmin') {
     return { mensagem: 'Só superadmin muda as chaves da plataforma.', valores, cadastroAberto };
   }
 
-  const bruto = dados.get('aviso');
-  const aviso = conferirAviso(typeof bruto === 'string' ? bruto : '');
+  const texto = (campo: string): string => {
+    const valor = dados.get(campo);
+    return typeof valor === 'string' ? valor : '';
+  };
+  const aviso = conferirAviso(texto('aviso'));
   if (!aviso.ok) return { mensagem: aviso.mensagem, valores, cadastroAberto };
+  const previaNoIphone = conferirLinkDaPrevia(texto('previaNoIphone'), 'iphone');
+  if (!previaNoIphone.ok) return { mensagem: previaNoIphone.mensagem, valores, cadastroAberto };
+  const previaNoAndroid = conferirLinkDaPrevia(texto('previaNoAndroid'), 'android');
+  if (!previaNoAndroid.ok) return { mensagem: previaNoAndroid.mensagem, valores, cadastroAberto };
 
   const servico = criarClientServiceRole();
   const { data: linhas, error: erroDeLeitura } = await servico
@@ -62,6 +73,20 @@ export async function salvarChavesDaPlataforma(
   }
   if (antes.avisoNoPainel !== aviso.aviso) {
     mudancas.push({ chave: 'aviso_no_painel', de: antes.avisoNoPainel, para: aviso.aviso });
+  }
+  if (antes.previaNoIphone !== previaNoIphone.link) {
+    mudancas.push({
+      chave: 'previa_no_iphone',
+      de: antes.previaNoIphone,
+      para: previaNoIphone.link,
+    });
+  }
+  if (antes.previaNoAndroid !== previaNoAndroid.link) {
+    mudancas.push({
+      chave: 'previa_no_android',
+      de: antes.previaNoAndroid,
+      para: previaNoAndroid.link,
+    });
   }
   if (mudancas.length === 0) return { ok: true, mensagem: 'Nada mudou.', valores, cadastroAberto };
 
@@ -91,7 +116,8 @@ export async function salvarChavesDaPlataforma(
     log.erro('plataforma.mudanca-sem-auditoria', { falha: erroDaTrilha });
   }
 
-  // O aviso aparece em toda tela do painel, e o cadastro na tela dele.
+  // O aviso aparece em toda tela do painel, o cadastro na tela dele, e os
+  // links do Storefy Preview no editor e no começo de cada loja.
   revalidatePath('/', 'layout');
   return { ok: true, mensagem: 'Chaves salvas.', valores, cadastroAberto };
 }

@@ -1,7 +1,8 @@
 'use client';
 
 /**
- * Ver o rascunho num aparelho antes de publicar (app Storefy Preview).
+ * Ver o rascunho num aparelho antes de publicar (app Storefy Preview) — no
+ * editor (C06) e no fim do começo de cada loja (C04).
  *
  * O QR carrega um deep link do app de prévia, e o código também aparece em
  * texto: câmera de celular antigo às vezes não lê QR, e digitar 32 caracteres é
@@ -12,17 +13,21 @@
  * sempre seria deixar a porta encostada.
  */
 import { useState, useTransition } from 'react';
-import { QrCode, RefreshCw } from 'lucide-react';
+import { Download, QrCode, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
+import type { OndeBaixarAPrevia } from '@/lib/configuracoes-da-plataforma';
 import { abrirPrevia, type EstadoDaPrevia } from './acoes';
 import { Button } from '@/components/ui/button';
 
 export function PreviaNoCelular({
   storeId,
   somenteLeitura,
+  ondeBaixar,
 }: {
   storeId: string;
   somenteLeitura: boolean;
+  /** Os links do Storefy Preview nas lojas (A13). Vazio é "ainda não publicado". */
+  ondeBaixar: OndeBaixarAPrevia;
 }) {
   const [previa, setPrevia] = useState<EstadoDaPrevia | null>(null);
   const [abrindo, iniciar] = useTransition();
@@ -50,6 +55,8 @@ export function PreviaNoCelular({
           vai ficar, sem publicar nada.
         </p>
       </div>
+
+      <OndeBaixar links={ondeBaixar} />
 
       {previa?.codigo == null ? (
         <Button type="button" variant="outline" disabled={abrindo} onClick={abrir}>
@@ -90,6 +97,42 @@ export function PreviaNoCelular({
             </Button>
           </div>
         </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Onde baixar o Storefy Preview. Sem link publicado, diz isso — um botão para
+ * uma loja de aplicativos onde o app não está seria pior do que nenhum.
+ */
+function OndeBaixar({ links }: { links: OndeBaixarAPrevia }) {
+  if (links.iphone === '' && links.android === '') {
+    return (
+      <p className="text-muted-foreground text-xs">
+        O app Storefy Preview ainda não está disponível para baixar. Até lá, a prévia do painel
+        mostra como o app vai ficar.
+      </p>
+    );
+  }
+
+  return (
+    <div className="flex flex-wrap gap-2">
+      {links.iphone === '' ? null : (
+        <Button asChild variant="outline" size="sm">
+          <a href={links.iphone} target="_blank" rel="noopener noreferrer">
+            <Download className="size-4" aria-hidden />
+            Baixar para iPhone
+          </a>
+        </Button>
+      )}
+      {links.android === '' ? null : (
+        <Button asChild variant="outline" size="sm">
+          <a href={links.android} target="_blank" rel="noopener noreferrer">
+            <Download className="size-4" aria-hidden />
+            Baixar para Android
+          </a>
+        </Button>
       )}
     </div>
   );

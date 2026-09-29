@@ -21,6 +21,20 @@ import type { AppConfig } from '@storefy/config-schema';
 import { MARCA_DA_PREVIA, cssDaPrevia } from '@/lib/preview-proxy';
 import { IconeDaAba } from './icone-da-aba';
 
+/**
+ * O caminho da loja que a prévia mostra para uma aba — o mesmo que o app abre.
+ * Usado pelo editor (C06) e pelo visual rápido do começo (C03).
+ */
+export function caminhoDaPrevia(config: AppConfig, abaId: string): string {
+  const aba = config.tabs.find((item) => item.id === abaId);
+  if (aba === undefined) return '/';
+  if (aba.type === 'webview') return aba.url ?? '/';
+  if (aba.type === 'cart') return '/cart';
+  if (aba.type === 'account') return '/account';
+  if (aba.type === 'search') return '/search';
+  return '/';
+}
+
 interface Props {
   config: AppConfig;
   abaAtiva: string;

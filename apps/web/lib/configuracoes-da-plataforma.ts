@@ -17,12 +17,44 @@ export interface ConfiguracoesDaPlataforma {
   cadastroAberto: boolean;
   /** Frase no topo do painel de todos os lojistas. Vazio, nada aparece. */
   avisoNoPainel: string;
+  /**
+   * Onde baixar o app Storefy Preview, o que lê o QR da prévia (C04 e C06).
+   * Vazio é "ainda não publicado": a tela diz isso em vez de um botão que leva
+   * a lugar nenhum. O app é da Storefy e sai uma vez só (seção 9.4 do plano).
+   */
+  previaNoIphone: string;
+  previaNoAndroid: string;
 }
 
-export const PADRAO: ConfiguracoesDaPlataforma = { cadastroAberto: true, avisoNoPainel: '' };
+/** Onde baixar o Storefy Preview, como as telas do lojista recebem. Vazio é "ainda não". */
+export interface OndeBaixarAPrevia {
+  iphone: string;
+  android: string;
+}
+
+export function ondeBaixarAPrevia(configuracoes: ConfiguracoesDaPlataforma): OndeBaixarAPrevia {
+  return { iphone: configuracoes.previaNoIphone, android: configuracoes.previaNoAndroid };
+}
+
+export const PADRAO: ConfiguracoesDaPlataforma = {
+  cadastroAberto: true,
+  avisoNoPainel: '',
+  previaNoIphone: '',
+  previaNoAndroid: '',
+};
 
 /** O aviso tem de caber numa faixa: é uma frase, não um comunicado. */
 export const TAMANHO_MAXIMO_DO_AVISO = 280;
+
+/**
+ * De onde o link de cada loja pode ser. O TestFlight entra porque é como um
+ * app interno costuma sair primeiro para o iPhone; o teste interno do Google
+ * Play mora no próprio `play.google.com`.
+ */
+const HOSTS_DA_PREVIA: Record<'iphone' | 'android', readonly string[]> = {
+  iphone: ['apps.apple.com', 'testflight.apple.com'],
+  android: ['play.google.com'],
+};
 
 export function lerConfiguracoes(
   linhas: readonly { chave: string; valor: Json }[],
@@ -39,7 +71,17 @@ export function lerConfiguracoes(
       typeof aviso === 'string'
         ? aviso.trim().slice(0, TAMANHO_MAXIMO_DO_AVISO)
         : PADRAO.avisoNoPainel,
+    // Um link gravado que não passa mais na conferência vira "não publicado":
+    // melhor do que um botão levando para outro lugar.
+    previaNoIphone: linkGravado(valorDe('previa_no_iphone'), 'iphone'),
+    previaNoAndroid: linkGravado(valorDe('previa_no_android'), 'android'),
   };
+}
+
+function linkGravado(valor: Json | undefined, plataforma: 'iphone' | 'android'): string {
+  if (typeof valor !== 'string') return '';
+  const conferido = conferirLinkDaPrevia(valor, plataforma);
+  return conferido.ok ? conferido.link : '';
 }
 
 /** O aviso digitado no admin, conferido. */
@@ -54,4 +96,39 @@ export function conferirAviso(
     };
   }
   return { ok: true, aviso };
+}
+
+/**
+ * O link do Storefy Preview digitado no admin, conferido.
+ *
+ * Só `https` e só o endereço da loja de aplicativos daquela plataforma: é um
+ * botão que TODO lojista vai tocar, e um erro de colagem — o link do Android
+ * no campo do iPhone, um endereço de rascunho — mandaria a base inteira para
+ * o lugar errado. Vazio é válido: tira o botão.
+ */
+export function conferirLinkDaPrevia(
+  bruto: string,
+  plataforma: 'iphone' | 'android',
+): { ok: true; link: string } | { ok: false; mensagem: string } {
+  const texto = bruto.trim();
+  if (texto === '') return { ok: true, link: '' };
+
+  const loja = plataforma === 'iphone' ? 'App Store ou TestFlight' : 'Google Play';
+  let url: URL;
+  try {
+    url = new URL(texto);
+  } catch {
+    return { ok: false, mensagem: `O link do ${nomeDa(plataforma)} não é um endereço válido.` };
+  }
+  if (url.protocol !== 'https:' || !HOSTS_DA_PREVIA[plataforma].includes(url.hostname)) {
+    return {
+      ok: false,
+      mensagem: `O link do ${nomeDa(plataforma)} precisa ser da ${loja}, começando com https://.`,
+    };
+  }
+  return { ok: true, link: url.toString() };
+}
+
+function nomeDa(plataforma: 'iphone' | 'android'): string {
+  return plataforma === 'iphone' ? 'iPhone' : 'Android';
 }

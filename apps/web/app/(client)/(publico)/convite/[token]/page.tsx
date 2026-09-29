@@ -27,6 +27,7 @@ import { FUSO_PADRAO, formatarData } from '@/lib/fuso';
 import { AceitarConvite, CadastroPeloConvite, TrocarDeConta } from './formularios';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { lido } from '@/lib/leitura';
 
 export const metadata: Metadata = { title: 'Convite' };
 
@@ -34,15 +35,19 @@ export default async function PaginaDoConvite({ params }: { params: Promise<{ to
   const { token } = await params;
   const supabase = await criarClientServidor();
 
-  const [{ data: linhas }, { data: sessao }] = await Promise.all([
+  const [lidas, sessao] = await Promise.all([
     segredoTemFormato(token)
       ? supabase.rpc('ver_convite', { p_token: token })
-      : Promise.resolve({ data: null }),
+      : Promise.resolve({ data: null, error: null }),
     supabase.auth.getUser(),
   ]);
+  // O banco fora do ar não é "convite indisponível": a pessoa pediria outro à toa.
+  const { data: linhas } = lido(lidas, 'o convite');
   const convite = linhas?.[0] ?? null;
   const situacao = situacaoDoConvite(convite?.situacao);
-  const usuario = sessao.user;
+  // Aqui o erro é o esperado: sem sessão, o `getUser` responde com erro — é o
+  // visitante que ainda não entrou, e a tela oferece entrar ou criar a conta.
+  const usuario = sessao.data.user;
 
   if (convite == null || situacao !== 'pendente') {
     return (

@@ -6,6 +6,9 @@
  * (regra 1 das inegociáveis). Os números do topo são os da LOJA ATIVA, e só
  * aparecem quando existem: um zero grande na primeira tela diria ao lojista
  * que o app dele fracassou, quando ele ainda nem publicou.
+ *
+ * Até o app ser aprovado, o topo mostra os primeiros passos da loja ativa
+ * (seção 10 do plano), com o mesmo estado da tela de publicação.
  */
 import type { Metadata } from 'next';
 import Link from 'next/link';
@@ -25,7 +28,15 @@ import { appDaLoja } from '@/lib/push-servidor';
 import { numerosDoPeriodo } from '@/lib/analytics-servidor';
 import { comoNumero, comoPorcentagem, comoReais, fatiaDoApp, temMovimento } from '@/lib/analytics';
 import { formatarData } from '@/lib/fuso';
+import { dadosDaPublicacao } from '@/lib/publicacao-servidor';
+import {
+  entradaDaPublicacao,
+  primeirosPassos,
+  progressoDosPassos,
+  type PassoInicial,
+} from '@/lib/primeiros-passos';
 import { CartaoDeNumero } from '@/components/cartao-de-numero';
+import { ListaDePrimeirosPassos } from '@/components/primeiros-passos';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -47,7 +58,10 @@ const VARIANTE_POR_STATUS: Record<StoreStatus, 'secondary' | 'warning' | 'succes
 export default async function PaginaInicio() {
   const { lojas, lojaAtiva, organizacao, papel } = await exigirContextoCliente();
   const podeCriar = podeEscrever(papel);
-  const resumo = await resumoDaLojaAtiva(lojaAtiva);
+  const [resumo, passos] = await Promise.all([
+    resumoDaLojaAtiva(lojaAtiva),
+    passosDaLojaAtiva(lojaAtiva),
+  ]);
 
   return (
     <div className="space-y-8">
@@ -110,6 +124,27 @@ export default async function PaginaInicio() {
         </section>
       )}
 
+      {passos == null || lojaAtiva == null ? null : (
+        <Card role="region" aria-labelledby="titulo-primeiros-passos">
+          <CardHeader>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <CardTitle id="titulo-primeiros-passos" className="text-base">
+                Primeiros passos de {lojaAtiva.name}
+              </CardTitle>
+              <Badge variant="secondary">
+                {String(passos.filter((passo) => passo.feito).length)} de {String(passos.length)}
+              </Badge>
+            </div>
+            <CardDescription>
+              O que falta para o app chegar aos seus clientes. Some daqui quando o app for aprovado.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <ListaDePrimeirosPassos passos={passos} podeAgir={podeCriar} />
+          </CardContent>
+        </Card>
+      )}
+
       {lojas.length === 0 ? (
         <EstadoVazio
           icone={Rocket}
@@ -166,7 +201,7 @@ export default async function PaginaInicio() {
         </section>
       )}
 
-      {lojas.length === 0 ? null : (
+      {lojas.length === 0 || passos != null ? null : (
         <Card>
           <CardHeader>
             <div className="flex items-center gap-2">
@@ -197,6 +232,24 @@ export default async function PaginaInicio() {
       )}
     </div>
   );
+}
+
+/**
+ * O checklist da loja ativa até o app estar no ar (seção 10 do plano), ou
+ * `null` quando não há loja — ou quando já acabou, e o espaço volta para os
+ * atalhos de sempre.
+ */
+async function passosDaLojaAtiva(
+  lojaAtiva: { id: string; org_id: string } | null,
+): Promise<PassoInicial[] | null> {
+  if (lojaAtiva == null) return null;
+
+  const supabase = await criarClientServidor();
+  const dados = await dadosDaPublicacao(supabase, lojaAtiva.id, lojaAtiva.org_id);
+  if (dados == null) return null;
+
+  const passos = primeirosPassos(entradaDaPublicacao(dados));
+  return progressoDosPassos(passos).concluido ? null : passos;
 }
 
 /**

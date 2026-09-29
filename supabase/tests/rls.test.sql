@@ -4593,6 +4593,12 @@ select tests.ok('chaves da plataforma',
     values ('chave_inventada', 'true')$q$),
   'chave que o código não conhece é recusada pelo banco');
 
+select tests.ok('chaves da plataforma',
+  tests.permitido($q$insert into public.platform_settings (chave, valor)
+    values ('previa_no_iphone', '"https://apps.apple.com/app/id1"'),
+           ('previa_no_android', '"https://play.google.com/store/apps/details?id=br.storefy"')$q$),
+  'os links do Storefy Preview são chaves que o banco conhece');
+
 reset role;
 select tests.logout();
 delete from public.platform_settings;

@@ -107,6 +107,8 @@ test('o fuso da loja se troca na tela, e a troca fica na auditoria', async ({ pa
   await criarUsuarioConfirmado(email, 'Empresa Fuso');
   await entrar(page, email);
   const lojaId = await criarLojaPelaTela(page, 'Loja do Norte', 'loja-do-norte.com.br');
+  // O cadastro segue para o começo guiado; o fuso fica na página da loja.
+  await page.goto(`/lojas/${lojaId}`);
 
   const campo = page.getByLabel('Fuso horário');
   await expect(campo).toHaveValue('America/Sao_Paulo');
@@ -138,7 +140,8 @@ test('e-mail de atendimento recusado não apaga o que foi digitado', async ({ pa
   const email = emailDeTeste('contato');
   await criarUsuarioConfirmado(email, 'Empresa Contato');
   await entrar(page, email);
-  await criarLojaPelaTela(page, 'Loja Contato', 'loja-contato.com.br');
+  const lojaId = await criarLojaPelaTela(page, 'Loja Contato', 'loja-contato.com.br');
+  await page.goto(`/lojas/${lojaId}`);
 
   await page.waitForLoadState('networkidle');
   await page.getByLabel('E-mail de atendimento').fill('atendimento@');

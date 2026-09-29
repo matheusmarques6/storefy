@@ -225,7 +225,8 @@ export async function criarLoja(_anterior: EstadoLoja, dados: FormData): Promise
   });
 
   revalidatePath('/', 'layout');
-  redirect(`/lojas/${criada.id}?criada=1`);
+  // O começo guiado segue daqui: o visual (C03) e o app no celular (C04).
+  redirect(`/lojas/${criada.id}/comecar`);
 }
 
 export async function editarLoja(

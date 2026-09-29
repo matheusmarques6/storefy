@@ -49,7 +49,8 @@ export async function criarLojaPelaTela(
   await page.getByLabel('Nome da loja').fill(nome);
   await page.getByLabel('Endereço da loja').fill(endereco);
   await page.getByRole('button', { name: 'Criar loja' }).click();
-  await page.waitForURL(/\/lojas\/[0-9a-f-]{36}\?criada=1/);
+  // O cadastro segue para o começo guiado: o visual do app (C03).
+  await page.waitForURL(/\/lojas\/[0-9a-f-]{36}\/comecar$/);
 
   const id = /\/lojas\/([0-9a-f-]{36})/.exec(page.url())?.[1];
   if (id === undefined) throw new Error(`A loja não foi criada: ${page.url()}`);

@@ -1,7 +1,8 @@
 'use client';
 
 /**
- * A13 — as chaves de funcionamento: cadastro aberto e aviso no painel.
+ * A13 — as chaves de funcionamento: cadastro aberto, aviso no painel e onde
+ * baixar o app Storefy Preview.
  *
  * O aviso tem prévia: é uma frase que TODOS os lojistas vão ler no topo de
  * toda tela, e ver como ela fica antes de salvar evita o erro de digitação
@@ -13,15 +14,20 @@ import { toast } from 'sonner';
 import { TAMANHO_MAXIMO_DO_AVISO } from '@/lib/configuracoes-da-plataforma';
 import { salvarChavesDaPlataforma, type EstadoDasChaves } from './acoes';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 
 export function ChavesDaPlataforma({
   cadastroAberto,
   avisoNoPainel,
+  previaNoIphone,
+  previaNoAndroid,
   podeMudar,
 }: {
   cadastroAberto: boolean;
   avisoNoPainel: string;
+  previaNoIphone: string;
+  previaNoAndroid: string;
   /** Só superadmin muda; `support` vê. O servidor confere de novo. */
   podeMudar: boolean;
 }) {
@@ -95,6 +101,38 @@ export function ChavesDaPlataforma({
               </p>
             </div>
           )}
+        </div>
+
+        <div className="space-y-4">
+          <div>
+            <p className="text-sm font-medium">App Storefy Preview</p>
+            <p className="text-muted-foreground text-sm">
+              Onde o lojista baixa o app que lê o código da prévia. Vazio, a tela diz que o app
+              ainda não está disponível, em vez de mostrar um botão que não leva a lugar nenhum.
+            </p>
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="previa-no-iphone">Link para iPhone (App Store ou TestFlight)</Label>
+            <Input
+              id="previa-no-iphone"
+              name="previaNoIphone"
+              type="url"
+              inputMode="url"
+              defaultValue={estado.valores?.previaNoIphone ?? previaNoIphone}
+              placeholder="https://apps.apple.com/…"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="previa-no-android">Link para Android (Google Play)</Label>
+            <Input
+              id="previa-no-android"
+              name="previaNoAndroid"
+              type="url"
+              inputMode="url"
+              defaultValue={estado.valores?.previaNoAndroid ?? previaNoAndroid}
+              placeholder="https://play.google.com/…"
+            />
+          </div>
         </div>
       </fieldset>
 

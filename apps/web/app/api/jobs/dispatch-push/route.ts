@@ -70,11 +70,23 @@ async function responder(requisicao: NextRequest): Promise<NextResponse> {
      * morreu no meio. Sem isto a campanha ficaria em "enviando" para sempre —
      * o estado de onde nada sai e ninguém repara.
      */
-    const [{ data: campanhasPresas }, { data: enviosPresos }] = await Promise.all([
+    const [campanhasPresas, enviosPresos] = await Promise.all([
       supabase.rpc('devolver_campanhas_presas', { p_minutos: 15 }),
       supabase.rpc('devolver_envios_presos', { p_minutos: 15 }),
     ]);
-    resumo.destravados = (campanhasPresas ?? 0) + (enviosPresos ?? 0);
+    /*
+     * Falhar ao destravar NÃO para o despacho: o que está na fila sai do mesmo
+     * jeito, e o preso volta na próxima volta. Mas a falha vai para o log — em
+     * silêncio, a campanha ficaria "enviando" para sempre sem ninguém saber.
+     */
+    for (const [qual, lida] of [
+      ['campanhas', campanhasPresas],
+      ['envios', enviosPresos],
+    ] as const) {
+      if (lida.error != null)
+        log.erro('job-despacho.destravar-falhou', { qual, falha: lida.error });
+    }
+    resumo.destravados = (campanhasPresas.data ?? 0) + (enviosPresos.data ?? 0);
 
     await despacharCampanhas(supabase, resumo);
     await despacharAutomacoes(supabase, resumo);

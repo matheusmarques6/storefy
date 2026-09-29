@@ -13,6 +13,9 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Editor } from './editor';
 import { lerPresets } from '@/lib/presets';
 import { numeroExigivel } from '@/lib/atualizacao-obrigatoria';
+import { lido } from '@/lib/leitura';
+import { configuracoesDaPlataforma } from '@/lib/configuracoes-da-plataforma-servidor';
+import { ondeBaixarAPrevia } from '@/lib/configuracoes-da-plataforma';
 
 export const metadata: Metadata = { title: 'Editor do app' };
 
@@ -49,37 +52,44 @@ export default async function PaginaDoEditor() {
     );
   }
 
-  const [publicada, historico, { data: app }, { data: presetsBrutos }, { data: aprovados }] =
-    await Promise.all([
-      versaoPublicada(supabase, rascunho.rascunho.appId),
-      historicoDeVersoes(supabase, rascunho.rascunho.appId),
-      supabase
-        .from('apps')
-        .select('onesignal_app_id, icon_path, splash_path')
-        .eq('id', rascunho.rascunho.appId)
-        .maybeSingle(),
-      /*
-       * Os presets ATIVOS. A RLS já libera ao lojista só os ligados — mas a
-       * equipe da plataforma lê todos, e o editor é a mesma tela para os dois.
-       * Sem o filtro aqui, alguém da equipe veria no editor presets que nenhum
-       * cliente vê: a tela precisa dizer o que o LOJISTA enxerga, e isso é uma
-       * pergunta da consulta, não de quem está olhando.
-       */
-      supabase
-        .from('config_presets')
-        .select('id, nome, tema, descricao, tabs, hide_selectors, custom_css')
-        .eq('ativo', true)
-        .order('tema', { ascending: true })
-        .order('nome', { ascending: true }),
-      // Os builds aprovados pelas lojas: é deles que sai o número que a
-      // atualização obrigatória pode exigir.
-      supabase
-        .from('builds')
-        .select('platform, build_number')
-        .eq('app_id', rascunho.rascunho.appId)
-        .eq('status', 'approved')
-        .not('build_number', 'is', null),
-    ]);
+  const [publicada, historico, lidoApp, lidosPresets, lidosAprovados] = await Promise.all([
+    versaoPublicada(supabase, rascunho.rascunho.appId),
+    historicoDeVersoes(supabase, rascunho.rascunho.appId),
+    supabase
+      .from('apps')
+      .select('onesignal_app_id, icon_path, splash_path')
+      .eq('id', rascunho.rascunho.appId)
+      .maybeSingle(),
+    /*
+     * Os presets ATIVOS. A RLS já libera ao lojista só os ligados — mas a
+     * equipe da plataforma lê todos, e o editor é a mesma tela para os dois.
+     * Sem o filtro aqui, alguém da equipe veria no editor presets que nenhum
+     * cliente vê: a tela precisa dizer o que o LOJISTA enxerga, e isso é uma
+     * pergunta da consulta, não de quem está olhando.
+     */
+    supabase
+      .from('config_presets')
+      .select('id, nome, tema, descricao, tabs, hide_selectors, custom_css')
+      .eq('ativo', true)
+      .order('tema', { ascending: true })
+      .order('nome', { ascending: true }),
+    // Os builds aprovados pelas lojas: é deles que sai o número que a
+    // atualização obrigatória pode exigir.
+    supabase
+      .from('builds')
+      .select('platform, build_number')
+      .eq('app_id', rascunho.rascunho.appId)
+      .eq('status', 'approved')
+      .not('build_number', 'is', null),
+  ]);
+  /*
+   * Sem ler, o editor mostraria "sem ícone", "push desligado", nenhum preset e
+   * "nada aprovado para exigir" — cada um levando o lojista a refazer o que
+   * já está feito.
+   */
+  const { data: app } = lido(lidoApp, 'o app');
+  const { data: presetsBrutos } = lido(lidosPresets, 'os presets');
+  const { data: aprovados } = lido(lidosAprovados, 'os builds aprovados');
 
   /*
    * Um preset de formato antigo é DESCARTADO, e não derruba o editor: o
@@ -93,9 +103,10 @@ export default async function PaginaDoEditor() {
    * Uma hora é o bastante para a pessoa olhar e trocar, e curto o suficiente
    * para o link não virar um endereço permanente se vazar do histórico.
    */
-  const [urlDoIcone, urlDaSplash] = await Promise.all([
+  const [urlDoIcone, urlDaSplash, plataforma] = await Promise.all([
     urlAssinada(supabase, app?.icon_path ?? null),
     urlAssinada(supabase, app?.splash_path ?? null),
+    configuracoesDaPlataforma(),
   ]);
 
   return (
@@ -106,6 +117,7 @@ export default async function PaginaDoEditor() {
       publicada={publicada}
       urlDoIcone={urlDoIcone}
       urlDaSplash={urlDaSplash}
+      ondeBaixarAPrevia={ondeBaixarAPrevia(plataforma)}
       historico={historico}
       presets={presets}
       fuso={lojaAtiva.timezone}

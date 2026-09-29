@@ -71,7 +71,7 @@ export async function garantirRascunho(
     return { ok: false, motivo: 'Este app ainda não foi criado para a loja.' };
   }
 
-  const [{ data: maior }, { data: rascunho }] = await Promise.all([
+  const [lidaMaior, lidoRascunho] = await Promise.all([
     supabase
       .from('app_configs')
       .select('version')
@@ -88,6 +88,17 @@ export async function garantirRascunho(
       .limit(1)
       .maybeSingle(),
   ]);
+  /*
+   * Rascunho que não se leu NÃO é "sem rascunho": decidir em cima de um nulo
+   * de erro criaria um rascunho novo, com a config padrão, por cima do que o
+   * lojista vinha editando — e o editor passaria a abrir esse.
+   */
+  const falhaDaLeitura = lidaMaior.error ?? lidoRascunho.error;
+  if (falhaDaLeitura != null) {
+    return { ok: false, motivo: mensagemDaFalha('configs', falhaDaLeitura, FALHA_GENERICA) };
+  }
+  const maior = lidaMaior.data;
+  const rascunho = lidoRascunho.data;
 
   const decisao = decidirRascunho(
     loja,

@@ -54,7 +54,7 @@ export default async function PaginaOrganizacao({ params }: { params: Promise<{ 
   const supabase = await criarClientServidor();
 
   const [
-    { data: org },
+    { data: org, error: erroOrg },
     { data: lojas, error: erroLojas },
     { data: membros, error: erroMembros },
     { data: notasBrutas, error: erroNotas },
@@ -90,6 +90,10 @@ export default async function PaginaOrganizacao({ params }: { params: Promise<{ 
       .order('created_at', { ascending: false }),
   ]);
 
+  // Erro de leitura não é "cliente inexistente": o 404 esconderia a falha.
+  if (erroOrg != null) {
+    throw new Error(`Não foi possível carregar a organização: ${erroOrg.message}`);
+  }
   if (org == null) notFound();
   // Erro de consulta vira erro visível: mostrar "nenhuma loja" quando na verdade
   // a query falhou faria o admin tirar a conclusão errada sobre o cliente.

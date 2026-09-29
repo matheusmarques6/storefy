@@ -32,12 +32,13 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { publicarConfig, salvarConfig } from './acoes';
-import { Previa } from './previa';
+import { Previa, caminhoDaPrevia } from './previa';
 import { PreviaNoCelular } from './previa-no-celular';
 import { SecaoAbas } from './secao-abas';
 import { SecaoAparencia } from './secao-aparencia';
 import { SecaoLoja } from './secao-loja';
 import type { Preset } from '@/lib/presets';
+import type { OndeBaixarAPrevia } from '@/lib/configuracoes-da-plataforma';
 import { SecaoRecursos } from './secao-recursos';
 import { SecaoVersoes } from './secao-versoes';
 
@@ -68,6 +69,8 @@ interface Props {
   /** Links assinados das imagens atuais. O bucket é privado. */
   urlDoIcone: string | null;
   urlDaSplash: string | null;
+  /** Onde baixar o Storefy Preview (A13). */
+  ondeBaixarAPrevia: OndeBaixarAPrevia;
 }
 
 export function Editor({
@@ -83,6 +86,7 @@ export function Editor({
   fuso,
   urlDoIcone,
   urlDaSplash,
+  ondeBaixarAPrevia,
 }: Props) {
   const [config, setConfig] = useState(configInicialDoServidor);
   const [salvo, setSalvo] = useState(configInicialDoServidor);
@@ -158,15 +162,10 @@ export function Editor({
    * O caminho da prévia segue a aba destacada. Só ele recarrega o iframe — cor
    * e seletor escondido viajam por `postMessage`, sem recarregar a loja.
    */
-  const caminhoDaPrevia = useMemo(() => {
-    const aba = config.tabs.find((item) => item.id === abaDaPrevia);
-    if (aba === undefined) return '/';
-    if (aba.type === 'webview') return aba.url ?? '/';
-    if (aba.type === 'cart') return '/cart';
-    if (aba.type === 'account') return '/account';
-    if (aba.type === 'search') return '/search';
-    return '/';
-  }, [abaDaPrevia, config.tabs]);
+  const caminhoNaPrevia = useMemo(
+    () => caminhoDaPrevia(config, abaDaPrevia),
+    [abaDaPrevia, config],
+  );
 
   /**
    * O lojista clicou em algo na prévia para esconder.
@@ -329,7 +328,7 @@ export function Editor({
             abaAtiva={abaDaPrevia}
             aoTrocarAba={setAbaDaPrevia}
             lojaId={storeId}
-            caminho={caminhoDaPrevia}
+            caminho={caminhoNaPrevia}
             selecionando={selecionando}
             aoEscolherSeletor={aoEscolherSeletor}
           />
@@ -348,7 +347,11 @@ export function Editor({
             </Button>
           )}
 
-          <PreviaNoCelular storeId={storeId} somenteLeitura={somenteLeitura} />
+          <PreviaNoCelular
+            storeId={storeId}
+            somenteLeitura={somenteLeitura}
+            ondeBaixar={ondeBaixarAPrevia}
+          />
         </div>
       </div>
 

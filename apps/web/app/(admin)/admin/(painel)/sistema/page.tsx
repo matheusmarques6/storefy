@@ -153,6 +153,8 @@ export default async function PaginaSistema() {
           <ChavesDaPlataforma
             cadastroAberto={chaves.cadastroAberto}
             avisoNoPainel={chaves.avisoNoPainel}
+            previaNoIphone={chaves.previaNoIphone}
+            previaNoAndroid={chaves.previaNoAndroid}
             podeMudar={papel === 'superadmin'}
           />
         </CardContent>

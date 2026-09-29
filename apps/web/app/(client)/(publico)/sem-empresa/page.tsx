@@ -13,6 +13,7 @@ import { ROTULO_PAPEL } from '@storefy/db';
 import { criarClientServidor } from '@/lib/supabase/server';
 import { configuracoesDaPlataforma } from '@/lib/configuracoes-da-plataforma-servidor';
 import { FUSO_PADRAO, formatarData } from '@/lib/fuso';
+import { lido } from '@/lib/leitura';
 import { sair } from '../acoes';
 import { AceitarDaLista, CriarEmpresa } from './formularios';
 import { ExcluirConta } from '../../(painel)/configuracoes/conta/excluir-conta';
@@ -29,7 +30,7 @@ export default async function PaginaSemEmpresa() {
   } = await supabase.auth.getUser();
   if (user == null) redirect('/entrar');
 
-  const [{ count }, convites, { cadastroAberto }] = await Promise.all([
+  const [lidaContagem, lidosConvites, { cadastroAberto }] = await Promise.all([
     supabase
       .from('memberships')
       .select('org_id', { count: 'exact', head: true })
@@ -37,11 +38,17 @@ export default async function PaginaSemEmpresa() {
     supabase.rpc('meus_convites'),
     configuracoesDaPlataforma(),
   ]);
+  /*
+   * Sem ler, quem TEM empresa leria "sua conta não está em nenhuma empresa" —
+   * e poderia criar outra —, e quem tem convite leria que não tem nenhum.
+   */
+  const { count } = lido(lidaContagem, 'as suas empresas');
+  const { data: convites } = lido(lidosConvites, 'os seus convites');
 
   // Quem tem empresa não tem o que fazer aqui.
   if ((count ?? 0) > 0) redirect('/');
 
-  const lista = convites.data ?? [];
+  const lista = convites ?? [];
 
   return (
     <div className="space-y-6">

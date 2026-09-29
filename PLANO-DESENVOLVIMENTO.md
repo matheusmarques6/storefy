@@ -665,7 +665,7 @@ Um app interno, publicado uma única vez na conta da Storefy, que o lojista usa 
 | Editor C06 — aparência, abas, loja, recursos, versões | ✅ conferido no navegador em 1280 e 390 px |
 | Prévia ao vivo com a tab bar real | ✅ por `/api/preview-proxy`, sem `allow-same-origin` |
 | Seletor visual de elementos | ✅ 13 testes executando o script num DOM real |
-| Detecção automática de nome, cor e logo (C02–C04) | ✅ 24 testes |
+| Detecção automática de nome, cor e logo (C02–C04) | ✅ 24 testes. Os passos guiados C03 e C04 entraram na Fase 8g |
 | Publicar, histórico e restaurar na tela | ✅ com confirmação |
 | App Storefy Preview (QR + config em rascunho) | ✅ mesmo código, `PREVIEW_MODE=1` |
 | Verificação ponta a ponta num aparelho | ⬜ depende de aparelho físico |
@@ -1600,6 +1600,24 @@ por um caminho DENTRO do app (4.5.4), e o Storefy é campanha de promoção.
 | O quê | Quem | Onde |
 |---|---|---|
 | Se um dia o log mostrar `segredo-do-app.ilegivel`: conferir a `ENCRYPTION_KEY` do servidor. Só se o valor estiver de fato perdido, zerar `apps.device_secret_enc` daquele app — o próximo build cria outro, e os apps já instalados voltam a falar com o servidor quando receberem o build ou a correção OTA | time | Vercel (variáveis) e SQL no Supabase |
+
+#### Fase 8g — Entregue (29/09/2026): o começo guiado (C03 e C04) e o checklist do painel
+
+| Item | Estado |
+|---|---|
+| O que faltava | ❌→✅ o plano pedia três passos no começo de cada loja — a URL (C02), o visual rápido com prévia ao vivo (C03) e o app no celular com o "tudo pronto" (C04) —, e o cadastro caía direto na página da loja. A seção 10 pedia um checklist de progresso no painel até o app estar no ar, e o painel tinha só quatro atalhos fixos |
+| C03 — visual rápido | ✅ o cadastro segue para `/lojas/<id>/comecar`: a cor da marca (a detectada na página, editável), o ícone e as abas sugeridas, com a MESMA prévia ao vivo do editor. "Salvar e continuar" grava no rascunho (nada vai ao ar); sem mudança, segue sem tocar no rascunho; "Pular por agora" não grava nada; o mínimo de duas abas é travado na tela; membro vê e não muda |
+| C04 — no celular e tudo pronto | ✅ o código do Storefy Preview (QR e texto) e o checklist com o estado de verdade. Aberto com OUTRA loja ativa no painel, avisa e oferece a troca — os atalhos valem para a loja ativa |
+| Onde baixar o Storefy Preview | ✅ duas chaves novas na A13 (migration 50), conferidas (só App Store/TestFlight no iPhone, só Google Play no Android, sempre `https`) e auditadas. Sem link, o editor e o C04 dizem que o app ainda não está disponível, em vez de um botão para lugar nenhum |
+| Checklist dos primeiros passos | ✅ sete passos — loja, ícone e tela de abertura, app publicado, Shopify, contas Apple e Google, enviado às lojas, aprovado —, calculados do mesmo estado da tela de publicação (C12), no C04 e no topo do painel até o app ser aprovado |
+| Leituras em `Promise.all` que jogavam o erro fora | ✅ a varredura da Fase 8d só via `const { data } = await`; a mesma doença morava em 15 leituras dentro de `Promise.all`. A pior: com a leitura do rascunho falhando, `garantirRascunho` criava um rascunho NOVO, com a config padrão, por cima do que o lojista vinha editando — o editor passava a abrir esse. As outras: "nada publicado" na publicação, "sem empresa" para quem tem, "convite indisponível" com o banco fora, 404 de cliente que existe no admin, e o destravar dos envios presos falhando calado. `lib/leituras-com-erro.test.ts` agora pega as duas formas (conferido pondo uma de volta) |
+| Testes | ✅ 7 do checklist, 4 do rascunho com o banco falhando, 5 dos links do Preview; RLS da chave nova; e2e do começo inteiro (cor e abas gravadas no rascunho, código gerado, checklist no C04 e no painel, pular, a troca de loja, os links publicados na A13 com a recusa do link errado e a trilha), do membro e do 404 |
+
+**Depende de ação humana**
+
+| O quê | Quem | Onde |
+|---|---|---|
+| Publicar o app Storefy Preview (uma vez, na conta da Storefy) e colar os dois links na A13 | time | App Store Connect, Google Play Console e `/admin/sistema` |
 
 **Estimativa total:** cerca de 7 a 9 semanas para uma pessoa com Claude Code em ritmo forte. O MVP vendável (Fases 0–4) leva cerca de 4 a 5 semanas.
 

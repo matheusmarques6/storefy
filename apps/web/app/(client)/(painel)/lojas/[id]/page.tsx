@@ -15,6 +15,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { lido } from '@/lib/leitura';
+import { ehUuid } from '@/lib/app-config-publica';
 
 export const metadata: Metadata = { title: 'Loja' };
 
@@ -23,9 +24,11 @@ export default async function PaginaLoja({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ criada?: string; salva?: string }>;
+  searchParams: Promise<{ salva?: string }>;
 }) {
   const { id } = await params;
+  // Endereço que não é de loja nenhuma é 404, e não erro do banco.
+  if (!ehUuid(id)) notFound();
   const avisos = await searchParams;
   const { papel } = await exigirContextoCliente();
 
@@ -52,12 +55,6 @@ export default async function PaginaLoja({
         Voltar para lojas
       </Link>
 
-      {avisos.criada === '1' ? (
-        <Alert variant="info">
-          <CheckCircle2 aria-hidden />
-          <AlertDescription>Loja criada. Ela já é a loja ativa do painel.</AlertDescription>
-        </Alert>
-      ) : null}
       {avisos.salva === '1' ? (
         <Alert variant="info">
           <CheckCircle2 aria-hidden />

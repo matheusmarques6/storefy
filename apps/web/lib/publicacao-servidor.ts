@@ -16,6 +16,7 @@ import { entradaDosAjustes } from '@/lib/editor-de-config';
 import type { DadosDosLinks } from '@/lib/links-do-app';
 import { ESCOPO_DOS_LINKS } from '@/lib/links-do-app';
 import { escoposPedidos } from '@/lib/shopify-servidor';
+import { lido } from '@/lib/leitura';
 
 type Client = SupabaseClient<Database>;
 
@@ -99,7 +100,7 @@ export async function dadosDaPublicacao(
   if (falha != null) throw new Error(`Não foi possível ler a publicação: ${falha.message}`);
   if (app == null) return null;
 
-  const [{ data: publicada }, { data: contas }, { data: builds }] = await Promise.all([
+  const [lidaPublicada, lidasContas, lidosBuilds] = await Promise.all([
     supabase
       .from('app_configs')
       .select('version, config')
@@ -119,6 +120,10 @@ export async function dadosDaPublicacao(
       .order('created_at', { ascending: false })
       .limit(20),
   ]);
+  // Sem ler, a tela diria "nada publicado", "nenhuma conta" e "nenhum build".
+  const { data: publicada } = lido(lidaPublicada, 'a versão no ar');
+  const { data: contas } = lido(lidasContas, 'as contas de desenvolvedor');
+  const { data: builds } = lido(lidosBuilds, 'os builds');
 
   const verificada = (plataforma: 'apple' | 'google'): boolean =>
     (contas ?? []).some((conta) => conta.platform === plataforma && conta.status === 'verified');

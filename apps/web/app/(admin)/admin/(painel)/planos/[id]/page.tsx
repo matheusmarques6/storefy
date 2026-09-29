@@ -10,6 +10,7 @@ import { salvarPlano } from '../acoes';
 import { FormularioDoPlano } from '../formulario-plano';
 import { ExcluirPlano } from './excluir-plano';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { lido } from '@/lib/leitura';
 
 export const metadata: Metadata = { title: 'Plano · Admin' };
 
@@ -26,7 +27,7 @@ export default async function PaginaPlano({ params }: { params: Promise<{ id: st
   if (!UUID.test(id)) notFound();
 
   const supabase = await criarClientServidor();
-  const [{ data: plano }, assinaturas] = await Promise.all([
+  const [lidoPlano, assinaturas] = await Promise.all([
     supabase
       .from('plans')
       .select(
@@ -39,6 +40,8 @@ export default async function PaginaPlano({ params }: { params: Promise<{ id: st
       .select('org_id', { count: 'exact', head: true })
       .eq('plan_id', id),
   ]);
+  // Erro de leitura não é "plano inexistente": o 404 mandaria a equipe procurar outro.
+  const { data: plano } = lido(lidoPlano, 'o plano');
   if (plano == null) notFound();
   if (assinaturas.error != null) {
     throw new Error(`Não foi possível contar as assinaturas: ${assinaturas.error.message}`);

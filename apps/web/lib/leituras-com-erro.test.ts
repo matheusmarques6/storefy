@@ -45,13 +45,25 @@ const ALVOS = [...arquivos(join(RAIZ, 'app')), ...arquivos(join(RAIZ, 'lib'))]
 const LEITURA_SEM_ERRO = /const\s*\{\s*data(?:\s*:\s*\w+)?\s*\}\s*=\s*await\b/g;
 /** O mesmo para contagem. */
 const CONTAGEM_SEM_ERRO = /const\s*\{\s*count(?:\s*:\s*\w+)?\s*\}\s*=\s*await\b/g;
+/**
+ * A mesma coisa dentro de `Promise.all`: `const [{ data: a }, { data: b }] =
+ * await Promise.all([...])`. A primeira varredura não via esta forma, e ela
+ * escondia 14 leituras — uma delas criava um rascunho novo por cima do que o
+ * lojista vinha editando, quando a leitura do rascunho falhava.
+ */
+const LISTA_DO_PROMISE_ALL = /const\s*\[([^\]]*)\]\s*=\s*await\s+Promise\.all\b/g;
+const ITEM_SEM_ERRO = /\{\s*(?:data|count)(?:\s*:\s*\w+)?\s*\}/g;
 
 function achados(codigo: string): number[] {
   const linhas: number[] = [];
+  const linhaDe = (indice: number) => codigo.slice(0, indice).split('\n').length;
   for (const padrao of [LEITURA_SEM_ERRO, CONTAGEM_SEM_ERRO]) {
-    for (const casou of codigo.matchAll(padrao)) {
-      linhas.push(codigo.slice(0, casou.index).split('\n').length);
-    }
+    for (const casou of codigo.matchAll(padrao)) linhas.push(linhaDe(casou.index));
+  }
+  for (const lista of codigo.matchAll(LISTA_DO_PROMISE_ALL)) {
+    const itens = lista[1] ?? '';
+    const inicio = lista.index + lista[0].indexOf(itens);
+    for (const item of itens.matchAll(ITEM_SEM_ERRO)) linhas.push(linhaDe(inicio + item.index));
   }
   return linhas;
 }
@@ -83,5 +95,16 @@ describe('leituras que jogam o erro fora', () => {
     expect(
       achados('const { data: loja } = lido(await supabase.from("x"), "a loja");'),
     ).toHaveLength(0);
+  });
+
+  it('e dentro de Promise.all também', () => {
+    expect(
+      achados('const [{ data: a }, { data: b, error }] = await Promise.all([x, y]);'),
+    ).toHaveLength(1);
+    expect(
+      achados('const [\n  { data },\n  { count: n },\n] = await Promise.all([x, y]);'),
+    ).toEqual([2, 3]);
+    expect(achados('const [lidaA, lidaB] = await Promise.all([x, y]);')).toHaveLength(0);
+    expect(achados('const [{ data: a, error: erroA }] = await Promise.all([x]);')).toHaveLength(0);
   });
 });
