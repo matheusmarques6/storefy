@@ -72,6 +72,9 @@ export async function criarUsuarioConfirmado(email: string, nomeEmpresa: string)
     password: SENHA_PADRAO,
     email_confirm: true,
     user_metadata: { company_name: nomeEmpresa },
+    // A marca que o banco aceita com o cadastro fechado (A13): o usuário de
+    // teste é criado pela "equipe", pela service role, como no bootstrap.
+    app_metadata: { criado_pela_equipe: true },
   });
   if (error != null) throw new Error(`Não foi possível criar o usuário de teste: ${error.message}`);
   return data.user.id;

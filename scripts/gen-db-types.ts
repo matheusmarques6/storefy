@@ -279,6 +279,13 @@ async function main(): Promise<void> {
     'consumir_limite',
     // O número e a versão de cada binário, reservados quando o build começa.
     'reservar_versao_do_build',
+    // C16 — convites e a equipe da empresa.
+    'ver_convite',
+    'aceitar_convite',
+    'aceitar_convite_por_id',
+    'meus_convites',
+    'membros_da_organizacao',
+    'criar_minha_organizacao',
   ];
 
   const { rows: funcoes } = await client.query<FuncaoSql>(

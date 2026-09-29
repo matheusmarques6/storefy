@@ -1,9 +1,9 @@
 /** Configurações da conta do usuário: nome, e-mail e senha. */
 import type { Metadata } from 'next';
-import Link from 'next/link';
-import { ArrowLeft, Eye } from 'lucide-react';
+import { Eye } from 'lucide-react';
 import { exigirContextoCliente } from '@/lib/contexto';
 import { FormularioEmail, FormularioNome, FormularioSenha } from '../formularios';
+import { NavegacaoConfiguracoes } from '../navegacao-configuracoes';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { EstadoVazio } from '@/components/estado-vazio';
 
@@ -32,13 +32,7 @@ export default async function PaginaConta() {
 
   return (
     <div className="mx-auto max-w-2xl space-y-6">
-      <Link
-        href="/configuracoes"
-        className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1 text-sm"
-      >
-        <ArrowLeft className="size-4" aria-hidden />
-        Voltar para configurações
-      </Link>
+      <NavegacaoConfiguracoes atual="conta" />
 
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Minha conta</h1>

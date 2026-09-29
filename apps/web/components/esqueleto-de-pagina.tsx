@@ -197,3 +197,30 @@ export function EsqueletoDeDetalhe() {
     </Moldura>
   );
 }
+
+/**
+ * Um cartão só, no molde das telas públicas (convite, conta sem empresa):
+ * título, duas linhas de texto e os campos.
+ */
+export function EsqueletoDeCartaoPublico({ campos = 2 }: { campos?: number }) {
+  return (
+    <Moldura>
+      <Card>
+        <CardHeader className="space-y-2">
+          <Skeleton className="h-6 w-64" />
+          <Skeleton className="h-4 w-full" />
+          <Skeleton className="h-4 w-3/4" />
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {Array.from({ length: campos }, (_, i) => (
+            <div key={i} className="space-y-2">
+              <Skeleton className="h-4 w-24" />
+              <Skeleton className="h-10 w-full rounded-xl" />
+            </div>
+          ))}
+          <Skeleton className="h-10 w-full rounded-xl" />
+        </CardContent>
+      </Card>
+    </Moldura>
+  );
+}

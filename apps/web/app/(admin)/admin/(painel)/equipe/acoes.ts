@@ -22,6 +22,13 @@ import { revalidatePath } from 'next/cache';
 import type { Json, PlatformAdminRole } from '@storefy/db';
 import { exigirPlatformAdminComPapel } from '@/lib/contexto';
 import { criarClientServiceRole } from '@/lib/supabase/admin';
+import { criarClientServidor } from '@/lib/supabase/server';
+import {
+  criarOuReenviarConvite,
+  entregarConvite,
+  mensagemDaEntrega,
+  nomeDeQuemConvida,
+} from '@/lib/convites-servidor';
 import {
   emailNormalizado,
   podeConvidar,
@@ -33,6 +40,8 @@ import {
 export interface EstadoDaEquipe {
   ok?: boolean;
   mensagem?: string;
+  /** Quando a pessoa ainda não tinha conta: o link do convite, uma vez só. */
+  link?: string;
 }
 
 type Servico = ReturnType<typeof criarClientServiceRole>;
@@ -92,12 +101,29 @@ export async function convidarAdmin(
   const { data: alvo } = await servico.rpc('admin_usuario_por_email', { p_email: email });
   if (alvo == null) {
     /*
-     * Conta inexistente não é erro nosso, e a mensagem diz o que fazer: a
-     * pessoa precisa se cadastrar primeiro. Criar a conta daqui seria criar
-     * um usuário sem senha que ninguém consegue usar.
+     * Sem conta, vai um CONVITE: a pessoa cria a conta pelo link — vale com o
+     * cadastro fechado — e já nasce na equipe, com o papel escolhido. Antes a
+     * tela mandava "se cadastrar primeiro", o que o cadastro fechado tornava
+     * impossível. Criar a conta daqui seria criar um usuário sem senha.
      */
+    const supabase = await criarClientServidor();
+    const gravado = await criarOuReenviarConvite(
+      supabase,
+      { tipo: 'equipe', email, papelNaPlataforma: novoPapel },
+      usuario.id,
+    );
+    if (!gravado.ok) return { mensagem: gravado.mensagem };
+
+    const entrega = await entregarConvite(email, gravado.segredo, {
+      tipo: 'equipe',
+      papelNaPlataforma: novoPapel,
+      convidadoPor: nomeDeQuemConvida(usuario),
+    });
+    revalidatePath('/admin/equipe');
     return {
-      mensagem: `Ninguém com esse e-mail tem conta na Storefy. Peça para ${email} se cadastrar primeiro.`,
+      ok: true,
+      mensagem: `${email} ainda não tinha conta. ${mensagemDaEntrega(email, entrega, gravado.reenviado)}`,
+      link: entrega.link,
     };
   }
 

@@ -4548,6 +4548,604 @@ reset role;
 select tests.logout();
 delete from public.platform_settings;
 
+-- ============================== grupo: C16 — convites
+--
+-- Vínculo novo só nasce de convite; só o proprietário convida para a
+-- empresa; só o dono do e-mail aceita; e o cadastro fechado vale NO BANCO,
+-- para toda porta de entrada (e-mail, Google, API direta) — não só na tela.
+--
+-- Os segredos abaixo fazem o papel do link: o banco só conhece o hash.
+
+reset role;
+select tests.logout();
+
+insert into auth.users (email, raw_user_meta_data, email_confirmed_at) values
+  ('conv-dono@teste.local',          '{"company_name":"Org dos Convites"}'::jsonb, now()),
+  ('conv-admin@teste.local',         '{"company_name":"Conv Admin"}'::jsonb,       now()),
+  ('conv-membro@teste.local',        '{"company_name":"Conv Membro"}'::jsonb,      now()),
+  ('conv-convidado@teste.local',     '{"company_name":"Conv Convidado"}'::jsonb,   now()),
+  ('conv-sem-confirmar@teste.local', '{"company_name":"Sem Confirmar"}'::jsonb,    null),
+  ('conv-suporte@teste.local',       '{"company_name":"Conv Suporte"}'::jsonb,     now());
+
+drop table if exists tests.conv;
+create table tests.conv as
+select
+  (select id from auth.users where email = 'conv-dono@teste.local')          as u_dono,
+  (select id from auth.users where email = 'conv-admin@teste.local')         as u_admin,
+  (select id from auth.users where email = 'conv-membro@teste.local')        as u_membro,
+  (select id from auth.users where email = 'conv-convidado@teste.local')     as u_convidado,
+  (select id from auth.users where email = 'conv-sem-confirmar@teste.local') as u_sem_confirmar,
+  (select id from auth.users where email = 'conv-suporte@teste.local')       as u_suporte,
+  (select m.org_id from public.memberships m
+     join auth.users u on u.id = m.user_id
+    where u.email = 'conv-dono@teste.local') as org;
+grant select on tests.conv to anon, authenticated, service_role;
+
+insert into public.memberships (org_id, user_id, role)
+select org, u_admin, 'admin' from tests.conv;
+insert into public.memberships (org_id, user_id, role)
+select org, u_membro, 'member' from tests.conv;
+insert into public.platform_admins (user_id, role)
+select u_suporte, 'support' from tests.conv;
+
+-- ------------------------------------------------ o proprietário convida
+
+select tests.login('conv-dono@teste.local');
+set role authenticated;
+
+select tests.ok('convites',
+  tests.permitido($q$insert into public.invitations
+    (kind, org_id, org_role, email, token_hash, invited_by, expires_at)
+    select 'organizacao', org, 'admin', 'conv-convidado@teste.local',
+      encode(extensions.digest('segredo-do-convite-numero-01', 'sha256'), 'hex'),
+      u_dono, now() + interval '7 days' from tests.conv$q$),
+  'o proprietário convida para a própria empresa');
+
+select tests.ok('convites',
+  tests.erro($q$insert into public.invitations
+    (kind, org_id, org_role, email, token_hash, invited_by, expires_at)
+    select 'organizacao', org, 'member', 'conv-convidado@teste.local',
+      encode(extensions.digest('segredo-duplicado-numero-99', 'sha256'), 'hex'),
+      u_dono, now() + interval '7 days' from tests.conv$q$),
+  'um convite em aberto por pessoa: convidar de novo é reenviar o mesmo');
+
+select tests.ok('convites',
+  tests.bloqueado($q$insert into public.invitations
+    (kind, org_id, org_role, email, token_hash, invited_by, expires_at)
+    select 'organizacao', org, 'owner', 'dono-novo@teste.local',
+      encode(extensions.digest('segredo-convite-de-dono-00', 'sha256'), 'hex'),
+      u_dono, now() + interval '7 days' from tests.conv$q$),
+  'ninguém é convidado como proprietário: um link vazado dá no máximo administrador');
+
+select tests.ok('convites',
+  tests.bloqueado($q$insert into public.invitations
+    (kind, org_id, org_role, email, token_hash, invited_by, expires_at)
+    select 'organizacao', ids.org_a, 'admin', 'intruso@teste.local',
+      encode(extensions.digest('segredo-para-outra-empresa', 'sha256'), 'hex'),
+      conv.u_dono, now() + interval '7 days' from tests.conv, tests.ids$q$),
+  'o proprietário não convida para a empresa dos outros');
+
+select tests.ok('convites',
+  tests.bloqueado($q$insert into public.invitations
+    (kind, org_id, org_role, email, token_hash, invited_by, expires_at)
+    select 'organizacao', org, 'member', 'em-nome-de-outro@teste.local',
+      encode(extensions.digest('segredo-em-nome-de-outro-1', 'sha256'), 'hex'),
+      u_admin, now() + interval '7 days' from tests.conv$q$),
+  'não convida em nome de outra pessoa');
+
+select tests.ok('convites',
+  tests.bloqueado($q$insert into public.invitations
+    (kind, org_id, org_role, email, token_hash, invited_by, expires_at)
+    select 'organizacao', org, 'member', 'eterno@teste.local',
+      encode(extensions.digest('segredo-convite-eterno-0001', 'sha256'), 'hex'),
+      u_dono, now() + interval '90 days' from tests.conv$q$),
+  'convite não nasce com prazo longo');
+
+select tests.ok('convites',
+  tests.bloqueado($q$insert into public.invitations
+    (kind, email, token_hash, invited_by, expires_at)
+    select 'conta', 'amigo-do-dono@teste.local',
+      encode(extensions.digest('segredo-conta-pelo-lojista-1', 'sha256'), 'hex'),
+      u_dono, now() + interval '7 days' from tests.conv$q$),
+  'o lojista não convida gente para criar conta com o cadastro fechado');
+
+select tests.ok('convites',
+  tests.bloqueado($q$insert into public.invitations
+    (kind, org_id, org_role, email, token_hash, invited_by, expires_at, accepted_at, accepted_by)
+    select 'organizacao', org, 'member', 'ja-aceito@teste.local',
+      encode(extensions.digest('segredo-nascido-aceito-0001', 'sha256'), 'hex'),
+      u_dono, now() + interval '7 days', now(), u_dono from tests.conv$q$),
+  'convite não nasce aceito');
+
+-- Para os casos de expirado, cancelado, e-mail sem confirmar e cadastro.
+insert into public.invitations (kind, org_id, org_role, email, token_hash, invited_by, expires_at)
+select 'organizacao', org, 'member', 'alguem-que-demorou@teste.local',
+  encode(extensions.digest('segredo-do-convite-expirado-02', 'sha256'), 'hex'),
+  u_dono, now() - interval '1 minute' from tests.conv;
+insert into public.invitations (kind, org_id, org_role, email, token_hash, invited_by, expires_at)
+select 'organizacao', org, 'member', 'desistiram-de-mim@teste.local',
+  encode(extensions.digest('segredo-do-convite-cancelado-03', 'sha256'), 'hex'),
+  u_dono, now() + interval '7 days' from tests.conv;
+insert into public.invitations (kind, org_id, org_role, email, token_hash, invited_by, expires_at)
+select 'organizacao', org, 'member', 'conv-novo@teste.local',
+  encode(extensions.digest('segredo-do-convite-de-cadastro-04', 'sha256'), 'hex'),
+  u_dono, now() + interval '7 days' from tests.conv;
+insert into public.invitations (kind, org_id, org_role, email, token_hash, invited_by, expires_at)
+select 'organizacao', org, 'member', 'conv-sem-confirmar@teste.local',
+  encode(extensions.digest('segredo-do-convite-sem-confirmar-07', 'sha256'), 'hex'),
+  u_dono, now() + interval '7 days' from tests.conv;
+insert into public.invitations (kind, org_id, org_role, email, token_hash, invited_by, expires_at)
+select 'organizacao', org, 'member', 'conv-suporte@teste.local',
+  encode(extensions.digest('segredo-do-convite-da-lista-08', 'sha256'), 'hex'),
+  u_dono, now() + interval '7 days' from tests.conv;
+insert into public.invitations (kind, org_id, org_role, email, token_hash, invited_by, expires_at)
+select 'organizacao', org, 'member', 'conv-certo@teste.local',
+  encode(extensions.digest('segredo-do-convite-do-certo-09', 'sha256'), 'hex'),
+  u_dono, now() + interval '7 days' from tests.conv;
+insert into public.invitations (kind, org_id, org_role, email, token_hash, invited_by, expires_at)
+select 'organizacao', org, 'member', 'conv-sem-empresa@teste.local',
+  encode(extensions.digest('segredo-do-convite-que-sera-tirado-10', 'sha256'), 'hex'),
+  u_dono, now() + interval '7 days' from tests.conv;
+
+select tests.ok('convites',
+  tests.permitido($q$update public.invitations set revoked_at = now()
+    where email = 'desistiram-de-mim@teste.local'$q$),
+  'o proprietário cancela um convite');
+
+select tests.ok('convites',
+  tests.bloqueado($q$update public.invitations set accepted_at = now(),
+    accepted_by = (select u_dono from tests.conv)
+    where email = 'conv-certo@teste.local'$q$),
+  'nem o proprietário marca um convite como aceito: aceitar é da pessoa convidada');
+
+select tests.ok('convites',
+  tests.bloqueado($q$update public.invitations set email = 'desviado@teste.local'
+    where email = 'conv-certo@teste.local'$q$),
+  'o e-mail de um convite não muda: outro e-mail é outro convite');
+
+select tests.ok('convites',
+  tests.bloqueado($q$insert into public.memberships (org_id, user_id, role)
+    select org, u_convidado, 'member' from tests.conv$q$),
+  'nem o proprietário põe alguém na empresa sem convite');
+
+select tests.ok('convites',
+  tests.bloqueado($q$update public.memberships set user_id = (select u_convidado from tests.conv)
+    where user_id = (select u_membro from tests.conv)$q$),
+  'trocar a pessoa de um vínculo é pôr outra na empresa sem convite');
+
+select tests.ok('convites',
+  tests.permitido($q$update public.memberships set role = 'admin'
+    where user_id = (select u_membro from tests.conv)
+      and org_id = (select org from tests.conv)$q$),
+  'o proprietário continua mudando papéis');
+
+reset role;
+update public.memberships set role = 'member'
+ where user_id = (select u_membro from tests.conv) and org_id = (select org from tests.conv);
+
+-- ------------------------------------------- admin e membro não convidam
+
+select tests.login('conv-admin@teste.local');
+set role authenticated;
+
+-- Uma segunda conta do próprio admin: é assim que a escalada funcionava.
+select tests.ok('convites',
+  tests.bloqueado($q$insert into public.memberships (org_id, user_id, role)
+    select org, u_sem_confirmar, 'owner' from tests.conv$q$),
+  'FALHA CORRIGIDA: administrador não se faz dono por uma segunda conta');
+
+select tests.ok('convites',
+  tests.bloqueado($q$insert into public.invitations
+    (kind, org_id, org_role, email, token_hash, invited_by, expires_at)
+    select 'organizacao', org, 'member', 'pelo-admin@teste.local',
+      encode(extensions.digest('segredo-convite-pelo-admin-1', 'sha256'), 'hex'),
+      u_admin, now() + interval '7 days' from tests.conv$q$),
+  'administrador não convida (só o proprietário mexe na equipe)');
+
+select tests.ok('convites',
+  tests.bloqueado($q$update public.invitations set revoked_at = now()
+    where email = 'conv-certo@teste.local'$q$),
+  'administrador não cancela convite');
+
+select tests.ok('convites',
+  tests.contar($q$select count(*) from public.invitations
+    where org_id = (select org from tests.conv)$q$) = 8,
+  'administrador vê quem foi convidado, como vê quem já está na empresa');
+
+reset role;
+select tests.login('conv-membro@teste.local');
+set role authenticated;
+
+select tests.ok('convites',
+  tests.bloqueado($q$insert into public.invitations
+    (kind, org_id, org_role, email, token_hash, invited_by, expires_at)
+    select 'organizacao', org, 'member', 'pelo-membro@teste.local',
+      encode(extensions.digest('segredo-convite-pelo-membro1', 'sha256'), 'hex'),
+      u_membro, now() + interval '7 days' from tests.conv$q$),
+  'membro não convida');
+
+select tests.ok('convites',
+  (select count(*) from public.membros_da_organizacao((select org from tests.conv))) = 3,
+  'membro vê a equipe da empresa, com e-mail');
+
+reset role;
+select tests.login('a-owner@teste.local');
+set role authenticated;
+
+select tests.ok('convites',
+  tests.contar($q$select count(*) from public.invitations
+    where org_id = (select org from tests.conv)$q$) = 0,
+  'outra empresa não vê os convites desta');
+
+select tests.ok('convites',
+  tests.erro($q$select * from public.membros_da_organizacao((select org from tests.conv))$q$),
+  'outra empresa não lista a equipe desta');
+
+-- ------------------------------------------------------------- aceitar
+
+reset role;
+select tests.login('conv-membro@teste.local');
+set role authenticated;
+
+select tests.ok('convites',
+  (select resultado from public.aceitar_convite('segredo-do-convite-numero-01')) = 'outro_email',
+  'o link na mão de outra pessoa não aceita: o convite é para um e-mail');
+
+reset role;
+select tests.login('conv-convidado@teste.local');
+set role authenticated;
+
+select tests.ok('convites',
+  (select resultado from public.aceitar_convite('segredo-do-convite-numero-01')) = 'aceito',
+  'a pessoa convidada aceita pelo link');
+
+select tests.ok('convites',
+  tests.contar($q$select count(*) from public.memberships
+    where org_id = (select org from tests.conv)
+      and user_id = (select u_convidado from tests.conv) and role = 'admin'$q$) = 1,
+  'e entra na empresa com o papel do convite');
+
+select tests.ok('convites',
+  (select resultado from public.aceitar_convite('segredo-do-convite-numero-01')) = 'aceito',
+  'aceitar de novo (clique duplo) não é erro');
+
+select tests.ok('convites',
+  (select resultado from public.aceitar_convite('segredo-do-convite-expirado-02')) = 'expirado',
+  'convite vencido não entra');
+
+select tests.ok('convites',
+  (select resultado from public.aceitar_convite('segredo-do-convite-cancelado-03')) = 'cancelado',
+  'convite cancelado não entra');
+
+select tests.ok('convites',
+  (select resultado from public.aceitar_convite('um-segredo-que-ninguem-criou')) = 'inexistente',
+  'link inventado não entra');
+
+reset role;
+select tests.login('conv-membro@teste.local');
+set role authenticated;
+
+select tests.ok('convites',
+  (select resultado from public.aceitar_convite('segredo-do-convite-numero-01')) = 'usado',
+  'convite aceito não serve para mais ninguém');
+
+reset role;
+select tests.login('conv-sem-confirmar@teste.local');
+set role authenticated;
+
+select tests.ok('convites',
+  (select resultado from public.aceitar_convite('segredo-do-convite-sem-confirmar-07'))
+    = 'email_nao_confirmado',
+  'conta que não confirmou o e-mail não aceita');
+
+-- "Convites para você": sem o link, pela conta dona do e-mail.
+reset role;
+select tests.login('conv-convidado@teste.local');
+set role authenticated;
+
+select tests.ok('convites',
+  (select count(*) from public.meus_convites()) = 0,
+  'a lista de convites mostra só os do próprio e-mail');
+
+select tests.ok('convites',
+  (select resultado from public.aceitar_convite_por_id(
+    (select id from public.invitations where email = 'conv-suporte@teste.local'))) = 'outro_email',
+  'aceitar pela lista também exige ser o dono do e-mail');
+
+reset role;
+select tests.login('conv-suporte@teste.local');
+set role authenticated;
+
+select tests.ok('convites',
+  (select organizacao from public.meus_convites()) = 'Org dos Convites',
+  'a conta dona do e-mail vê o convite com o nome da empresa');
+
+select tests.ok('convites',
+  (select resultado from public.aceitar_convite_por_id(
+    (select id from public.invitations where email = 'conv-suporte@teste.local'))) = 'aceito',
+  'e aceita sem o link');
+
+-- --------------------------------------------------- o link, visto de fora
+
+reset role;
+select tests.logout();
+set role anon;
+
+select tests.ok('convites',
+  (select situacao from public.ver_convite('segredo-do-convite-de-cadastro-04')) = 'pendente'
+  and (select organizacao from public.ver_convite('segredo-do-convite-de-cadastro-04'))
+    = 'Org dos Convites'
+  and (select ja_tem_conta from public.ver_convite('segredo-do-convite-de-cadastro-04')) = false,
+  'quem tem o link vê a empresa e o papel, sem precisar de conta');
+
+select tests.ok('convites',
+  (select situacao from public.ver_convite('segredo-do-convite-numero-01')) = 'usado'
+  and (select situacao from public.ver_convite('segredo-do-convite-expirado-02')) = 'expirado'
+  and (select situacao from public.ver_convite('segredo-do-convite-cancelado-03')) = 'cancelado'
+  and (select situacao from public.ver_convite('curto')) = 'inexistente',
+  'e a situação de cada link');
+
+select tests.ok('convites',
+  tests.erro($q$select * from public.aceitar_convite('segredo-do-convite-de-cadastro-04')$q$),
+  'sem conta não se aceita nada');
+
+select tests.ok('convites',
+  tests.erro('select count(*) from public.invitations'),
+  'sem conta não se lê a tabela de convites');
+
+-- ----------------------------------------------------- os da plataforma
+
+reset role;
+select tests.login('equipe@teste.local');
+set role authenticated;
+
+select tests.ok('convites',
+  tests.permitido($q$insert into public.invitations
+    (kind, platform_role, email, token_hash, invited_by, expires_at)
+    select 'equipe', 'support', 'colega@teste.local',
+      encode(extensions.digest('segredo-do-convite-de-colega-06', 'sha256'), 'hex'),
+      (select auth.uid()), now() + interval '7 days'$q$),
+  'superadmin convida um colega para a equipe');
+
+select tests.ok('convites',
+  (select count(*) from public.membros_da_organizacao((select org from tests.conv))) = 5,
+  'a equipe vê a equipe de qualquer empresa');
+
+reset role;
+select tests.login('conv-suporte@teste.local');
+set role authenticated;
+
+select tests.ok('convites',
+  tests.bloqueado($q$insert into public.invitations
+    (kind, platform_role, email, token_hash, invited_by, expires_at)
+    select 'equipe', 'superadmin', 'outro-colega@teste.local',
+      encode(extensions.digest('segredo-colega-pelo-suporte', 'sha256'), 'hex'),
+      (select auth.uid()), now() + interval '7 days'$q$),
+  'suporte não põe ninguém na equipe da Storefy');
+
+select tests.ok('convites',
+  tests.permitido($q$insert into public.invitations
+    (kind, email, token_hash, invited_by, expires_at)
+    select 'conta', 'piloto@teste.local',
+      encode(extensions.digest('segredo-do-convite-do-piloto-05', 'sha256'), 'hex'),
+      (select auth.uid()), now() + interval '7 days'$q$),
+  'suporte convida um lojista piloto');
+
+select tests.ok('convites',
+  tests.bloqueado($q$update public.invitations set revoked_at = now()
+    where email = 'colega@teste.local'$q$),
+  'suporte não cancela convite de colega');
+
+select tests.ok('convites',
+  tests.erro('select public.cadastro_aberto()'),
+  'a chave do cadastro não é perguntada pela API');
+
+reset role;
+select tests.login('conv-dono@teste.local');
+set role authenticated;
+
+select tests.ok('convites',
+  tests.contar($q$select count(*) from public.invitations where kind <> 'organizacao'$q$) = 0,
+  'o lojista não vê os convites da plataforma');
+
+-- ------------------------------------------ cadastro fechado, no banco
+
+-- Como o Auth cria uma conta: o INSERT e, conforme o caminho, uma segunda
+-- instrução — a API admin grava o `app_metadata` depois; o "convidar" do
+-- Auth marca `invited_at` depois. A conferência do cadastro fechado roda no
+-- COMMIT; `set constraints all immediate` a dispara aqui, onde dá para ver.
+reset role;
+select tests.logout();
+
+create or replace function tests.conta_como_o_auth(
+  p_email text,
+  p_metadados jsonb default '{}'::jsonb,
+  p_app_depois jsonb default null,
+  p_convidado_pelo_auth boolean default false
+) returns boolean
+language plpgsql
+as $$
+begin
+  insert into auth.users (email, raw_user_meta_data, email_confirmed_at)
+  values (p_email, p_metadados, now());
+  if p_app_depois is not null then
+    update auth.users set raw_app_meta_data = raw_app_meta_data || p_app_depois
+     where email = p_email;
+  end if;
+  if p_convidado_pelo_auth then
+    update auth.users set invited_at = now() where email = p_email;
+  end if;
+  set constraints all immediate;
+  return true;
+exception
+  when others then
+    return false;
+end;
+$$;
+
+insert into public.platform_settings (chave, valor) values ('cadastro_aberto', 'false');
+
+select tests.ok('convites',
+  not tests.conta_como_o_auth('por-fora@teste.local'),
+  'cadastro fechado: a conta não nasce pela API do Auth, nem pelo Google');
+
+select tests.ok('convites',
+  tests.contar($q$select count(*) from auth.users where email = 'por-fora@teste.local'$q$) = 0
+  and tests.contar($q$select count(*) from public.organizations
+    where name = 'por-fora'$q$) = 0,
+  'e nada do que o cadastro criou fica: nem a conta, nem a empresa');
+
+select tests.ok('convites',
+  tests.conta_como_o_auth('criado-pela-storefy@teste.local', '{}', '{"criado_pela_equipe": true}'),
+  'a conta criada pela equipe nasce, com a marca gravada DEPOIS do INSERT, como faz a API admin');
+
+select tests.ok('convites',
+  tests.conta_como_o_auth('convidado-pelo-auth@teste.local', '{}', null, true),
+  'o "convidar usuário" do próprio Auth (só service role) também passa');
+
+select tests.ok('convites',
+  not tests.conta_como_o_auth('fingindo@teste.local', '{"criado_pela_equipe": "true"}'),
+  'a marca da equipe nos metadados do USUÁRIO (que o cadastro público escreve) não vale');
+
+select tests.ok('convites',
+  not tests.conta_como_o_auth('conv-errado@teste.local',
+    '{"convite":"segredo-do-convite-do-certo-09"}'),
+  'convite de outro e-mail não cria conta');
+
+select tests.ok('convites',
+  (select accepted_at is null from public.invitations where email = 'conv-certo@teste.local'),
+  'e o convite recusado continua em aberto para a pessoa certa');
+
+select tests.ok('convites',
+  not tests.conta_como_o_auth('alguem-que-demorou@teste.local',
+    '{"convite":"segredo-do-convite-expirado-02"}'),
+  'convite vencido não cria conta');
+
+select tests.ok('convites',
+  tests.conta_como_o_auth('conv-novo@teste.local',
+    '{"full_name":"Pessoa Nova","convite":"segredo-do-convite-de-cadastro-04"}'),
+  'com convite, a conta nasce mesmo com o cadastro fechado');
+
+select tests.ok('convites',
+  (select count(*) from public.memberships m
+     join auth.users u on u.id = m.user_id
+    where u.email = 'conv-novo@teste.local') = 1
+  and (select m.org_id = (select org from tests.conv) and m.role = 'member'
+         from public.memberships m join auth.users u on u.id = m.user_id
+        where u.email = 'conv-novo@teste.local'),
+  'e entra só na empresa do convite, sem ganhar uma empresa vazia');
+
+select tests.ok('convites',
+  (select i.accepted_by = u.id from public.invitations i, auth.users u
+    where i.email = 'conv-novo@teste.local' and u.email = 'conv-novo@teste.local')
+  and (select not (raw_user_meta_data ? 'convite') from auth.users
+        where email = 'conv-novo@teste.local'),
+  'o convite fica aceito, e o segredo sai dos metadados da conta');
+
+select tests.ok('convites',
+  not tests.conta_como_o_auth('conv-novo-2@teste.local',
+    '{"convite":"segredo-do-convite-de-cadastro-04"}'),
+  'o mesmo link não cria uma segunda conta');
+
+select tests.ok('convites',
+  tests.conta_como_o_auth('piloto@teste.local',
+    '{"company_name":"Loja Piloto","convite":"segredo-do-convite-do-piloto-05"}'),
+  'o lojista piloto cria a conta com o cadastro fechado');
+
+select tests.ok('convites',
+  (select o.name from public.organizations o
+     join public.memberships m on m.org_id = o.id
+     join auth.users u on u.id = m.user_id
+    where u.email = 'piloto@teste.local' and m.role = 'owner') = 'Loja Piloto',
+  'com a própria empresa, como proprietário');
+
+select tests.ok('convites',
+  tests.conta_como_o_auth('colega@teste.local',
+    '{"full_name":"Colega Novo","convite":"segredo-do-convite-de-colega-06"}'),
+  'o colega convidado cria a conta com o cadastro fechado');
+
+select tests.ok('convites',
+  (select pa.role from public.platform_admins pa
+     join auth.users u on u.id = pa.user_id where u.email = 'colega@teste.local') = 'support',
+  'e nasce na equipe da Storefy, com o papel do convite');
+
+select tests.ok('convites',
+  (select count(*) from public.audit_logs
+    where entity = 'platform_admins'
+      and entity_id = (select id from auth.users where email = 'colega@teste.local')) = 1,
+  'e a entrada na equipe vai para a trilha');
+
+-- ------------------------------------------------------ sair da empresa
+
+select tests.login('conv-membro@teste.local');
+set role authenticated;
+
+select tests.ok('convites',
+  tests.bloqueado($q$delete from public.memberships
+    where user_id = (select u_admin from tests.conv)$q$),
+  'membro não tira ninguém da empresa');
+
+select tests.ok('convites',
+  tests.permitido($q$delete from public.memberships
+    where user_id = (select auth.uid()) and org_id = (select org from tests.conv)$q$),
+  'mas sai dela quando quer');
+
+reset role;
+select tests.login('conv-dono@teste.local');
+set role authenticated;
+
+select tests.ok('convites',
+  tests.bloqueado($q$delete from public.memberships
+    where user_id = (select auth.uid()) and org_id = (select org from tests.conv)$q$),
+  'o único proprietário não sai sem passar a propriedade');
+
+reset role;
+select tests.logout();
+
+-- ---------------------------------------------- conta sem empresa nenhuma
+
+-- Entrou só pela empresa do convite e depois foi tirado dela.
+insert into auth.users (email, raw_user_meta_data, email_confirmed_at)
+values ('conv-sem-empresa@teste.local', '{"convite":"segredo-do-convite-que-sera-tirado-10"}', now());
+delete from public.memberships
+ where user_id = (select id from auth.users where email = 'conv-sem-empresa@teste.local');
+
+select tests.login('conv-sem-empresa@teste.local');
+set role authenticated;
+
+select tests.ok('convites',
+  tests.erro($q$select public.criar_minha_organizacao('Empresa Nova')$q$),
+  'com o cadastro fechado, conta sem empresa não cria outra');
+
+reset role;
+delete from public.platform_settings;
+set role authenticated;
+
+select tests.ok('convites',
+  (select public.criar_minha_organizacao('  Empresa   Nova  ')) is not null
+  and tests.contar($q$select count(*) from public.memberships
+    where user_id = (select auth.uid()) and role = 'owner'$q$) = 1,
+  'com o cadastro aberto, a conta sem empresa cria a sua');
+
+select tests.ok('convites',
+  tests.erro($q$select public.criar_minha_organizacao('Segunda Empresa')$q$),
+  'quem já tem empresa não cria outra por aqui');
+
+reset role;
+select tests.login('conv-dono@teste.local');
+set role authenticated;
+
+select tests.ok('convites',
+  tests.contar($q$select count(*) from public.audit_logs
+    where entity = 'invitations' and org_id = (select org from tests.conv)$q$) > 0
+  and tests.contar($q$select count(*) from public.audit_logs
+    where entity = 'invitations' and diff::text like '%token_hash%'$q$) = 0,
+  'convites vão para a trilha da empresa, sem o hash do segredo');
+
+reset role;
+select tests.logout();
+delete from public.platform_settings;
+
 \echo ''
 \echo 'Falhas:'
 select grupo, descricao from tests.resultados where not passou order by id;

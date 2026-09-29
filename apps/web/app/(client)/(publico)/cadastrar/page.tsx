@@ -30,7 +30,7 @@ export default async function PaginaCadastrar() {
             </CardTitle>
             <CardDescription>
               A Storefy está recebendo um grupo pequeno de lojas agora. Se você recebeu um convite,
-              entre com o e-mail do convite.
+              abra o link que chegou no seu e-mail: é por ele que a sua conta é criada.
             </CardDescription>
           </CardHeader>
           <CardContent>

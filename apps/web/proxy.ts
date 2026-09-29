@@ -34,6 +34,9 @@ const PUBLICAS_CLIENTE = [
   '/recuperar-senha',
   '/redefinir-senha',
   '/confirmar-email',
+  // O convite abre sem conta (é por ele que a conta nasce) e com conta (para
+  // aceitar) — por isso NÃO entra na regra de "logado não vê o login".
+  '/convite',
 ];
 
 /** Rotas do painel admin que não exigem login. */

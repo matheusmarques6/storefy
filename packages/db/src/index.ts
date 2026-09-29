@@ -33,6 +33,7 @@ export type PushAutomation = Row<'push_automations'>;
 export type AutomationRun = Row<'automation_runs'>;
 export type CartEvent = Row<'cart_events'>;
 export type DeveloperAccount = Row<'developer_accounts'>;
+export type Invitation = Row<'invitations'>;
 
 /**
  * Colunas de segredo, que o navegador nunca vê.
@@ -81,6 +82,7 @@ export type AutomationRunStatus = Enum<'automation_run_status'>;
 export type CartEventType = Enum<'cart_event_type'>;
 export type DeveloperPlatform = Enum<'developer_platform'>;
 export type DeveloperAccountStatus = Enum<'developer_account_status'>;
+export type InvitationKind = Enum<'invitation_kind'>;
 
 /**
  * Papéis autorizados a criar e editar lojas e dados da organização.

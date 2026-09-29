@@ -5,6 +5,7 @@ import { ROTULO_PAPEL, ROTULO_STATUS_ORG, podeEscrever } from '@storefy/db';
 import { exigirContextoCliente } from '@/lib/contexto';
 import { FUSO_PADRAO, formatarData } from '@/lib/fuso';
 import { FormularioOrganizacao } from './formularios';
+import { NavegacaoConfiguracoes } from './navegacao-configuracoes';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 
@@ -15,10 +16,16 @@ export default async function PaginaConfiguracoes() {
 
   return (
     <div className="mx-auto max-w-2xl space-y-6">
+      <NavegacaoConfiguracoes atual="empresa" />
+
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Configurações</h1>
         <p className="text-muted-foreground mt-1 text-sm">
-          Dados da empresa. Para alterar seus dados pessoais, vá em{' '}
+          Os dados da empresa. Quem mais mexe no painel fica em{' '}
+          <Link href="/configuracoes/equipe" className="underline underline-offset-4">
+            Equipe
+          </Link>
+          , e seus dados pessoais em{' '}
           <Link href="/configuracoes/conta" className="underline underline-offset-4">
             Minha conta
           </Link>

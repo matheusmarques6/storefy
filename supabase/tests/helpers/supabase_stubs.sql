@@ -36,7 +36,11 @@ create table if not exists auth.users (
   id uuid primary key default gen_random_uuid(),
   email text unique,
   raw_user_meta_data jsonb not null default '{}'::jsonb,
+  -- Escrito só pelo Auth e pela service role; o cadastro público não alcança.
+  raw_app_meta_data jsonb not null default '{}'::jsonb,
   email_confirmed_at timestamptz,
+  -- Marcado pelo "convidar usuário" do Auth, depois do INSERT.
+  invited_at timestamptz,
   last_sign_in_at timestamptz,
   created_at timestamptz not null default now()
 );

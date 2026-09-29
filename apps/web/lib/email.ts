@@ -113,18 +113,6 @@ export function lerRespostaDaResend(status: number): Envio {
   return { ok: false, passageiro: false, motivo: `Resend recusou com ${String(status)}` };
 }
 
-/**
- * Escapa texto que entra no HTML do e-mail.
- *
- * O nome da loja vem do lojista. Sem escapar, um nome com `<` quebraria o
- * layout do e-mail de todo mundo daquela organização — e cliente de e-mail não
- * é navegador, mas continua interpretando marcação.
- */
-export function escaparHtml(texto: string): string {
-  return texto
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
-}
+// Mora num arquivo sem `server-only`, para montar e-mail em código que também
+// roda no teste e em telas; continua exportado daqui para quem já importava.
+export { escaparHtml } from './escapar-html';

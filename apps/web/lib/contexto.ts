@@ -27,6 +27,26 @@ import { COOKIE_LOJA_DA_VISITA } from '@/lib/visita-nomes';
 export const COOKIE_ORG = 'storefy_org';
 export const COOKIE_LOJA = 'storefy_loja';
 
+const UM_ANO = 60 * 60 * 24 * 365;
+
+/**
+ * Faz de uma empresa a ativa, e esquece a loja (que era da anterior).
+ *
+ * Quem chama já garantiu que a pessoa é membro — o contexto ainda confere a
+ * cada request, e um cookie de empresa alheia é simplesmente ignorado.
+ */
+export async function definirEmpresaAtiva(orgId: string): Promise<void> {
+  const armazem = await cookies();
+  armazem.set(COOKIE_ORG, orgId, {
+    httpOnly: true,
+    sameSite: 'lax',
+    secure: process.env.NODE_ENV === 'production',
+    path: '/',
+    maxAge: UM_ANO,
+  });
+  armazem.delete(COOKIE_LOJA);
+}
+
 export interface ContextoCliente {
   usuario: User;
   organizacao: Organization;
@@ -102,12 +122,12 @@ export async function exigirContextoCliente(): Promise<ContextoCliente> {
     .sort((a, b) => a.organizacao.created_at.localeCompare(b.organizacao.created_at));
 
   if (organizacoes.length === 0) {
-    // O trigger handle_new_user cria a organização no cadastro, então chegar
-    // aqui significa que o trigger não rodou. Falhar alto é melhor do que
-    // mostrar um painel vazio e deixar o usuário achar que perdeu os dados.
-    throw new Error(
-      'Sua conta não está vinculada a nenhuma organização. Fale com o suporte para resolvermos.',
-    );
+    /*
+     * Conta sem empresa: saiu da única em que estava, ou o proprietário a
+     * tirou. Antes isto era um erro ("fale com o suporte"); agora há uma tela
+     * para aceitar um convite em aberto ou criar a própria empresa.
+     */
+    redirect('/sem-empresa');
   }
 
   const armazem = await cookies();

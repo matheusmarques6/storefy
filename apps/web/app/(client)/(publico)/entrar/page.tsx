@@ -11,6 +11,10 @@ const MENSAGENS_DE_ERRO: Record<string, string> = {
   google: 'Não foi possível entrar com o Google. Tente novamente ou use e-mail e senha.',
   'link-invalido': 'Esse link não é válido. Peça um novo para continuar.',
   'link-expirado': 'Esse link expirou. Peça um novo para continuar.',
+  'cadastro-fechado':
+    'Os cadastros estão fechados por enquanto, e não há conta com esse e-mail. Se você recebeu um convite, abra o link que chegou no seu e-mail.',
+  'conta-nao-criada':
+    'Não conseguimos criar a sua conta agora. Tente de novo em instantes, ou entre com e-mail e senha.',
 };
 
 export default async function PaginaEntrar({

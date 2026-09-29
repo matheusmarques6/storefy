@@ -21,6 +21,7 @@ import { valoresDigitados, type ValoresDigitados } from '@/lib/validacao';
 import { Button } from '@/components/ui/button';
 import { Campo, propsDoCampo } from '@/components/campo';
 import { Input } from '@/components/ui/input';
+import { LinhaCopiavel } from '@/components/linha-copiavel';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import {
   AlertDialog,
@@ -45,6 +46,8 @@ export function Convidar() {
     if (resultado.ok === true) {
       toast.success(resultado.mensagem ?? 'Pessoa adicionada.');
       router.refresh();
+      // Com link (a pessoa ainda não tinha conta), a mensagem e o link ficam
+      // na tela: o link só aparece esta vez.
       return { ...resultado, valores: {} };
     }
     if (resultado.mensagem != null) toast.error(resultado.mensagem);
@@ -57,8 +60,9 @@ export function Convidar() {
       <CardHeader>
         <CardTitle className="text-base">Adicionar alguém à equipe</CardTitle>
         <CardDescription>
-          A pessoa precisa já ter uma conta na Storefy. Adicionar aqui dá a ela acesso ao painel que
-          enxerga todos os clientes.
+          Dá acesso ao painel que enxerga todos os clientes. Quem já tem conta entra na equipe na
+          hora; quem ainda não tem recebe um convite para criar a conta (vale mesmo com o cadastro
+          fechado) e já nasce na equipe.
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -96,6 +100,14 @@ export function Convidar() {
             <p className="text-destructive text-sm" role="alert">
               {estado.mensagem}
             </p>
+          ) : null}
+
+          {estado.ok === true && estado.link != null ? (
+            <div className="space-y-1" role="status">
+              <p className="text-sm">{estado.mensagem}</p>
+              <p className="text-muted-foreground text-xs">Link do convite (aparece só agora):</p>
+              <LinhaCopiavel valor={estado.link} monoespacado />
+            </div>
           ) : null}
 
           <Button type="submit" disabled={enviando}>

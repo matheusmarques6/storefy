@@ -64,7 +64,7 @@ export async function cadastrar(
   if (!cadastroAberto) {
     return {
       mensagem:
-        'Os cadastros estão fechados por enquanto. Se você recebeu um convite, entre com o e-mail do convite.',
+        'Os cadastros estão fechados por enquanto. Se você recebeu um convite, abra o link que chegou no seu e-mail.',
       valores,
     };
   }

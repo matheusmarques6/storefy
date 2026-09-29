@@ -30,6 +30,7 @@ import { VerComoCliente } from './ver-como-cliente';
 import { AppsDaOrganizacao } from './apps-da-organizacao';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { PrazoDoConvite } from '@/components/prazo-do-convite';
 import {
   Table,
   TableBody,
@@ -57,6 +58,7 @@ export default async function PaginaOrganizacao({ params }: { params: Promise<{ 
     { data: membros, error: erroMembros },
     { data: notasBrutas, error: erroNotas },
     { data: builds, error: erroBuilds },
+    { data: convites, error: erroConvites },
   ] = await Promise.all([
     supabase.from('organizations').select('*').eq('id', id).maybeSingle(),
     supabase
@@ -77,6 +79,14 @@ export default async function PaginaOrganizacao({ params }: { params: Promise<{ 
       .eq('apps.stores.org_id', id)
       .order('created_at', { ascending: false })
       .limit(5),
+    // Convites em aberto: é o que responde "convidei e a pessoa não entrou".
+    supabase
+      .from('invitations')
+      .select('id, email, org_role, expires_at')
+      .eq('org_id', id)
+      .is('accepted_at', null)
+      .is('revoked_at', null)
+      .order('created_at', { ascending: false }),
   ]);
 
   if (org == null) notFound();
@@ -93,6 +103,9 @@ export default async function PaginaOrganizacao({ params }: { params: Promise<{ 
   }
   if (erroBuilds != null) {
     throw new Error(`Não foi possível carregar os builds: ${erroBuilds.message}`);
+  }
+  if (erroConvites != null) {
+    throw new Error(`Não foi possível carregar os convites: ${erroConvites.message}`);
   }
 
   const listaLojas = lojas;
@@ -225,6 +238,22 @@ export default async function PaginaOrganizacao({ params }: { params: Promise<{ 
             ))}
           </TableBody>
         </Table>
+        {convites.length === 0 ? null : (
+          <CardContent className="border-t pt-4">
+            <p className="text-sm font-medium">Convites em aberto</p>
+            <ul className="text-muted-foreground mt-2 space-y-1 text-sm">
+              {convites.map((convite) => (
+                <li key={convite.id}>
+                  <span className="text-foreground break-all">{convite.email}</span>
+                  {' · '}
+                  {convite.org_role == null ? '—' : ROTULO_PAPEL[convite.org_role]}
+                  {' · '}
+                  <PrazoDoConvite expiraEm={convite.expires_at} />
+                </li>
+              ))}
+            </ul>
+          </CardContent>
+        )}
       </Card>
 
       <Card>

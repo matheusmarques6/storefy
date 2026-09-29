@@ -961,6 +961,51 @@ cadastro aberto no meio do caminho, suporte só lendo, atualização obrigatóri
 config no ar e a ficha A04 com e sem app publicado). A suíte está em 29 testes verdes contra o
 Supabase local, com o log do servidor limpo.
 
+### C16 — Equipe e convites (29/09/2026)
+
+A revisão das telas achou que a C16 prevê "equipe (convites e papéis)" e que isso **não existia**:
+não havia como pôr uma segunda pessoa numa empresa, e a regra 2 ("uma organização pode ter vários
+usuários com papéis diferentes") não era alcançável pela interface. O cadastro fechado da A13
+piorava: ninguém novo entrava (nem o lojista piloto, nem um colega da equipe), e a tela mandava
+"entrar com o e-mail do convite" sem convite existir.
+
+| Entrega | Situação |
+|---|---|
+| **Equipe da empresa** (`/configuracoes/equipe`) | ✅ quem está na equipe, com papel, desde quando e último acesso; o proprietário convida, muda papel (com confirmação dizendo o que muda) e tira gente; cada um sai da empresa, menos o último proprietário. Admin e membro veem, sem os botões |
+| **Convite por link** | ✅ segredo de 256 bits; o banco guarda só o sha256, e o link aparece UMA vez para quem convidou. Vale 7 dias, só para o e-mail convidado; reenviar gera outro link e mata o anterior; cancelar mata na hora. Dono não se convida (um link vazado dá no máximo administrador). Sem a Resend, a tela mostra o link para copiar e diz que o e-mail não saiu |
+| **Aceitar** (`/convite/…`) | ✅ sem conta, cria ali mesmo (nome e senha; o e-mail é o do convite) e entra só na empresa convidada, sem ganhar uma empresa vazia; com conta, entra e aceita; logado com OUTRO e-mail, a tela explica e oferece trocar |
+| **Conta sem empresa** (`/sem-empresa`) | ✅ quem saiu da única empresa (ou foi tirado) via o erro "fale com o suporte". Agora vê os convites em aberto para o e-mail dela (aceita sem o link) e, com o cadastro aberto, cria a própria empresa |
+| **Lojista piloto (A03) e colega (A11)** | ✅ os convites da plataforma, com a mesma regra: lojista qualquer pessoa da equipe convida; colega, só superadmin |
+| **Cadastro fechado no banco** | ✅ era só a tela e a ação. O Auth aceitava cadastro direto pela chave pública, e o Google criava conta por fora. Agora um gatilho no FIM da transação da conta nova desfaz tudo — salvo convite aceito, conta criada pela equipe (`criado_pela_equipe` no `app_metadata`, que só a service role escreve) ou o "convidar" do próprio Auth. Conferido contra o Auth de verdade: cadastro pela chave pública com o cadastro fechado volta 500 e nada fica gravado |
+| **`pnpm bootstrap:admin`** | ✅ cria a conta marcada como da equipe e imprime um link de "definir senha" — funciona com o cadastro fechado e sem SMTP. O convite do Auth que ele usava seria barrado justamente quando é a única porta |
+
+> **FALHA DE SEGURANÇA CORRIGIDA: administrador virava dono.** A policy "owner e admin adicionam
+> membros" deixava um ADMIN inserir um vínculo com papel OWNER para qualquer conta — uma segunda
+> conta dele, por exemplo — e passar a excluir lojas e tirar o dono verdadeiro. O cabeçalho da
+> própria migration dizia que admin "não mexe em membros". Vínculo novo agora só nasce de convite
+> (nem o proprietário insere direto), e o UPDATE do vínculo ficou restrito à coluna `role` — trocar
+> o `user_id` era pôr outra pessoa na empresa sem convite. A asserção de RLS da escalada cai quando
+> a policy antiga volta.
+
+> **Por que a conferência do cadastro fechado é no COMMIT, e não no INSERT.** A primeira versão
+> conferia no INSERT e barrou o próprio `pnpm bootstrap:admin`: a API admin do Auth grava o
+> `app_metadata` numa segunda instrução, depois do INSERT, na mesma transação. O teste contra o Auth
+> real pegou. O gatilho de restrição adiado relê a linha no fim da transação, quando a marca já
+> está lá.
+
+Travas novas: 70 asserções no grupo "convites" do `rls.test.sql` (com mutações conferidas: a
+policy antiga de volta, o gatilho do cadastro fechado removido e o aceite sem conferir o e-mail),
+`lib/convites.test.ts`, `lib/convites-servidor.test.ts` (o hash é o mesmo que o banco calcula,
+pelo vetor do SHA-256) e `e2e/convites.spec.ts` (3 cenários, com várias sessões ao mesmo tempo).
+
+**Depende de ação humana**
+
+| Item | O que falta |
+|---|---|
+| Envio do convite por e-mail | `RESEND_API_KEY` e `EMAIL_REMETENTE` (A13). Sem elas tudo funciona, e a tela mostra o link para copiar |
+| Confirmação de e-mail no Supabase | Deixar ligada em produção (Authentication → Email → Confirm email). Aceitar convite pela lista "convites para você" confia que a conta é dona do e-mail — é a confirmação que garante isso |
+| Criar conta pelo painel do Supabase | Com o cadastro fechado, o "Create user" do painel do Supabase é barrado (ele não marca a conta como da equipe). Use um convite (A03/A11), o `pnpm bootstrap:admin` ou o "Invite user" do Supabase |
+
 ### Fase 6 — Painel Admin completo (4–6 dias)
 - Telas A02–A13, impersonação com auditoria, presets por tema (A10), feature flags e reexecução de builds.
 - Reaproveitar do admin Convertfy os padrões de tabela, filtros, página de detalhe com abas e notas internas.
@@ -971,15 +1016,15 @@ Supabase local, com o log do servidor limpo.
 |---|---|
 | A01 — Login do admin | ✅ `exigirPlatformAdmin()` a cada request; quem não está em `platform_admins` vai para /admin/sem-acesso |
 | **A02 — Visão geral** | ✅ dez números numa chamada só (`resumo_do_admin`), separados em "precisa de você" (só o que é > 0) e "a plataforma hoje" (aparece zerado, porque ali zero é informação). `/admin` passou a ser esta tela |
-| A03 — Organizações (lista) | ✅ saiu de `/admin` para `/admin/organizacoes`, com busca e paginação |
+| A03 — Organizações (lista) | ✅ saiu de `/admin` para `/admin/organizacoes`, com busca e paginação. **Convidar lojista**: o convite que deixa o lojista piloto criar a conta com o cadastro fechado, com os convites em aberto (reenviar e cancelar) |
 | A04 — Cliente (detalhe) | ⚠️ lojas, membros, últimos builds, **notas internas**, **"Ver como cliente"** (somente leitura, auditado — ver abaixo) e **App e push** por loja: config no ar e desde quando, rascunho parado, atualização obrigatória, versão aprovada em cada loja de aplicativos, projeto Expo, identificadores, notificações, push de 30 dias e automações ligadas. Falta a aba de cobrança (Fase 7) |
 | **A05 — Fila de builds** | ✅ recortes por situação na URL, abrindo no que quebrou; erro da EAS na própria linha; link dos logs; reexecutar com confirmação, travado para build que ainda roda ou que está com a loja |
 | **A06 — Revisões das lojas** | ✅ ordenada do mais ANTIGO para o mais novo (aqui o interessante é o que está parado), com alerta a partir de 7 dias e o motivo da recusa na linha |
 | **A07 — Contas de desenvolvedor** | ✅ estado e identificadores públicos (Team ID, Key ID) de cada cliente. Nenhuma coluna `_enc` é lida: o segredo não passa pela tela |
 | **A08 — Push global** | ✅ envios, falhas e aparelhos ativos por app, ordenado por ativos (é o que a OneSignal cobra). "App com problema" é RAZÃO com piso de volume, não contagem: 1 falha em 1 envio não acusa ninguém |
-| **A11 — Equipe interna** | ✅ convidar, trocar papel e remover, com três travas — só superadmin mexe, ninguém altera a si mesmo, e o último superadmin não sai. Conferidas de novo no servidor, com a contagem vinda do banco |
+| **A11 — Equipe interna** | ✅ convidar, trocar papel e remover, com três travas — só superadmin mexe, ninguém altera a si mesmo, e o último superadmin não sai. Conferidas de novo no servidor, com a contagem vinda do banco. E-mail sem conta recebe um **convite de equipe** (cria a conta pelo link, mesmo com o cadastro fechado, e já nasce com o papel) — antes a tela mandava "se cadastrar primeiro" |
 | A12 — Logs de auditoria | ✅ |
-| **A13 — Configurações do sistema** | ✅ as 19 variáveis que a aplicação lê, em três níveis (essencial, por recurso, opcional) pelo que quebra sem cada uma, com um teste que varre o código e falha quando alguém soma uma variável sem descrevê-la; opcional desligada aparece como "Não usado". **Chaves de funcionamento**: cadastro aberto/fechado e um aviso no topo do painel de todos os lojistas, com prévia, só superadmin muda (o servidor confere de novo) e cada chave mudada vai para a auditoria com o antes e o depois. **Versão mínima**: a lista dos apps que estão exigindo atualização, com link para o cliente. ⚠️ O cadastro fechado ainda vale só pelo painel (tela e ação): o Auth do Supabase aceita cadastro direto pela chave pública, e ainda não há convite para quem deve entrar com o cadastro fechado — é a próxima entrega (C16, convites) |
+| **A13 — Configurações do sistema** | ✅ as 19 variáveis que a aplicação lê, em três níveis (essencial, por recurso, opcional) pelo que quebra sem cada uma, com um teste que varre o código e falha quando alguém soma uma variável sem descrevê-la; opcional desligada aparece como "Não usado". **Chaves de funcionamento**: cadastro aberto/fechado e um aviso no topo do painel de todos os lojistas, com prévia, só superadmin muda (o servidor confere de novo) e cada chave mudada vai para a auditoria com o antes e o depois. **Versão mínima**: a lista dos apps que estão exigindo atualização, com link para o cliente. O cadastro fechado vale **no banco**, para toda porta de entrada (ver "C16 — Equipe e convites") |
 | **A10 — Presets por tema** | ✅ os dois lados: a equipe cria o preset COPIANDO de uma loja publicada, e o lojista aplica no editor com a troca descrita antes de confirmar |
 | A09 | ⬜ ainda não (depende da cobrança, Fase 7) |
 

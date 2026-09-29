@@ -16,8 +16,10 @@ import { criarClientServidor } from '@/lib/supabase/server';
 import { EXPLICACAO_PAPEL, ROTULO_PAPEL_ADMIN, lerEquipe } from '@/lib/equipe-admin';
 import { FUSO_PADRAO, formatarData } from '@/lib/fuso';
 import { AcoesDaLinha, Convidar } from './gerenciar';
+import { ConvitesDaPlataforma } from '../_convites/convites-da-plataforma';
+import { lerConvitesDaPlataforma } from '../_convites/ler';
 import { Badge } from '@/components/ui/badge';
-import { Card, CardContent } from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import {
   Table,
   TableBody,
@@ -33,7 +35,10 @@ export default async function PaginaEquipe() {
   const { usuario, papel } = await exigirPlatformAdminComPapel();
   const supabase = await criarClientServidor();
 
-  const { data, error } = await supabase.rpc('admin_equipe');
+  const [{ data, error }, convites] = await Promise.all([
+    supabase.rpc('admin_equipe'),
+    lerConvitesDaPlataforma('equipe'),
+  ]);
   if (error != null) throw new Error(`Não foi possível carregar a equipe: ${error.message}`);
 
   const equipe = lerEquipe(data);
@@ -123,6 +128,22 @@ export default async function PaginaEquipe() {
             })}
           </TableBody>
         </Table>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Convites em aberto</CardTitle>
+          <CardDescription>
+            Quem foi chamado para a equipe e ainda não criou a conta.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <ConvitesDaPlataforma
+            convites={convites}
+            podeGerir={souSuperadmin}
+            vazio="Nenhum convite de equipe em aberto."
+          />
+        </CardContent>
       </Card>
 
       {souSuperadmin ? (

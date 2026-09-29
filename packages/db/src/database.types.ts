@@ -606,6 +606,64 @@ export type Database = {
           },
         ];
       };
+      invitations: {
+        Row: {
+          id: string;
+          kind: Database["public"]["Enums"]["invitation_kind"];
+          org_id: string | null;
+          org_role: Database["public"]["Enums"]["membership_role"] | null;
+          platform_role: Database["public"]["Enums"]["platform_admin_role"] | null;
+          email: string;
+          token_hash: string;
+          invited_by: string | null;
+          expires_at: string;
+          accepted_at: string | null;
+          accepted_by: string | null;
+          revoked_at: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          kind: Database["public"]["Enums"]["invitation_kind"];
+          org_id?: string | null;
+          org_role?: Database["public"]["Enums"]["membership_role"] | null;
+          platform_role?: Database["public"]["Enums"]["platform_admin_role"] | null;
+          email: string;
+          token_hash: string;
+          invited_by?: string | null;
+          expires_at: string;
+          accepted_at?: string | null;
+          accepted_by?: string | null;
+          revoked_at?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          kind?: Database["public"]["Enums"]["invitation_kind"];
+          org_id?: string | null;
+          org_role?: Database["public"]["Enums"]["membership_role"] | null;
+          platform_role?: Database["public"]["Enums"]["platform_admin_role"] | null;
+          email?: string;
+          token_hash?: string;
+          invited_by?: string | null;
+          expires_at?: string;
+          accepted_at?: string | null;
+          accepted_by?: string | null;
+          revoked_at?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "invitations_org_id_fkey";
+            columns: ["org_id"];
+            referencedRelation: "organizations";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       memberships: {
         Row: {
           org_id: string;
@@ -1082,6 +1140,14 @@ export type Database = {
         Args: { p_app_id: string; p_minutos?: number };
         Returns: { token: string | null; expira_em: string | null }[];
       };
+      aceitar_convite: {
+        Args: { p_token: string };
+        Returns: { resultado: string | null; tipo: Database["public"]["Enums"]["invitation_kind"] | null; organizacao: string | null }[];
+      };
+      aceitar_convite_por_id: {
+        Args: { p_id: string };
+        Returns: { resultado: string | null; tipo: Database["public"]["Enums"]["invitation_kind"] | null; organizacao: string | null }[];
+      };
       admin_config_para_preset: {
         Args: { p_app_id: string };
         Returns: { tabs: Json | null; hide_selectors: Json | null; custom_css: string | null }[];
@@ -1162,6 +1228,10 @@ export type Database = {
         Args: { p_id: string; p_ok: boolean };
         Returns: unknown;
       };
+      criar_minha_organizacao: {
+        Args: { p_nome: string };
+        Returns: string;
+      };
       dados_da_ota: {
         Args: { p_store_id: string };
         Returns: { app_id: string | null; store_id: string | null; nome_do_app: string | null; bundle_id_ios: string | null; package_android: string | null; expo_project_id: string | null; onesignal_app_id: string | null; device_secret_enc: string | null }[];
@@ -1214,6 +1284,14 @@ export type Database = {
         Args: Record<string, never>;
         Returns: { store_id: string | null; app_id: string | null; nome: string | null }[];
       };
+      membros_da_organizacao: {
+        Args: { p_org_id: string };
+        Returns: { user_id: string | null; email: string | null; nome: string | null; role: Database["public"]["Enums"]["membership_role"] | null; created_at: string | null; ultimo_acesso: string | null }[];
+      };
+      meus_convites: {
+        Args: Record<string, never>;
+        Returns: { id: string | null; organizacao: string | null; papel: Database["public"]["Enums"]["membership_role"] | null; convidado_por: string | null; expira_em: string | null }[];
+      };
       outros_superadmins: {
         Args: { p_exceto: string };
         Returns: number;
@@ -1262,6 +1340,10 @@ export type Database = {
         Args: Record<string, never>;
         Returns: { orgs_ativas: number | null; orgs_em_trial: number | null; trials_vencendo_7d: number | null; orgs_inadimplentes: number | null; lojas_live: number | null; lojas_em_revisao: number | null; builds_na_fila: number | null; builds_com_erro_7d: number | null; builds_rejeitados_7d: number | null; contas_dev_com_erro: number | null }[];
       };
+      ver_convite: {
+        Args: { p_token: string };
+        Returns: { situacao: string | null; tipo: Database["public"]["Enums"]["invitation_kind"] | null; email: string | null; organizacao: string | null; papel: Database["public"]["Enums"]["membership_role"] | null; papel_na_plataforma: Database["public"]["Enums"]["platform_admin_role"] | null; expira_em: string | null; convidado_por: string | null; ja_tem_conta: boolean | null }[];
+      };
     };
     Enums: {
       app_config_status: "draft" | "published" | "archived";
@@ -1273,6 +1355,7 @@ export type Database = {
       developer_account_status: "pending" | "invited" | "verified" | "error";
       developer_platform: "apple" | "google";
       device_platform: "ios" | "android";
+      invitation_kind: "organizacao" | "conta" | "equipe";
       membership_role: "owner" | "admin" | "member";
       org_status: "trialing" | "active" | "past_due" | "canceled";
       origem_do_pedido: "app" | "site";

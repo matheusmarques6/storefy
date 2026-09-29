@@ -8,9 +8,16 @@ import { criarClientServidor } from '@/lib/supabase/server';
 import { CampoBusca, Paginacao, lerParams } from '../paginacao';
 import { termoParaIlike } from '@/lib/listagem';
 import { FUSO_PADRAO, formatarData } from '@/lib/fuso';
+import { emailConfigurado } from '@/lib/email';
+import { configuracoesDaPlataforma } from '@/lib/configuracoes-da-plataforma-servidor';
+import {
+  ConvitesDaPlataforma,
+  FormularioConviteDeLojista,
+} from '../_convites/convites-da-plataforma';
+import { lerConvitesDaPlataforma } from '../_convites/ler';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { EstadoVazio } from '@/components/estado-vazio';
 import {
   Table,
@@ -44,7 +51,11 @@ export default async function PaginaOrganizacoes({
     consulta = consulta.or(`name.ilike.%${termo}%,slug.ilike.%${termo}%`);
   }
 
-  const { data: organizacoes, count, error } = await consulta;
+  const [{ data: organizacoes, count, error }, convites, { cadastroAberto }] = await Promise.all([
+    consulta,
+    lerConvitesDaPlataforma('conta'),
+    configuracoesDaPlataforma(),
+  ]);
   if (error != null) throw new Error(`Não foi possível carregar as organizações: ${error.message}`);
 
   const lista = organizacoes;
@@ -55,6 +66,28 @@ export default async function PaginaOrganizacoes({
         <h1 className="text-2xl font-semibold tracking-tight">Organizações</h1>
         <p className="text-muted-foreground mt-1 text-sm">Todos os clientes da plataforma.</p>
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Convidar lojista</CardTitle>
+          <CardDescription>
+            {cadastroAberto
+              ? 'O cadastro está aberto, e qualquer lojista cria a conta sozinho. O convite serve para chamar alguém com o link pronto.'
+              : 'O cadastro está fechado (A13): só entra quem tem convite. O lojista cria a conta pelo link, com a própria empresa.'}
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="grid gap-6 lg:grid-cols-2">
+          <FormularioConviteDeLojista emailConfigurado={emailConfigurado()} />
+          <div className="space-y-2">
+            <p className="text-sm font-medium">Convites de lojista em aberto</p>
+            <ConvitesDaPlataforma
+              convites={convites}
+              podeGerir
+              vazio="Nenhum convite de lojista em aberto."
+            />
+          </div>
+        </CardContent>
+      </Card>
 
       <CampoBusca
         acao="/admin/organizacoes"

@@ -52,6 +52,13 @@ function carregarEnvLocal(): void {
   }
 }
 
+/** O endereço do painel, com esquema: é o que o link de senha precisa. */
+function urlDoSite(): string {
+  const bruto = (process.env.NEXT_PUBLIC_SITE_URL ?? '').trim().replace(/\/+$/, '');
+  if (bruto === '') return 'http://app.localhost:3000';
+  return /^https?:\/\//.test(bruto) ? bruto : `https://${bruto}`;
+}
+
 function abortar(mensagem: string): never {
   console.error(`\n  ${mensagem}\n`);
   process.exit(1);
@@ -116,17 +123,40 @@ async function main(): Promise<void> {
   }
 
   if (usuarioId == null) {
-    console.info('  Usuário ainda não existe. Enviando convite...');
-    const { data, error } = await supabase.auth.admin.inviteUserByEmail(email);
-    if (error != null) {
-      abortar(
-        `Não foi possível convidar: ${error.message}\n` +
-          '  Se o SMTP ainda não está configurado, peça para a pessoa se cadastrar pelo painel\n' +
-          '  e rode este script novamente.',
+    /*
+     * A conta nasce marcada como criada pela equipe (`app_metadata`, que só a
+     * service role escreve): é a exceção que o banco aceita com o cadastro
+     * fechado (A13). O convite do Auth (`inviteUserByEmail`) não tem como
+     * levar essa marca, e seria recusado justamente quando esta é a única
+     * porta — por exemplo, recuperando o acesso de uma plataforma fechada.
+     */
+    console.info('  Usuário ainda não existe. Criando a conta...');
+    const { data, error } = await supabase.auth.admin.createUser({
+      email,
+      email_confirm: true,
+      app_metadata: { criado_pela_equipe: true },
+    });
+    if (error != null) abortar(`Não foi possível criar a conta: ${error.message}`);
+    usuarioId = data.user.id;
+
+    // A conta nasce sem senha: um link de "definir senha", impresso aqui —
+    // funciona mesmo sem o envio de e-mail configurado no Supabase.
+    const { data: link, error: erroLink } = await supabase.auth.admin.generateLink({
+      type: 'recovery',
+      email,
+    });
+    if (erroLink != null) {
+      console.warn(
+        `  Conta criada, mas o link de senha falhou (${erroLink.message}).\n` +
+          '  A pessoa pode usar "Esqueci minha senha" na tela de login.',
+      );
+    } else {
+      const site = urlDoSite();
+      console.info(
+        '  Conta criada. Para definir a senha, abra este link (vale 1 hora, uma vez só):\n' +
+          `  ${site}/auth/confirmar?token_hash=${link.properties.hashed_token}&type=recovery`,
       );
     }
-    usuarioId = data.user.id;
-    console.info('  Convite enviado. A pessoa define a senha pelo link do e-mail.');
   }
 
   const { error: erroInsert } = await supabase
