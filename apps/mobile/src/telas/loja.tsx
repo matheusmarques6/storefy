@@ -12,7 +12,7 @@ import * as Linking from 'expo-linking';
 import * as StoreReview from 'expo-store-review';
 import { StatusBar } from 'expo-status-bar';
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { BackHandler, Platform, Share, StyleSheet, View } from 'react-native';
+import { Animated, BackHandler, Easing, Platform, Share, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { AppConfig } from '@storefy/config-schema';
 import type { NativeToWeb } from '@storefy/bridge';
@@ -27,6 +27,8 @@ import {
 import { avisoDoTopo, avisoFoiFechado } from '../config/aviso';
 import { gravarAvisoFechado, lerAvisoFechado } from '../config/fontes';
 import { BarraDeAbas } from '../navegacao/barra-de-abas';
+import { DURACAO_DA_TROCA_MS, efeitoDaTroca } from '../navegacao/troca-de-aba';
+import { usarMovimentoReduzido } from '../navegacao/usar-movimento-reduzido';
 import { AbaWebView, type ControleDaAba } from '../webview/aba-webview';
 import type { ContextoDoApp } from '../webview/scripts';
 import type { AcaoNativa, ContextoDasAcoes } from '../bridge/acoes';
@@ -140,12 +142,38 @@ export function Loja({
     });
   }, []);
 
+  /*
+   * A troca de aba sentida e vista (`navegacao/troca-de-aba.ts`). O esmaecer
+   * é de uma COBERTURA na cor de fundo da loja, por cima do conteúdo, e não
+   * da WebView: opacidade animada numa WebView pisca em branco em muito
+   * Android. Assim a página nunca é tocada pela animação.
+   */
+  const movimentoReduzido = usarMovimentoReduzido();
+  const [cobertura] = useState(() => new Animated.Value(0));
+
   const aoTocarAba = useCallback(
     (id: string, reabrir: boolean): void => {
+      const efeito = efeitoDaTroca({ reabrir, movimentoReduzido });
+      if (efeito.vibrar) {
+        // No Android, o retorno de tecla do sistema: respeita o "retorno ao
+        // toque" desligado nos ajustes, e não pede a permissão de vibrar.
+        void (Platform.OS === 'android'
+          ? Haptics.performAndroidHapticsAsync(Haptics.AndroidHaptics.Virtual_Key)
+          : Haptics.selectionAsync());
+      }
+      if (efeito.animar) {
+        cobertura.setValue(1);
+        Animated.timing(cobertura, {
+          toValue: 0,
+          duration: DURACAO_DA_TROCA_MS,
+          easing: Easing.out(Easing.quad),
+          useNativeDriver: true,
+        }).start();
+      }
       if (reabrir) controles.get(id)?.reabrir();
       else setAtiva(id);
     },
-    [controles],
+    [cobertura, controles, movimentoReduzido],
   );
 
   /* ------------------------------------------------- voltar no Android */
@@ -526,122 +554,136 @@ export function Loja({
           />
         ) : null}
         {/*
-         * Toda aba vira uma WebView. A Fase 3 põe aqui a caixa de avisos
-         * nativa, e até lá `abasUsaveis` não deixa uma aba dessas chegar até
-         * este ponto. Se chegasse — config só com abas nativas —, a loja abre
-         * no lugar, porque tela vazia com barra de abas é pior.
+         * O conteúdo das abas mora numa caixa própria, DEPOIS da faixa de
+         * aviso. As abas de WebView cobrem o pai inteiro (`position:
+         * absolute`), e o Yoga posiciona filho absoluto ignorando o padding
+         * do pai: direto na área segura, a página começava embaixo do relógio
+         * e do entalhe, e cobria a faixa de aviso do topo inteira.
          */}
-        {abas.map((aba) =>
-          aba.id === conta?.id ? (
-            /*
-             * M06: a conta com Face ID. Antes do primeiro desbloqueio a página
-             * nem é carregada; depois, fica montada por baixo da trava quando
-             * ela volta, para o cliente reencontrar a conta onde a deixou.
-             */
-            <Fragment key={aba.id}>
-              {protecao.situacao === 'livre' || protecao.jaAbriu ? (
-                <AbaWebView
-                  aba={aba}
-                  config={config}
-                  contextoDoApp={contextoDoApp}
-                  contextoDasAcoes={contextoDasAcoes}
-                  marcaDoPush={push.marcaDoPush}
-                  visivel={aba.id === ativa && protecao.situacao === 'livre'}
-                  semConexao={semConexao}
-                  aoAgir={aoAgir}
-                  registrarControle={registrarControle}
-                  aoCarregar={aba.id === primeira.id ? aoCarregar : undefined}
-                  aoVerEndereco={aoVerEndereco}
-                  cabecalho={
-                    semCaixaDeAvisos ? (
-                      <EntradaDosAjustes tema={config.theme} aoAbrir={abrirAjustes} />
-                    ) : undefined
-                  }
-                />
-              ) : null}
-              {protecao.situacao === 'livre' ? null : (
-                <View
-                  style={[
-                    estilos.cobertura,
-                    { backgroundColor: config.theme.background },
-                    aba.id === ativa ? null : estilos.escondida,
-                  ]}
-                  pointerEvents={aba.id === ativa ? 'auto' : 'none'}
-                  accessibilityElementsHidden={aba.id !== ativa}
-                  importantForAccessibility={aba.id === ativa ? 'auto' : 'no-hide-descendants'}
-                >
-                  {protecao.situacao === 'trancada' ? (
-                    <ContaProtegida
-                      visivel={aba.id === ativa}
-                      tema={config.theme}
-                      pedindo={protecao.pedindo}
-                      aviso={protecao.aviso}
-                      aoDesbloquear={protecao.desbloquear}
-                    />
-                  ) : null}
-                </View>
-              )}
-            </Fragment>
-          ) : aba.webview ? (
-            <AbaWebView
-              key={aba.id}
-              aba={aba}
-              config={config}
-              contextoDoApp={contextoDoApp}
-              contextoDasAcoes={contextoDasAcoes}
-              marcaDoPush={push.marcaDoPush}
-              visivel={aba.id === ativa}
-              semConexao={semConexao}
-              aoAgir={aoAgir}
-              registrarControle={registrarControle}
-              aoCarregar={aba.id === primeira.id ? aoCarregar : undefined}
-              desviar={desviarParaConta}
-              aoVerEndereco={aoVerEndereco}
-              cabecalho={
-                aba.tipo === 'search' ? (
-                  <CampoDeBusca
-                    tema={config.theme}
-                    nomeDaLoja={config.store.name}
-                    aoBuscar={(termo) => {
-                      buscar(aba, termo);
-                    }}
+        <View style={estilos.area}>
+          {abas.map((aba) =>
+            aba.id === conta?.id ? (
+              /*
+               * M06: a conta com Face ID. Antes do primeiro desbloqueio a página
+               * nem é carregada; depois, fica montada por baixo da trava quando
+               * ela volta, para o cliente reencontrar a conta onde a deixou.
+               */
+              <Fragment key={aba.id}>
+                {protecao.situacao === 'livre' || protecao.jaAbriu ? (
+                  <AbaWebView
+                    aba={aba}
+                    config={config}
+                    contextoDoApp={contextoDoApp}
+                    contextoDasAcoes={contextoDasAcoes}
+                    marcaDoPush={push.marcaDoPush}
+                    visivel={aba.id === ativa && protecao.situacao === 'livre'}
+                    semConexao={semConexao}
+                    aoAgir={aoAgir}
+                    registrarControle={registrarControle}
+                    aoCarregar={aba.id === primeira.id ? aoCarregar : undefined}
+                    aoVerEndereco={aoVerEndereco}
+                    cabecalho={
+                      semCaixaDeAvisos ? (
+                        <EntradaDosAjustes tema={config.theme} aoAbrir={abrirAjustes} />
+                      ) : undefined
+                    }
                   />
-                ) : undefined
-              }
-            />
-          ) : (
-            /*
-             * A caixa de avisos é nativa. Fica montada junto com as WebViews e
-             * escondida quando não é a ativa, pelo mesmo motivo delas: montar e
-             * desmontar a cada toque perderia a rolagem e piscaria a lista.
-             */
-            <View
-              key={aba.id}
-              style={[estilos.area, aba.id === ativa ? null : estilos.escondida]}
-              pointerEvents={aba.id === ativa ? 'auto' : 'none'}
-              accessibilityElementsHidden={aba.id !== ativa}
-              importantForAccessibility={aba.id === ativa ? 'auto' : 'no-hide-descendants'}
-            >
-              <CaixaDeAvisos
-                avisos={push.avisos}
-                carregando={push.caixaCarregando}
-                tema={config.theme}
-                aoRecarregar={push.recarregarCaixa}
-                aoMarcarTudoLido={push.marcarTudoLido}
-                aoAbrirAjustes={abrirAjustes}
-                aoTocar={(aviso) => {
-                  push.marcarAvisoLido(aviso.id);
-                  if (aviso.deepLink !== null) abrirCaminho(aviso.deepLink);
-                }}
+                ) : null}
+                {protecao.situacao === 'livre' ? null : (
+                  <View
+                    style={[
+                      estilos.cobertura,
+                      { backgroundColor: config.theme.background },
+                      aba.id === ativa ? null : estilos.escondida,
+                    ]}
+                    pointerEvents={aba.id === ativa ? 'auto' : 'none'}
+                    accessibilityElementsHidden={aba.id !== ativa}
+                    importantForAccessibility={aba.id === ativa ? 'auto' : 'no-hide-descendants'}
+                  >
+                    {protecao.situacao === 'trancada' ? (
+                      <ContaProtegida
+                        visivel={aba.id === ativa}
+                        tema={config.theme}
+                        pedindo={protecao.pedindo}
+                        aviso={protecao.aviso}
+                        aoDesbloquear={protecao.desbloquear}
+                      />
+                    ) : null}
+                  </View>
+                )}
+              </Fragment>
+            ) : aba.webview ? (
+              <AbaWebView
+                key={aba.id}
+                aba={aba}
+                config={config}
+                contextoDoApp={contextoDoApp}
+                contextoDasAcoes={contextoDasAcoes}
+                marcaDoPush={push.marcaDoPush}
+                visivel={aba.id === ativa}
+                semConexao={semConexao}
+                aoAgir={aoAgir}
+                registrarControle={registrarControle}
+                aoCarregar={aba.id === primeira.id ? aoCarregar : undefined}
+                desviar={desviarParaConta}
+                aoVerEndereco={aoVerEndereco}
+                cabecalho={
+                  aba.tipo === 'search' ? (
+                    <CampoDeBusca
+                      tema={config.theme}
+                      nomeDaLoja={config.store.name}
+                      aoBuscar={(termo) => {
+                        buscar(aba, termo);
+                      }}
+                    />
+                  ) : undefined
+                }
               />
-            </View>
-          ),
-        )}
+            ) : (
+              /*
+               * A caixa de avisos é nativa. Fica montada junto com as WebViews e
+               * escondida quando não é a ativa, pelo mesmo motivo delas: montar e
+               * desmontar a cada toque perderia a rolagem e piscaria a lista.
+               */
+              <View
+                key={aba.id}
+                style={[estilos.area, aba.id === ativa ? null : estilos.escondida]}
+                pointerEvents={aba.id === ativa ? 'auto' : 'none'}
+                accessibilityElementsHidden={aba.id !== ativa}
+                importantForAccessibility={aba.id === ativa ? 'auto' : 'no-hide-descendants'}
+              >
+                <CaixaDeAvisos
+                  avisos={push.avisos}
+                  carregando={push.caixaCarregando}
+                  tema={config.theme}
+                  aoRecarregar={push.recarregarCaixa}
+                  aoMarcarTudoLido={push.marcarTudoLido}
+                  aoAbrirAjustes={abrirAjustes}
+                  aoTocar={(aviso) => {
+                    push.marcarAvisoLido(aviso.id);
+                    if (aviso.deepLink !== null) abrirCaminho(aviso.deepLink);
+                  }}
+                />
+              </View>
+            ),
+          )}
+          <Animated.View
+            // Só olho: não recebe toque nem é lida pelo leitor de tela.
+            pointerEvents="none"
+            accessible={false}
+            importantForAccessibility="no-hide-descendants"
+            style={[
+              estilos.cobertura,
+              { backgroundColor: config.theme.background, opacity: cobertura },
+            ]}
+          />
+        </View>
       </SafeAreaView>
       {abas.length > 1 ? (
         <BarraDeAbas
           abas={abas}
           ativa={ativa}
+          animar={!movimentoReduzido}
           itensNoCarrinho={itensNoCarrinho}
           avisosNaoLidos={push.avisosNaoLidos}
           tema={config.theme}

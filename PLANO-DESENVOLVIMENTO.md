@@ -291,7 +291,7 @@ Conferido contra o código na Fase 8a (ver "Fase 8a — Entregue").
 - [x] Tela offline nativa
 - [x] Onboarding nativo
 - [x] Compartilhamento nativo — o botão "Compartilhar" dos temas abre a folha do sistema
-- [x] Haptics — ao entrar item no carrinho
+- [x] Haptics — ao entrar item no carrinho, e ao trocar de aba (com o esmaecer do conteúdo e o pulo do ícone; sem movimento com "Reduzir movimento" ligado — ver Fase 8w)
 - [x] Face ID opcional — aba Conta, ligado em Recursos
 - [x] Pedido de avaliação do app — depois da compra, vista pela página de obrigado
 - [x] Universal Links — o app declara o domínio, e a C12 manda a Shopify publicar a associação (ou entrega os arquivos, fora da Shopify). Ligar em produção depende da Shopify liberar a permissão (ver Fase 8a)
@@ -1804,6 +1804,17 @@ Também achado pela auditoria das telas contra o plano.
 | Achado: o manifesto da correção saía com valores de desenvolvimento | ❌→✅ a correção não passava a API da loja, o esquema de URL nem (agora) o número da App Store: o manifesto dela — que vira o de todo app que a recebe — saía com a API padrão e o `storefy://` genérico. E o pacote não levava a config da loja embutida, o último recurso de quando o app abre sem internet e sem cache: a rota da correção devolve a config no ar (loja sem config: 404 com o motivo, e só o job dela falha), e o workflow a embute como o build |
 | A trava contra a próxima divergência | ✅ um teste lê os dois workflows e o `app.config.ts`: toda variável que o `app.config.ts` lê precisa estar classificada (do manifesto em uso, do binário ou de modo), o passo do build entrega cada uma e a manda para o `eas.json`, e o passo da correção entrega as do manifesto, em modo de pacote e com a config embutida. Rodado contra os workflows antigos, ele aponta exatamente as cinco falhas acima |
 | Testes | ✅ app: ambiente 11 novos (o número e a versão do binário depois de um OTA nas duas plataformas, o Info.plist na frente, o `app.config` do Android em texto, as credenciais do manifesto em uso, o Face ID do binário, o número da App Store com o formato da trava, o OTA sem o número não apaga o do binário, o pacote Android), ficha na loja: 10 (endereços das duas lojas, sem identificador não há ficha, cai para o navegador, nada abre, os textos com e sem ficha e sem o nome do app), `app.config.ts`: 2 (o número vai para o extra; o pacote OTA sem a arte e com o resto obrigatório), workflows: 8, decisão: a tela de atualizar leva as cores da loja; rotas: o build leva o número da App Store, a correção leva o número, o esquema e a config no ar, e loja sem config falha com o motivo; RLS: `dados_da_ota` leva o número (e o lojista segue sem acesso); Maestro: `atualizacao.yaml` (a tela toma o app, o botão abre a loja, e na volta ela continua) |
+
+#### Fase 8w — Entregue (29/09/2026): a troca de aba sentida e vista, e a página fora do entalhe
+
+| Item | Estado |
+|---|---|
+| O que faltava | ❌→✅ a seção 10 pede "animações nativas de troca de aba, haptics sutis… nada pode parecer site dentro do app", e trocar de aba era trocar de página: o conteúdo novo aparecia de uma vez, sem nenhum sinal na mão |
+| Na mão | ✅ o toque de seleção do sistema a cada troca — no iPhone, o mesmo de um seletor; no Android, o retorno de tecla, que respeita o "retorno ao toque" desligado nos ajustes e não pede a permissão de vibrar. Tocar na aba que já está aberta (que volta ao começo dela) não vibra: a página mudando já é o retorno |
+| No olho | ✅ o conteúdo novo entra com um esmaecer de 180 ms a partir da cor de fundo da loja, e o ícone da aba escolhida dá um pulo pequeno, com mola. O esmaecer é de uma cobertura por cima do conteúdo, e não da WebView: opacidade animada numa WebView pisca em branco em muito Android. Tudo no driver nativo, fora da linha do JavaScript |
+| Reduzir movimento | ✅ com "Reduzir movimento" ligado no aparelho (iOS ou Android), a troca é imediata e o ícone não pula — acompanhando a mudança com o app aberto. O toque na mão continua: ele não é movimento |
+| Achado: a página embaixo do entalhe, e o aviso do topo escondido | ❌→✅ as abas de WebView cobrem o pai inteiro (`position: absolute`), e o pai era a área segura. O Yoga posiciona filho absoluto ignorando o padding do pai — conferido com o próprio Yoga, nos dois modos de conformidade: a página começava em y=0, embaixo do relógio e do entalhe, e cobria inteira a faixa de aviso do topo (C06e), que ficava por baixo dela e não recebia o toque de fechar. O conteúdo das abas agora mora numa caixa própria, depois da faixa: a página começa abaixo dela. O fluxo `aviso.yaml` do Maestro, que toca no "fechar" da faixa, é o que pega isso num aparelho |
+| Testes | ✅ a decisão da troca: 4 (trocar vibra e anima, "Reduzir movimento" só vibra, reabrir não faz nada, a duração e o pulo dentro do limite); o layout conferido no Yoga (a página em y=0 como estava, abaixo da faixa com a caixa); lint, tipos, testes e o build do app nas duas plataformas |
 
 **Estimativa total:** cerca de 7 a 9 semanas para uma pessoa com Claude Code em ritmo forte. O MVP vendável (Fases 0–4) leva cerca de 4 a 5 semanas.
 

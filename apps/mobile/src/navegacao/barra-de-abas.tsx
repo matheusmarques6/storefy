@@ -12,12 +12,14 @@
  * tamanho mínimo.
  */
 import { Ionicons } from '@expo/vector-icons';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useRef, useState } from 'react';
+import { Animated, Easing, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { Theme } from '@storefy/config-schema';
 import { idDeTesteDaAba, type AbaResolvida } from '../config/abas';
 import { descricaoDeAvisos, descricaoDoBadge, rotuloDoBadge } from './badge';
 import { iconeDaAba } from './icones';
+import { ESCALA_DO_ICONE } from './troca-de-aba';
 
 interface Props {
   abas: readonly AbaResolvida[];
@@ -28,6 +30,8 @@ interface Props {
   /** Avisos não lidos na caixa, para o badge da aba de notificações. */
   avisosNaoLidos: number;
   tema: Theme;
+  /** O ícone da aba escolhida dá um pulo. Desligado com "Reduzir movimento". */
+  animar: boolean;
   /** Tocar numa aba. Vem com `reabrir` quando já era a aba ativa. */
   aoTocar: (id: string, reabrir: boolean) => void;
 }
@@ -38,6 +42,7 @@ export function BarraDeAbas({
   itensNoCarrinho,
   avisosNaoLidos,
   tema,
+  animar,
   aoTocar,
 }: Props): React.ReactNode {
   const margens = useSafeAreaInsets();
@@ -91,7 +96,12 @@ export function BarraDeAbas({
             style={estilos.aba}
           >
             <View style={estilos.caixaDoIcone}>
-              <Ionicons name={glifo(aba.icone, selecionada)} size={24} color={cor} />
+              <IconeDaAba
+                nome={glifo(aba.icone, selecionada)}
+                cor={cor}
+                selecionada={selecionada}
+                animar={animar}
+              />
               {rotulo !== null ? (
                 <View style={[estilos.badge, { backgroundColor: tema.primary }]}>
                   <Text
@@ -114,6 +124,48 @@ export function BarraDeAbas({
         );
       })}
     </View>
+  );
+}
+
+/**
+ * O ícone de uma aba. Quando ela passa a ser a escolhida, dá um pulo pequeno
+ * e volta, com mola — o sinal de "cheguei aqui" que a barra de abas nativa
+ * tem e a página, não. Na primeira montagem não pula: nada foi trocado.
+ */
+function IconeDaAba({
+  nome,
+  cor,
+  selecionada,
+  animar,
+}: {
+  nome: React.ComponentProps<typeof Ionicons>['name'];
+  cor: string;
+  selecionada: boolean;
+  animar: boolean;
+}): React.ReactNode {
+  const [escala] = useState(() => new Animated.Value(1));
+  const antes = useRef(selecionada);
+
+  useEffect(() => {
+    const acabouDeSerEscolhida = selecionada && !antes.current;
+    antes.current = selecionada;
+    if (!acabouDeSerEscolhida || !animar) return;
+    escala.setValue(1);
+    Animated.sequence([
+      Animated.timing(escala, {
+        toValue: ESCALA_DO_ICONE,
+        duration: 90,
+        easing: Easing.out(Easing.quad),
+        useNativeDriver: true,
+      }),
+      Animated.spring(escala, { toValue: 1, friction: 4, tension: 160, useNativeDriver: true }),
+    ]).start();
+  }, [animar, escala, selecionada]);
+
+  return (
+    <Animated.View style={{ transform: [{ scale: escala }] }}>
+      <Ionicons name={nome} size={24} color={cor} />
+    </Animated.View>
   );
 }
 
