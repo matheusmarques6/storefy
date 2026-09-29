@@ -12,6 +12,7 @@ import {
   MOTIVO_PULO,
   SENHA_PADRAO,
   SUPABASE_DISPONIVEL,
+  ativarAppPelaTela,
   bancoDeTeste,
   criarUsuarioConfirmado,
   emailDeTeste,
@@ -278,7 +279,11 @@ test('com o cadastro fechado, o lojista piloto e o colega da equipe entram pelo 
   await colega.getByLabel('Seu nome').fill('Colega Novo');
   await colega.getByLabel('Crie uma senha').fill(SENHA_PADRAO);
   await colega.getByRole('button', { name: 'Criar conta e aceitar' }).click();
-  await colega.waitForURL(/\/admin/);
+  // Da equipe, mas ainda sem o app autenticador: antes do painel, o cadastro
+  // dele (A01) — a senha sozinha não abre os dados de todos os clientes.
+  await colega.waitForURL('**/admin/ativar-2fa');
+  await ativarAppPelaTela(colega);
+  await colega.waitForURL((url) => url.pathname === '/admin');
   await expect(colega.getByRole('heading', { name: 'Visão geral' })).toBeVisible();
 
   const { data: idDoColega } = await bancoDeTeste().rpc('admin_usuario_por_email', {

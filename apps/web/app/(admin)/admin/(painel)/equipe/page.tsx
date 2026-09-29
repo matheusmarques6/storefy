@@ -13,7 +13,12 @@ import type { Metadata } from 'next';
 import { ShieldAlert, Users } from 'lucide-react';
 import { exigirPlatformAdminComPapel } from '@/lib/contexto';
 import { criarClientServidor } from '@/lib/supabase/server';
-import { EXPLICACAO_PAPEL, ROTULO_PAPEL_ADMIN, lerEquipe } from '@/lib/equipe-admin';
+import {
+  EXPLICACAO_PAPEL,
+  ROTULO_PAPEL_ADMIN,
+  lerEquipe,
+  podeRedefinirSegundoFator,
+} from '@/lib/equipe-admin';
 import { FUSO_PADRAO, formatarData } from '@/lib/fuso';
 import { AcoesDaLinha, Convidar } from './gerenciar';
 import { ConvitesDaPlataforma } from '../_convites/convites-da-plataforma';
@@ -78,6 +83,7 @@ export default async function PaginaEquipe() {
             <TableRow>
               <TableHead>Pessoa</TableHead>
               <TableHead>Papel</TableHead>
+              <TableHead>Verificação em duas etapas</TableHead>
               <TableHead>Desde</TableHead>
               {souSuperadmin ? <TableHead className="text-right">Ações</TableHead> : null}
             </TableRow>
@@ -102,6 +108,18 @@ export default async function PaginaEquipe() {
                       {EXPLICACAO_PAPEL[pessoa.papel]}
                     </span>
                   </TableCell>
+                  <TableCell>
+                    {pessoa.segundoFator ? (
+                      <Badge variant="secondary">Ativa</Badge>
+                    ) : (
+                      <>
+                        <Badge variant="outline">Falta ativar</Badge>
+                        <span className="text-muted-foreground mt-1 block text-xs">
+                          Ativa no próximo acesso ao painel.
+                        </span>
+                      </>
+                    )}
+                  </TableCell>
                   <TableCell className="text-muted-foreground text-sm">
                     {formatarData(pessoa.desde, FUSO_PADRAO)}
                   </TableCell>
@@ -119,6 +137,12 @@ export default async function PaginaEquipe() {
                           userId={pessoa.userId}
                           email={pessoa.email}
                           papel={pessoa.papel}
+                          podeRedefinir={
+                            podeRedefinirSegundoFator(
+                              { id: usuario.id, papel },
+                              { id: pessoa.userId, segundoFator: pessoa.segundoFator },
+                            ).ok
+                          }
                         />
                       )}
                     </TableCell>

@@ -1066,7 +1066,7 @@ uma segunda empresa ao mesmo tempo). A suíte e2e está em 35 testes.
 
 | Item | Situação |
 |---|---|
-| A01 — Login do admin | ✅ `exigirPlatformAdmin()` a cada request; quem não está em `platform_admins` vai para /admin/sem-acesso |
+| A01 — Login do admin | ✅ `exigirPlatformAdmin()` a cada request; quem não está em `platform_admins` vai para /admin/sem-acesso. O segundo fator (app autenticador) entrou na Fase 8o |
 | **A02 — Visão geral** | ✅ os números numa chamada só (`resumo_do_admin`), com os chamados esperando resposta (A14) e a cobrança (Fase 7: MRR, testes que acabaram sem assinar, acima do limite de aparelhos), separados em "precisa de você" (só o que é > 0) e "a plataforma hoje" (aparece zerado, porque ali zero é informação). `/admin` passou a ser esta tela |
 | A03 — Organizações (lista) | ✅ saiu de `/admin` para `/admin/organizacoes`, com busca e paginação. **Convidar lojista**: o convite que deixa o lojista piloto criar a conta com o cadastro fechado, com os convites em aberto (reenviar e cancelar) |
 | A04 — Cliente (detalhe) | ✅ lojas, membros, últimos builds, **notas internas**, **"Ver como cliente"** (somente leitura, auditado — ver abaixo), **App e push** por loja (config no ar e desde quando, rascunho parado, atualização obrigatória, versão aprovada em cada loja de aplicativos, projeto Expo, identificadores, notificações, push de 30 dias e automações ligadas) e **Cobrança** (Fase 7): liberado ou travado e até quando, plano, faturas, quem paga, os últimos avisos da Asaas e "estender teste" |
@@ -1709,6 +1709,19 @@ Também achado pela auditoria das telas contra o plano.
 | Sem biblioteca nova | ✅ o levantamento apontava `@hello-pangea/dnd`; o arraste saiu com eventos de ponteiro, em pouco mais de cem linhas, porque as abas têm campos de texto dentro e a biblioteca traria um modo de teclado próprio competindo com eles — as setas já resolvem isso |
 | Quem é membro | ✅ vê a ordem, sem pontinhos e com as setas desligadas |
 | Testes | ✅ 13 da conta do arraste (destino, quem desliza, velocidade da rolagem na borda, anúncio); e2e com o mouse de verdade: arrastar para o topo (lista, prévia e banco), Escape desiste, setas com foco e anúncio, remover, rolagem pela borda numa janela baixa, "Nova ordem das abas" no diálogo de publicar e o membro sem o que arrastar |
+
+#### Fase 8o — Entregue (29/09/2026): a equipe entra com dois fatores (A01)
+
+| Item | Estado |
+|---|---|
+| O que faltava | ❌→✅ o plano pede "Apenas `platform_admins` + 2FA" na A01, e o admin entrava só com a senha. Quem é da equipe enxerga todos os clientes: uma senha vazada virava esse acesso inteiro |
+| Primeiro acesso | ✅ depois da senha, quem é da equipe e ainda não tem o app autenticador vai para /admin/ativar-2fa (A01b): explica o porquê, mostra o QR code e a chave para digitar (em grupos de quatro, com botão de copiar) e pede o primeiro código. Código errado ou incompleto é recusado embaixo do campo, com o número ainda lá e selecionado; "Gerar outro QR code" recomeça, e o cadastro abandonado antes sai do Auth. A ativação fica na auditoria |
+| Acessos seguintes | ✅ senha e depois o código em /admin/verificar (A01c). Toda tela do painel, e toda ação, passa pela mesma guarda: com a senha certa e sem o código, nenhuma abre |
+| A mesma trava no banco | ✅ `is_platform_admin()` passou a exigir a sessão `aal2`, que o Auth só emite depois do código. Sem isso, a sessão só da senha chamaria a API do Supabase direto com a chave anônima do navegador, e cada policy que termina em `or is_platform_admin()` abriria os dados de todos os clientes — a tela guardada não serviria de nada |
+| Perdeu o celular | ✅ na A11, a coluna "Verificação em duas etapas" diz quem já ativou; o superadmin tem "Redefinir verificação" (com confirmação) nas linhas de quem tem o app: numa transação só, os fatores saem, as sessões abertas da pessoa acabam — o celular perdido perde o acesso agora, e não quando o token vencer — e a auditoria registra quem fez. Suporte não redefine, ninguém redefine o próprio. Sem outro superadmin, `pnpm bootstrap:admin email --redefinir-2fa` é a saída de emergência |
+| Sair | ✅ o "Sair" do admin e das telas do segundo fator volta ao login do admin, e não ao do lojista |
+| Testes | ✅ 16 das regras do segundo fator (situação, código digitado, chave, QR, mensagens do Auth), 5 da permissão de redefinir; RLS: 19 (só com a senha a equipe é usuário comum, lê a própria linha e nada mais; com o código volta a ser equipe; redefinir é só do servidor e só de superadmin, apaga fatores e sessões e audita); e2e: primeiro acesso com QR, erro e troca de chave, acesso seguinte com código, a API direto com a sessão só da senha, e a redefinição pela A11 derrubando a sessão aberta do suporte. As 9 suítes que usam o admin passam pelo segundo fator de verdade (TOTP calculado como o celular, RFC 6238) |
+| Depende de ação humana | ⏳ conferir no Supabase de produção, em Authentication → Multi-Factor, que o app autenticador (TOTP) está ligado — no hospedado ele vem ligado; no local, o `config.toml` agora liga. Cada pessoa da equipe cadastra o próprio app no primeiro acesso |
 
 **Estimativa total:** cerca de 7 a 9 semanas para uma pessoa com Claude Code em ritmo forte. O MVP vendável (Fases 0–4) leva cerca de 4 a 5 semanas.
 

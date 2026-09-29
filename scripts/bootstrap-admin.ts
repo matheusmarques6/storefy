@@ -11,6 +11,13 @@
  *
  * Opções:
  *   --role=superadmin|support   (padrão: superadmin)
+ *   --redefinir-2fa             apaga o app autenticador de quem já é da equipe
+ *
+ * A equipe entra no admin com a senha E o código do app autenticador (A01).
+ * No primeiro acesso, a pessoa cadastra o app. Quem perde o celular é
+ * destravado por outro superadmin na tela Equipe; `--redefinir-2fa` é a saída
+ * de emergência para quando não há outro — o único superadmin sem o celular:
+ *   pnpm bootstrap:admin voce@convertfy.me --redefinir-2fa
  *
  * Precisa de NEXT_PUBLIC_SUPABASE_URL e SUPABASE_SERVICE_ROLE_KEY no ambiente
  * (ou em .env.local). A service role é necessária porque `platform_admins` não
@@ -64,6 +71,74 @@ function abortar(mensagem: string): never {
   process.exit(1);
 }
 
+type Cliente = ReturnType<typeof createClient<Database>>;
+
+/** O id da conta com este e-mail, ou `null`. A API admin não busca por e-mail: pagina até achar. */
+async function acharUsuario(supabase: Cliente, email: string): Promise<string | null> {
+  for (let pagina = 1; pagina <= 20; pagina += 1) {
+    const { data, error } = await supabase.auth.admin.listUsers({ page: pagina, perPage: 200 });
+    if (error != null) abortar(`Não foi possível listar usuários: ${error.message}`);
+    if (data.users.length === 0) return null;
+    const achado = data.users.find((u) => u.email?.toLowerCase() === email.toLowerCase());
+    if (achado != null) return achado.id;
+  }
+  return null;
+}
+
+/**
+ * Apaga o app autenticador de quem é da equipe: no próximo acesso ao admin, a
+ * pessoa cadastra um novo. Não mexe no papel. Fica na auditoria sem autor
+ * (quem rodou foi o terminal, não uma conta), com a origem dita.
+ */
+async function redefinirSegundoFator(supabase: Cliente, email: string): Promise<void> {
+  const usuarioId = await acharUsuario(supabase, email);
+  if (usuarioId == null) abortar(`Não existe conta com o e-mail ${email}.`);
+
+  const { data: registro, error: erroDoRegistro } = await supabase
+    .from('platform_admins')
+    .select('role')
+    .eq('user_id', usuarioId)
+    .maybeSingle();
+  if (erroDoRegistro != null)
+    abortar(`Não foi possível ler platform_admins: ${erroDoRegistro.message}`);
+  if (registro == null) abortar(`${email} não é da equipe da plataforma.`);
+
+  const { data, error } = await supabase.auth.admin.mfa.listFactors({ userId: usuarioId });
+  if (error != null) abortar(`Não foi possível ler o app autenticador: ${error.message}`);
+
+  for (const fator of data.factors) {
+    const { error: erroDaExclusao } = await supabase.auth.admin.mfa.deleteFactor({
+      id: fator.id,
+      userId: usuarioId,
+    });
+    if (erroDaExclusao != null) {
+      abortar(`Não foi possível apagar o app autenticador: ${erroDaExclusao.message}`);
+    }
+  }
+
+  const { error: erroDaTrilha } = await supabase.from('audit_logs').insert({
+    actor_id: null,
+    org_id: null,
+    action: 'update',
+    entity: 'platform_admins',
+    entity_id: usuarioId,
+    diff: {
+      segundo_fator: 'redefinido',
+      origem: 'script de bootstrap',
+      fatores_removidos: data.factors.length,
+    },
+  });
+  if (erroDaTrilha != null) {
+    console.warn(`  A redefinição foi feita, mas a auditoria falhou: ${erroDaTrilha.message}`);
+  }
+
+  console.info(
+    `\n  Pronto. A verificação em duas etapas de ${email} foi redefinida` +
+      ` (${String(data.factors.length)} app(s) apagado(s)).\n` +
+      '  No próximo acesso ao /admin, a pessoa entra com a senha e cadastra o app autenticador de novo.\n',
+  );
+}
+
 async function main(): Promise<void> {
   carregarEnvLocal();
 
@@ -111,16 +186,13 @@ async function main(): Promise<void> {
     auth: { autoRefreshToken: false, persistSession: false },
   });
 
-  console.info(`\n  Procurando ${email}...`);
-
-  // A API admin não tem busca por e-mail, então paginamos até achar.
-  let usuarioId: string | null = null;
-  for (let pagina = 1; pagina <= 20 && usuarioId == null; pagina += 1) {
-    const { data, error } = await supabase.auth.admin.listUsers({ page: pagina, perPage: 200 });
-    if (error != null) abortar(`Não foi possível listar usuários: ${error.message}`);
-    if (data.users.length === 0) break;
-    usuarioId = data.users.find((u) => u.email?.toLowerCase() === email.toLowerCase())?.id ?? null;
+  if (argumentos.includes('--redefinir-2fa')) {
+    await redefinirSegundoFator(supabase, email);
+    return;
   }
+
+  console.info(`\n  Procurando ${email}...`);
+  let usuarioId = await acharUsuario(supabase, email);
 
   if (usuarioId == null) {
     /*
@@ -168,7 +240,12 @@ async function main(): Promise<void> {
   }
 
   console.info(`\n  Pronto. ${email} agora é ${papel} da plataforma.`);
-  console.info('  Acesse o painel admin em /admin (ou no subdomínio admin, se configurado).\n');
+  console.info('  Acesse o painel admin em /admin (ou no subdomínio admin, se configurado).');
+  console.info(
+    '  No primeiro acesso, depois da senha, a pessoa cadastra um app autenticador no celular\n' +
+      '  (Google Authenticator, Microsoft Authenticator, 1Password ou Authy): a equipe entra\n' +
+      '  com a senha e o código do app.\n',
+  );
 }
 
 main().catch((erro: unknown) => {

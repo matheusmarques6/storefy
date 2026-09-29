@@ -7387,6 +7387,170 @@ select tests.ok('auditoria',
 reset role;
 select tests.logout();
 
+-- ============================== grupo: A01 — o segundo fator da equipe (migration 55)
+--
+-- A senha sozinha não faz ninguém ser da equipe: sem `aal2` na sessão, quem
+-- está em `platform_admins` é, para a RLS, um usuário como outro qualquer. É
+-- o que impede uma senha vazada de ler todos os clientes pela API direto —
+-- a tela guardada não alcança quem nem passa por ela.
+
+reset role;
+select tests.logout();
+
+insert into auth.users (email, raw_user_meta_data, email_confirmed_at) values
+  ('sf-suporte@teste.local', '{"company_name":"SF Suporte"}'::jsonb, now()),
+  ('sf-alvo@teste.local',    '{"company_name":"SF Alvo"}'::jsonb,    now());
+
+drop table if exists tests.sf;
+create table tests.sf as
+select
+  (select id from auth.users where email = 'sf-suporte@teste.local') as u_suporte,
+  (select id from auth.users where email = 'sf-alvo@teste.local')    as u_alvo,
+  (select count(*) from public.memberships m
+    where m.user_id = (select u_equipe from tests.ids))::integer      as orgs_da_equipe,
+  (select count(*) from public.organizations)::integer                as orgs_todas;
+grant select on tests.sf to anon, authenticated, service_role;
+
+insert into public.platform_admins (user_id, role)
+select u_suporte, 'support'::public.platform_admin_role from tests.sf
+union all
+select u_alvo, 'support'::public.platform_admin_role from tests.sf;
+
+select tests.login('equipe@teste.local', 'aal1');
+set role authenticated;
+
+select tests.ok('segundo fator',
+  (select public.is_platform_admin()) = false,
+  'da equipe, mas só com a senha (aal1): is_platform_admin() é falso');
+
+select tests.ok('segundo fator',
+  tests.contar('select count(*) from public.organizations') = (select orgs_da_equipe from tests.sf),
+  'só com a senha, a equipe enxerga apenas as próprias organizações, e não as dos clientes');
+
+select tests.ok('segundo fator',
+  tests.contar('select count(*) from public.platform_admins') = 1,
+  'mas enxerga a própria linha em platform_admins: é com ela que a tela manda verificar');
+
+select tests.ok('segundo fator',
+  tests.erro('select * from public.admin_equipe()'),
+  'só com a senha, não lê a equipe');
+
+select tests.ok('segundo fator',
+  tests.erro('select * from public.resumo_do_admin()'),
+  'só com a senha, não lê o resumo da plataforma');
+
+reset role;
+select tests.login('equipe@teste.local', null);
+set role authenticated;
+
+select tests.ok('segundo fator',
+  (select public.is_platform_admin()) = false,
+  'sessão sem nível nenhum no JWT também não vale como equipe');
+
+reset role;
+select tests.login('equipe@teste.local', 'aal2');
+set role authenticated;
+
+select tests.ok('segundo fator',
+  (select public.is_platform_admin()) = true,
+  'com o segundo fator (aal2), a equipe volta a ser equipe');
+
+select tests.ok('segundo fator',
+  tests.contar('select count(*) from public.organizations') = (select orgs_todas from tests.sf),
+  'e enxerga todas as organizações');
+
+select tests.ok('segundo fator',
+  (select not segundo_fator from public.admin_equipe()
+    where user_id = (select u_alvo from tests.sf)),
+  'a A11 mostra quem ainda não tem o segundo fator');
+
+-- Um fator cadastrado e não confirmado não conta; o confirmado conta.
+reset role;
+insert into auth.mfa_factors (user_id, factor_type, status, friendly_name)
+select u_alvo, 'totp', 'unverified', 'Rascunho' from tests.sf;
+set role authenticated;
+
+select tests.ok('segundo fator',
+  (select not segundo_fator from public.admin_equipe()
+    where user_id = (select u_alvo from tests.sf)),
+  'fator começado e não confirmado ainda não é segundo fator');
+
+reset role;
+insert into auth.mfa_factors (user_id, factor_type, status, friendly_name)
+select u_alvo, 'totp', 'verified', 'Storefy Admin' from tests.sf;
+insert into auth.sessions (user_id, aal)
+select u_alvo, 'aal2'::auth.aal_level from tests.sf
+union all
+select u_alvo, 'aal1'::auth.aal_level from tests.sf;
+set role authenticated;
+
+select tests.ok('segundo fator',
+  (select segundo_fator from public.admin_equipe()
+    where user_id = (select u_alvo from tests.sf)),
+  'com o fator confirmado, a A11 mostra o segundo fator ativo');
+
+-- Redefinir é só do servidor: nem o superadmin logado chama pelo navegador.
+select tests.ok('segundo fator',
+  tests.erro(format('select public.admin_redefinir_segundo_fator(%L, %L)',
+    (select u_equipe from tests.ids), (select u_alvo from tests.sf))),
+  'redefinir o segundo fator NÃO é chamável pela sessão do navegador');
+
+reset role;
+set role service_role;
+
+select tests.ok('segundo fator',
+  tests.erro_com(format('select public.admin_redefinir_segundo_fator(%L, %L)',
+    (select u_suporte from tests.sf), (select u_alvo from tests.sf)),
+    'Só um superadmin'),
+  'quem é do suporte não redefine o segundo fator de ninguém');
+
+select tests.ok('segundo fator',
+  tests.erro_com(format('select public.admin_redefinir_segundo_fator(%L, %L)',
+    (select u_equipe from tests.ids), (select u_equipe from tests.ids)),
+    'sua própria'),
+  'ninguém redefine o próprio segundo fator');
+
+select tests.ok('segundo fator',
+  tests.erro_com(format('select public.admin_redefinir_segundo_fator(%L, %L)',
+    (select u_equipe from tests.ids), (select u_a_owner from tests.ids)),
+    'não está mais na equipe'),
+  'e só de quem é da equipe');
+
+select tests.ok('segundo fator',
+  tests.erro_com(format('select public.admin_redefinir_segundo_fator(%L, %L)',
+    (select u_equipe from tests.ids), (select u_suporte from tests.sf)),
+    'ainda não ativou'),
+  'quem não tem o segundo fator não tem o que redefinir');
+
+select tests.ok('segundo fator',
+  (select public.admin_redefinir_segundo_fator(
+     (select u_equipe from tests.ids), (select u_alvo from tests.sf))) = 2,
+  'o superadmin redefine: os dois fatores (o confirmado e o começado) saem');
+
+reset role;
+
+select tests.ok('segundo fator',
+  not exists (select 1 from auth.mfa_factors
+               where user_id = (select u_alvo from tests.sf))
+  and not exists (select 1 from auth.sessions
+                   where user_id = (select u_alvo from tests.sf)),
+  'e as sessões abertas da pessoa acabam junto: o celular perdido perde o acesso agora');
+
+select tests.ok('segundo fator',
+  exists (
+    select 1 from public.audit_logs
+     where entity = 'platform_admins'
+       and entity_id = (select u_alvo from tests.sf)
+       and actor_id = (select u_equipe from tests.ids)
+       and org_id is null
+       and diff ->> 'segundo_fator' = 'redefinido'
+       and (diff ->> 'sessoes_encerradas')::integer = 2),
+  'a redefinição fica na auditoria, com quem fez e quantas sessões acabaram');
+
+delete from public.platform_admins
+ where user_id in (select u_suporte from tests.sf union all select u_alvo from tests.sf);
+select tests.logout();
+
 -- ============================== grupo: varredura de segurança (Fase 8)
 --
 -- Duas travas que valem para o schema inteiro, e não para uma tabela: uma

@@ -23,7 +23,12 @@ end;
 $$;
 
 -- Passa a agir como o usuário informado, igual ao que o PostgREST faz por request.
-create or replace function tests.login(p_email text)
+--
+-- `p_aal` é o nível de garantia da sessão que vai no JWT: `aal2` depois do
+-- segundo fator, `aal1` só com a senha. O padrão é `aal2` porque só a equipe
+-- da plataforma depende dele (A01) e os grupos antigos testam a equipe já
+-- entrada; o grupo do segundo fator passa `aal1` para provar a trava.
+create or replace function tests.login(p_email text, p_aal text default 'aal2')
 returns void
 language plpgsql
 as $$
@@ -33,7 +38,7 @@ begin
   select id into strict v_id from auth.users where email = p_email;
   perform set_config(
     'request.jwt.claims',
-    json_build_object('sub', v_id, 'role', 'authenticated')::text,
+    json_build_object('sub', v_id, 'role', 'authenticated', 'aal', p_aal)::text,
     false
   );
 end;

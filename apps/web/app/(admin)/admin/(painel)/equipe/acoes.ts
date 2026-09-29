@@ -20,7 +20,9 @@
  */
 import { revalidatePath } from 'next/cache';
 import type { Json, PlatformAdminRole } from '@storefy/db';
+import { ehUuid } from '@/lib/app-config-publica';
 import { exigirPlatformAdminComPapel } from '@/lib/contexto';
+import { mensagemDaFalha } from '@/lib/erros';
 import { criarClientServiceRole } from '@/lib/supabase/admin';
 import { criarClientServidor } from '@/lib/supabase/server';
 import {
@@ -195,6 +197,40 @@ export async function removerAdmin(alvoId: string): Promise<EstadoDaEquipe> {
   revalidatePath('/admin/equipe');
 
   return { ok: true, mensagem: 'Pessoa removida da equipe.' };
+}
+
+/**
+ * Redefine o segundo fator de alguém da equipe — quem perdeu o celular.
+ *
+ * As regras (só superadmin, nunca o próprio, só de quem é da equipe e tem o
+ * app) moram na função do banco, que também apaga os fatores, encerra as
+ * sessões da pessoa e grava a auditoria na mesma transação. A tela usa
+ * `podeRedefinirSegundoFator` só para decidir se mostra o botão.
+ */
+export async function redefinirSegundoFatorDoAdmin(alvoId: string): Promise<EstadoDaEquipe> {
+  const { usuario } = await exigirPlatformAdminComPapel();
+  if (!ehUuid(alvoId)) return { mensagem: 'Essa pessoa não está mais na equipe.' };
+
+  const { error } = await criarClientServiceRole().rpc('admin_redefinir_segundo_fator', {
+    p_ator: usuario.id,
+    p_alvo: alvoId,
+  });
+  if (error != null) {
+    return {
+      mensagem: mensagemDaFalha(
+        'equipe.segundo-fator',
+        error,
+        'Não conseguimos redefinir a verificação. Tente de novo.',
+      ),
+    };
+  }
+
+  revalidatePath('/admin/equipe');
+  return {
+    ok: true,
+    mensagem:
+      'Verificação redefinida. A pessoa saiu de todas as sessões e cadastra o app autenticador de novo no próximo acesso.',
+  };
 }
 
 /**

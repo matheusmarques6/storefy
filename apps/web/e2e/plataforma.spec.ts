@@ -52,13 +52,7 @@ async function entrarComoEquipe(
 ): Promise<string> {
   const email = emailDeTeste(rotulo);
   const id = await criarUsuarioConfirmado(email, `Equipe ${rotulo}`);
-  if (papel === 'superadmin') {
-    await tornarPlatformAdmin(id);
-  } else {
-    await bancoDeTeste()
-      .from('platform_admins')
-      .upsert({ user_id: id, role: 'support' }, { onConflict: 'user_id' });
-  }
+  await tornarPlatformAdmin(id, papel);
   equipeDeTeste.push(id);
   await entrar(page, email);
   return id;

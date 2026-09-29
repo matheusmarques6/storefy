@@ -12,6 +12,7 @@ import {
   lerEquipe,
   podeConvidar,
   podeMudarPapel,
+  podeRedefinirSegundoFator,
   podeRemover,
 } from '@/lib/equipe-admin';
 
@@ -86,6 +87,35 @@ describe('podeConvidar', () => {
   });
 });
 
+describe('podeRedefinirSegundoFator', () => {
+  const ALVO_COM_APP = { id: 'b', segundoFator: true };
+
+  it('superadmin redefine o de outra pessoa que tem o app', () => {
+    expect(podeRedefinirSegundoFator(CHEFE, ALVO_COM_APP)).toEqual({ ok: true });
+    expect(podeRedefinirSegundoFator(CHEFE, { id: 'c', segundoFator: true })).toEqual({
+      ok: true,
+    });
+  });
+
+  it('suporte não redefine de ninguém', () => {
+    const resposta = podeRedefinirSegundoFator(SUPORTE, ALVO_COM_APP);
+    expect(resposta.ok).toBe(false);
+  });
+
+  it('ninguém redefine o próprio', () => {
+    const resposta = podeRedefinirSegundoFator(OUTRO_CHEFE, ALVO_COM_APP);
+    expect(resposta).toEqual({
+      ok: false,
+      motivo: 'Você não pode redefinir a sua própria verificação. Peça a outro superadmin.',
+    });
+  });
+
+  it('sem o app ativo não há o que redefinir', () => {
+    const resposta = podeRedefinirSegundoFator(CHEFE, { id: 'b', segundoFator: false });
+    expect(resposta.ok).toBe(false);
+  });
+});
+
 describe('emailNormalizado', () => {
   /* O Supabase guarda em minúsculas: um e-mail com maiúscula não acharia a
    * conta que existe, e a tela diria "usuário não encontrado" sobre alguém
@@ -108,6 +138,7 @@ describe('lerEquipe', () => {
     email: 'fulano@storefy.com.br',
     role: 'support' as const,
     created_at: '2026-01-10T12:00:00Z',
+    segundo_fator: true,
   };
 
   it('normaliza uma linha completa', () => {
@@ -117,8 +148,14 @@ describe('lerEquipe', () => {
         email: 'fulano@storefy.com.br',
         papel: 'support',
         desde: '2026-01-10T12:00:00Z',
+        segundoFator: true,
       },
     ]);
+  });
+
+  it('segundo fator nulo conta como ainda não ativado', () => {
+    expect(lerEquipe([{ ...BRUTO, segundo_fator: null }])[0]?.segundoFator).toBe(false);
+    expect(lerEquipe([{ ...BRUTO, segundo_fator: false }])[0]?.segundoFator).toBe(false);
   });
 
   /*

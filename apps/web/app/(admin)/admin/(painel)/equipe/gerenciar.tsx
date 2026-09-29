@@ -1,22 +1,29 @@
 'use client';
 
 /**
- * As ações da A11: convidar, mudar papel e remover.
+ * As ações da A11: convidar, mudar papel, remover e redefinir o segundo fator.
  *
- * Remover pede confirmação; mudar papel não. A diferença não é de gosto: tirar
- * alguém da equipe apaga um acesso que só outro superadmin devolve, e trocar
- * o papel é um clique que se desfaz com outro clique.
+ * Remover e redefinir pedem confirmação; mudar papel não. A diferença não é
+ * de gosto: tirar alguém da equipe apaga um acesso que só outro superadmin
+ * devolve, redefinir derruba as sessões da pessoa e a obriga a cadastrar o app
+ * de novo, e trocar o papel é um clique que se desfaz com outro clique.
  *
  * Quem não é superadmin não vê nada disto — e o servidor recusa de novo, caso
  * alguém chegue por outro caminho.
  */
 import { useActionState, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
-import { Loader2, UserMinus, UserPlus } from 'lucide-react';
+import { KeyRound, Loader2, UserMinus, UserPlus } from 'lucide-react';
 import { toast } from 'sonner';
 import type { PlatformAdminRole } from '@storefy/db';
 import { ROTULO_PAPEL_ADMIN } from '@/lib/equipe-admin';
-import { convidarAdmin, mudarPapelDoAdmin, removerAdmin, type EstadoDaEquipe } from './acoes';
+import {
+  convidarAdmin,
+  mudarPapelDoAdmin,
+  redefinirSegundoFatorDoAdmin,
+  removerAdmin,
+  type EstadoDaEquipe,
+} from './acoes';
 import { valoresDigitados, type ValoresDigitados } from '@/lib/validacao';
 import { Button } from '@/components/ui/button';
 import { Campo, propsDoCampo } from '@/components/campo';
@@ -128,13 +135,17 @@ export function AcoesDaLinha({
   userId,
   email,
   papel,
+  podeRedefinir,
 }: {
   userId: string;
   email: string;
   papel: PlatformAdminRole;
+  /** A pessoa tem o app autenticador ativo — e há o que redefinir. */
+  podeRedefinir: boolean;
 }) {
   const router = useRouter();
   const [confirmando, setConfirmando] = useState(false);
+  const [redefinindo, setRedefinindo] = useState(false);
   const [ocupado, iniciar] = useTransition();
 
   const outroPapel: PlatformAdminRole = papel === 'superadmin' ? 'support' : 'superadmin';
@@ -143,6 +154,7 @@ export function AcoesDaLinha({
     iniciar(async () => {
       const resultado = await acao();
       setConfirmando(false);
+      setRedefinindo(false);
 
       if (resultado.ok === true) {
         toast.success(resultado.mensagem ?? sucesso);
@@ -154,7 +166,7 @@ export function AcoesDaLinha({
   }
 
   return (
-    <div className="flex items-center justify-end gap-2">
+    <div className="flex flex-wrap items-center justify-end gap-2">
       <Button
         type="button"
         variant="ghost"
@@ -166,6 +178,21 @@ export function AcoesDaLinha({
       >
         Tornar {ROTULO_PAPEL_ADMIN[outroPapel].toLowerCase()}
       </Button>
+
+      {podeRedefinir ? (
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          disabled={ocupado}
+          onClick={() => {
+            setRedefinindo(true);
+          }}
+        >
+          <KeyRound className="size-4" aria-hidden />
+          Redefinir verificação
+        </Button>
+      ) : null}
 
       <Button
         type="button"
@@ -204,6 +231,32 @@ export function AcoesDaLinha({
             >
               {ocupado ? <Loader2 className="size-4 animate-spin" aria-hidden /> : null}
               Remover
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={redefinindo} onOpenChange={setRedefinindo}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Redefinir a verificação em duas etapas de {email}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Use quando a pessoa perdeu o celular ou trocou de aparelho. O app autenticador dela
+              deixa de valer, ela sai de todas as sessões abertas e, no próximo acesso, cadastra o
+              app de novo antes de entrar no painel.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={ocupado}>Voltar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(evento) => {
+                evento.preventDefault();
+                rodar(async () => redefinirSegundoFatorDoAdmin(userId), 'Verificação redefinida.');
+              }}
+              disabled={ocupado}
+            >
+              {ocupado ? <Loader2 className="size-4 animate-spin" aria-hidden /> : null}
+              Redefinir
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

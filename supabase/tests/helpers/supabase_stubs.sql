@@ -72,8 +72,64 @@ as $$
   );
 $$;
 
+-- O JWT inteiro da request — é dele que sai o `aal` (nível de garantia da
+-- sessão). Mesma definição do Supabase.
+create or replace function auth.jwt()
+returns jsonb
+language sql
+stable
+as $$
+  select coalesce(
+    nullif(current_setting('request.jwt.claim', true), ''),
+    nullif(current_setting('request.jwt.claims', true), '')
+  )::jsonb;
+$$;
+
 grant execute on function auth.uid() to anon, authenticated, service_role;
 grant execute on function auth.role() to anon, authenticated, service_role;
+grant execute on function auth.jwt() to anon, authenticated, service_role;
+
+/*
+ * Subconjunto do MFA do Auth: os fatores de cada usuário e as sessões abertas.
+ * A equipe da plataforma só vale como equipe com o segundo fator confirmado
+ * (A01), e a redefinição dele apaga os fatores e encerra as sessões. Tipos e
+ * colunas iguais aos do Supabase, só as que as nossas funções usam.
+ */
+do $$
+begin
+  if not exists (select 1 from pg_type t join pg_namespace n on n.oid = t.typnamespace
+                  where n.nspname = 'auth' and t.typname = 'factor_type') then
+    create type auth.factor_type as enum ('totp', 'webauthn', 'phone', 'recovery_code');
+  end if;
+  if not exists (select 1 from pg_type t join pg_namespace n on n.oid = t.typnamespace
+                  where n.nspname = 'auth' and t.typname = 'factor_status') then
+    create type auth.factor_status as enum ('unverified', 'verified');
+  end if;
+  if not exists (select 1 from pg_type t join pg_namespace n on n.oid = t.typnamespace
+                  where n.nspname = 'auth' and t.typname = 'aal_level') then
+    create type auth.aal_level as enum ('aal1', 'aal2', 'aal3');
+  end if;
+end
+$$;
+
+create table if not exists auth.mfa_factors (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users (id) on delete cascade,
+  friendly_name text,
+  factor_type auth.factor_type not null,
+  status auth.factor_status not null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists auth.sessions (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users (id) on delete cascade,
+  created_at timestamptz default now(),
+  updated_at timestamptz default now(),
+  factor_id uuid,
+  aal auth.aal_level
+);
 
 -- As migrations criam as extensões com `with schema extensions`.
 create extension if not exists pgcrypto with schema extensions;

@@ -21,6 +21,7 @@ import {
   type PlatformAdminRole,
 } from '@storefy/db';
 import { criarClientServidor } from '@/lib/supabase/server';
+import { situacaoDoSegundoFator, type SituacaoDoSegundoFator } from '@/lib/segundo-fator';
 import { visitaDoPedido, type DadosDaVisita } from '@/lib/visita';
 import { COOKIE_LOJA_DA_VISITA } from '@/lib/visita-nomes';
 import { log } from '@/lib/log';
@@ -208,11 +209,61 @@ async function contextoDaVisita(
  * Guarda do painel admin.
  *
  * Confere `platform_admins` no banco a cada request. Não há atalho por cookie
- * nem por claim: o único lugar que decide quem é da equipe é a tabela.
+ * nem por claim: o único lugar que decide quem é da equipe é a tabela. E só
+ * entra quem confirmou o segundo fator nesta sessão (A01).
  */
 export async function exigirPlatformAdmin(): Promise<User> {
   return (await exigirPlatformAdminComPapel()).usuario;
 }
+
+/**
+ * Quem é da equipe, e em que pé está o segundo fator — sem decidir para onde
+ * mandar.
+ *
+ * É o crivo das telas do próprio segundo fator (/admin/verificar e
+ * /admin/ativar-2fa), que recebem justamente quem ainda não passou dele; o
+ * resto do admin usa `exigirPlatformAdminComPapel`, que exige o fator.
+ *
+ * O nível da sessão sai de `getClaims()`, que confere a assinatura do JWT, e
+ * não do que o cookie diz de si. Os fatores vêm do `getUser()`, que pergunta
+ * ao Auth — um fator redefinido pela equipe some daqui na mesma hora.
+ */
+export const equipeNaEntrada = cache(async function equipeNaEntrada(): Promise<{
+  usuario: User;
+  papel: PlatformAdminRole;
+  segundoFator: SituacaoDoSegundoFator;
+}> {
+  const supabase = await criarClientServidor();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (user == null) redirect('/admin/entrar');
+
+  const { data: registro, error } = await supabase
+    .from('platform_admins')
+    .select('user_id, role')
+    .eq('user_id', user.id)
+    .maybeSingle();
+
+  if (error != null) {
+    throw new Error(`Não foi possível validar seu acesso de administrador: ${error.message}`);
+  }
+  if (registro == null) redirect('/admin/sem-acesso');
+
+  const { data: sessao, error: erroDaSessao } = await supabase.auth.getClaims();
+  if (erroDaSessao != null) {
+    throw new Error(
+      `Não foi possível conferir a verificação em duas etapas: ${erroDaSessao.message}`,
+    );
+  }
+
+  return {
+    usuario: user,
+    papel: registro.role,
+    segundoFator: situacaoDoSegundoFator(sessao?.claims.aal, user.factors),
+  };
+});
 
 /**
  * O mesmo crivo, devolvendo também o PAPEL.
@@ -233,31 +284,21 @@ export async function exigirPlatformAdmin(): Promise<User> {
  * retorno de `exigirPlatformAdmin` porque os dez chamadores existentes não
  * precisam do papel, e trocar o tipo de todos para ganhar um campo que nove
  * ignoram é barulho no diff de quem vier depois.
+ *
+ * Senha certa sem o segundo fator não passa: quem tem o app cadastrado vai
+ * digitar o código; quem ainda não tem vai cadastrar. O banco faz a mesma
+ * conta (`is_platform_admin()` exige a sessão `aal2`), então pular esta
+ * guarda chamando a API direto também não abre nada.
  */
 export const exigirPlatformAdminComPapel = cache(
   async function exigirPlatformAdminComPapel(): Promise<{
     usuario: User;
     papel: PlatformAdminRole;
   }> {
-    const supabase = await criarClientServidor();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
-    if (user == null) redirect('/admin/entrar');
-
-    const { data: registro, error } = await supabase
-      .from('platform_admins')
-      .select('user_id, role')
-      .eq('user_id', user.id)
-      .maybeSingle();
-
-    if (error != null) {
-      throw new Error(`Não foi possível validar seu acesso de administrador: ${error.message}`);
-    }
-    if (registro == null) redirect('/admin/sem-acesso');
-
-    return { usuario: user, papel: registro.role };
+    const { usuario, papel, segundoFator } = await equipeNaEntrada();
+    if (segundoFator === 'falta-verificar') redirect('/admin/verificar');
+    if (segundoFator === 'falta-ativar') redirect('/admin/ativar-2fa');
+    return { usuario, papel };
   },
 );
 

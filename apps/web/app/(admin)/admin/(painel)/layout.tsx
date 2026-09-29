@@ -2,14 +2,15 @@
  * Moldura do painel admin.
  *
  * `exigirPlatformAdmin()` roda a cada request: sem registro em
- * `platform_admins`, o usuário vai para /admin/sem-acesso. É a guarda exigida
- * no escopo da Fase 0.
+ * `platform_admins`, o usuário vai para /admin/sem-acesso; sem o segundo fator
+ * nesta sessão, para /admin/verificar (ou /admin/ativar-2fa, quem ainda não
+ * cadastrou o app). É a guarda exigida no escopo da Fase 0, com a A01.
  */
 import Link from 'next/link';
 import { exigirPlatformAdmin } from '@/lib/contexto';
 import { NavegacaoAdmin, NavegacaoAdminMovel } from './navegacao';
 import { VisitaAberta } from './visita-aberta';
-import { sair } from '../../../(client)/(publico)/acoes';
+import { sairDoAdmin } from '../acoes';
 import { Button } from '@/components/ui/button';
 
 export default async function LayoutAdmin({ children }: { children: React.ReactNode }) {
@@ -29,7 +30,8 @@ export default async function LayoutAdmin({ children }: { children: React.ReactN
             <span className="text-muted-foreground hidden truncate text-xs sm:inline">
               {usuario.email}
             </span>
-            <form action={sair}>
+            {/* Sai para o login do admin: é por ali que a equipe volta. */}
+            <form action={sairDoAdmin}>
               <Button type="submit" variant="ghost" size="sm">
                 Sair
               </Button>

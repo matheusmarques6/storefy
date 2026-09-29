@@ -70,12 +70,18 @@ export function LinhaCopiavel({
          * cadeia só, separada por vírgula SEM espaço, e vírgula não é ponto de
          * quebra em CSS. Sem isto, aquela linha furava o card e punha rolagem
          * lateral na página inteira no celular.
+         *
+         * No monoespaçado, `overflow-wrap: anywhere` e não `break-all`: uma
+         * chave sem espaço (link, impressão digital) continua quebrando onde
+         * precisar, mas a chave do app autenticador, em grupos de quatro,
+         * quebra ENTRE os grupos — cortar "4XIT" em "4XI" e "T" faz quem
+         * digita à mão errar.
          */
         className={
           codigo
             ? 'min-w-0 flex-1 overflow-x-auto font-mono text-xs whitespace-pre'
             : monoespacado
-              ? 'min-w-0 flex-1 font-mono text-xs break-all whitespace-pre-wrap'
+              ? 'min-w-0 flex-1 font-mono text-xs [overflow-wrap:anywhere] whitespace-pre-wrap'
               : 'min-w-0 flex-1 font-sans text-sm break-words whitespace-pre-wrap'
         }
       >

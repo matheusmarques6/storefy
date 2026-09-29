@@ -1597,7 +1597,7 @@ export type Database = {
       };
       admin_equipe: {
         Args: Record<string, never>;
-        Returns: { user_id: string | null; email: string | null; role: Database["public"]["Enums"]["platform_admin_role"] | null; created_at: string | null }[];
+        Returns: { user_id: string | null; email: string | null; role: Database["public"]["Enums"]["platform_admin_role"] | null; created_at: string | null; segundo_fator: boolean | null }[];
       };
       admin_membros_da_org: {
         Args: { p_org_id: string };
@@ -1606,6 +1606,10 @@ export type Database = {
       admin_notas_da_org: {
         Args: { p_org_id: string; p_limite?: number };
         Returns: { id: string | null; body: string | null; created_at: string | null; author_id: string | null; author_email: string | null }[];
+      };
+      admin_redefinir_segundo_fator: {
+        Args: { p_ator: string; p_alvo: string };
+        Returns: number;
       };
       admin_usuario_por_email: {
         Args: { p_email: string };

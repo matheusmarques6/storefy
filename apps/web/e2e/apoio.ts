@@ -5,11 +5,13 @@
  * é removido no final. Nada disso pode sobrar no app.
  */
 import { createClient } from '@supabase/supabase-js';
-import type { Database } from '@storefy/db';
+import type { Database, PlatformAdminRole } from '@storefy/db';
 import type { Page } from '@playwright/test';
+import { codigoTotp } from './totp';
 
 const URL = process.env.NEXT_PUBLIC_SUPABASE_URL ?? '';
 const SERVICE_ROLE = process.env.SUPABASE_SERVICE_ROLE_KEY ?? '';
+const ANON = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? '';
 
 /** Só rodamos os testes quando há um Supabase configurado para apontar. */
 export const SUPABASE_DISPONIVEL = URL !== '' && SERVICE_ROLE !== '';
@@ -81,12 +83,104 @@ export async function criarUsuarioConfirmado(email: string, nomeEmpresa: string)
   return data.user.id;
 }
 
-/** Promove um usuário a administrador da plataforma. */
-export async function tornarPlatformAdmin(userId: string): Promise<void> {
-  const { error } = await admin()
+/**
+ * O segredo do app autenticador de cada admin de teste, pelo e-mail: é com ele
+ * que `entrar` digita o código do segundo fator, como a pessoa faria olhando
+ * o celular.
+ */
+const segredosDoApp = new Map<string, string>();
+
+/**
+ * Cadastra e confirma um app autenticador para a conta, pela API do Auth — o
+ * que o celular faria lendo o QR code. Devolve o segredo, para calcular os
+ * códigos seguintes.
+ *
+ * A sessão usada aqui é só do cadastro, e sai no fim (escopo local: a do
+ * navegador do teste, se houver, continua).
+ */
+export async function cadastrarAppAutenticador(email: string): Promise<string> {
+  const cliente = createClient<Database>(URL, ANON, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  });
+  const { error: erroDoLogin } = await cliente.auth.signInWithPassword({
+    email,
+    password: SENHA_PADRAO,
+  });
+  if (erroDoLogin != null) throw new Error(`Login do cadastro do app: ${erroDoLogin.message}`);
+
+  const { data, error } = await cliente.auth.mfa.enroll({
+    factorType: 'totp',
+    issuer: 'Storefy Admin',
+    friendlyName: 'Storefy Admin',
+  });
+  if (error != null) throw new Error(`Cadastro do app autenticador: ${error.message}`);
+
+  const { error: erroDaConfirmacao } = await cliente.auth.mfa.challengeAndVerify({
+    factorId: data.id,
+    code: codigoTotp(data.totp.secret),
+  });
+  if (erroDaConfirmacao != null) {
+    throw new Error(`Confirmação do app autenticador: ${erroDaConfirmacao.message}`);
+  }
+
+  await cliente.auth.signOut({ scope: 'local' });
+  return data.totp.secret;
+}
+
+/** O segredo do app de um admin de teste — para usar o código fora da tela, direto na API. */
+export function segredoDoAppDeTeste(email: string): string {
+  const segredo = segredosDoApp.get(email);
+  if (segredo === undefined) throw new Error(`${email} não tem app autenticador de teste.`);
+  return segredo;
+}
+
+/**
+ * Promove um usuário a administrador da plataforma — já com o app
+ * autenticador cadastrado, porque sem ele a equipe não entra no painel (A01).
+ * O `entrar` seguinte digita o código sozinho.
+ */
+export async function tornarPlatformAdmin(
+  userId: string,
+  papel: PlatformAdminRole = 'superadmin',
+): Promise<void> {
+  const banco = admin();
+  const { error } = await banco
     .from('platform_admins')
-    .upsert({ user_id: userId, role: 'superadmin' }, { onConflict: 'user_id' });
+    .upsert({ user_id: userId, role: papel }, { onConflict: 'user_id' });
   if (error != null) throw new Error(`Não foi possível criar o admin de teste: ${error.message}`);
+
+  const { data, error: erroDoUsuario } = await banco.auth.admin.getUserById(userId);
+  const email = data.user?.email;
+  if (erroDoUsuario != null || email === undefined) {
+    throw new Error(`Admin de teste sem e-mail: ${erroDoUsuario?.message ?? userId}`);
+  }
+  segredosDoApp.set(email, await cadastrarAppAutenticador(email));
+}
+
+/**
+ * Na tela de cadastro do app (/admin/ativar-2fa), faz o que a pessoa faria
+ * com o celular: começa, "lê" a chave mostrada (a mesma do QR code) e digita
+ * o primeiro código. Devolve a chave, para os códigos seguintes.
+ */
+export async function ativarAppPelaTela(page: Page): Promise<string> {
+  await page.getByRole('button', { name: 'Começar' }).click();
+  await page
+    .getByRole('img', { name: 'QR code para cadastrar a Storefy Admin no app autenticador' })
+    .waitFor();
+  const chave = await page.getByText(/^[A-Z2-7]{4}( [A-Z2-7]{1,4})+$/).innerText();
+  const segredo = chave.replace(/\s/g, '');
+  await page.getByLabel('Código que o app mostra').fill(codigoTotp(segredo));
+  await page.getByRole('button', { name: 'Ativar e entrar' }).click();
+  return segredo;
+}
+
+/**
+ * Na tela do segundo fator (/admin/verificar), digita o código do app — o
+ * passo que a equipe dá depois da senha.
+ */
+export async function digitarCodigoDoApp(page: Page, segredo: string): Promise<void> {
+  await page.getByLabel('Código do app').fill(codigoTotp(segredo));
+  await page.getByRole('button', { name: 'Confirmar' }).click();
 }
 
 /**
@@ -107,6 +201,19 @@ export async function limparUsuariosDeTeste(): Promise<void> {
     if (error != null || data.users.length === 0) break;
 
     const descartaveis = data.users.filter((u) => u.email?.startsWith(`${PREFIXO}+`) === true);
+
+    /*
+     * A trilha sem cliente (org nula) — mudanças na equipe, segundo fator —
+     * não sai pela organização. Sai por quem fez ou sobre quem foi, e ANTES
+     * de excluir os usuários: depois, o `actor_id` vira nulo e a linha não
+     * tem mais como ser achada.
+     */
+    const ids = descartaveis.map((usuario) => usuario.id);
+    for (let inicio = 0; inicio < ids.length; inicio += 50) {
+      const lote = ids.slice(inicio, inicio + 50);
+      await cliente.from('audit_logs').delete().is('org_id', null).in('actor_id', lote);
+      await cliente.from('audit_logs').delete().is('org_id', null).in('entity_id', lote);
+    }
 
     for (const usuario of descartaveis) {
       // As organizações precisam ser coletadas ANTES: depois de excluir o
@@ -145,11 +252,24 @@ export async function limparUsuariosDeTeste(): Promise<void> {
   }
 }
 
-/** Faz login pela interface, como o usuário faria. */
+/**
+ * Faz login pela interface, como o usuário faria.
+ *
+ * Quem é da equipe (promovido por `tornarPlatformAdmin`) também passa pelo
+ * segundo fator, digitando o código do app, e volta ao painel do cliente —
+ * onde o login comum termina.
+ */
 export async function entrar(page: Page, email: string): Promise<void> {
   await page.goto('/entrar');
   await page.getByLabel('E-mail').fill(email);
   await page.getByLabel('Senha').fill(SENHA_PADRAO);
   await page.getByRole('button', { name: 'Entrar', exact: true }).click();
   await page.waitForURL('/');
+
+  const segredo = segredosDoApp.get(email);
+  if (segredo === undefined) return;
+  await page.goto('/admin/verificar');
+  await digitarCodigoDoApp(page, segredo);
+  await page.waitForURL((url) => url.pathname === '/admin');
+  await page.goto('/');
 }

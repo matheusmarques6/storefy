@@ -110,6 +110,33 @@ export function podeConvidar(quemPede: { papel: PlatformAdminRole }): Permissao 
 }
 
 /**
+ * Pode redefinir o segundo fator (o app autenticador) deste admin?
+ *
+ * É o caminho de volta de quem perdeu o celular: sem o app, a pessoa não
+ * entra no painel, e só outro superadmin a destrava. Ninguém redefine o
+ * próprio — quem está aqui dentro passou pelo segundo fator agora há pouco, e
+ * não perdeu nada; e sem o fator ativo não há o que redefinir.
+ */
+export function podeRedefinirSegundoFator(
+  quemPede: { id: string; papel: PlatformAdminRole },
+  alvo: { id: string; segundoFator: boolean },
+): Permissao {
+  if (quemPede.papel !== 'superadmin') {
+    return { ok: false, motivo: 'Só um superadmin redefine a verificação em duas etapas.' };
+  }
+  if (quemPede.id === alvo.id) {
+    return {
+      ok: false,
+      motivo: 'Você não pode redefinir a sua própria verificação. Peça a outro superadmin.',
+    };
+  }
+  if (!alvo.segundoFator) {
+    return { ok: false, motivo: 'Essa pessoa ainda não ativou a verificação em duas etapas.' };
+  }
+  return { ok: true };
+}
+
+/**
  * O e-mail digitado, normalizado — ou `null` quando não parece e-mail.
  *
  * Minúsculas e sem espaço porque é assim que o Supabase guarda, e um e-mail
@@ -127,6 +154,7 @@ export interface MembroBruto {
   email: string | null;
   role: PlatformAdminRole | null;
   created_at: string | null;
+  segundo_fator: boolean | null;
 }
 
 export interface Membro {
@@ -134,6 +162,8 @@ export interface Membro {
   email: string;
   papel: PlatformAdminRole;
   desde: string | null;
+  /** Já tem o app autenticador confirmado. Sem ele, cadastra no próximo acesso. */
+  segundoFator: boolean;
 }
 
 /**
@@ -160,6 +190,8 @@ export function lerEquipe(brutas: MembroBruto[]): Membro[] {
       email: bruta.email ?? 'sem e-mail',
       papel: bruta.role,
       desde: bruta.created_at,
+      // Nulo não é "tem": na dúvida, a tela não oferece redefinir o que talvez não exista.
+      segundoFator: bruta.segundo_fator === true,
     });
   }
 
