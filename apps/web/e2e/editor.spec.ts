@@ -273,3 +273,153 @@ test('o aviso no topo: liga, confere texto e link, aparece na prévia e grava', 
   await expect.poll(async () => (await rascunhoNoBanco(lojaId)).announcement?.enabled).toBe(false);
   expect((await rascunhoNoBanco(lojaId)).announcement?.text).toBe('Frete grátis acima de R$ 199');
 });
+
+test('as abas mudam de ordem arrastando, e as setas não perdem o foco', async ({ page }) => {
+  const email = emailDeTeste('editor-arraste');
+  await criarUsuarioConfirmado(email, 'Empresa Editor Arraste');
+  await entrar(page, email);
+  const lojaId = await criarLojaPelaTela(page, 'Loja Editor Arraste', 'loja-editor-arraste.com.br');
+
+  // Alta o bastante para a lista inteira caber: o arraste mira pelas medidas da tela.
+  await page.setViewportSize({ width: 1280, height: 1400 });
+  await page.goto('/app');
+  await page.waitForLoadState('networkidle');
+  const barra = page.getByRole('region', { name: 'Publicação do app' });
+  const publicar = barra.getByRole('button', { name: /Publicar alterações/ });
+
+  // Publicada a versão de partida, o que muda depois vira frase no "o que vai ao ar".
+  await publicar.click();
+  await page.getByRole('button', { name: 'Publicar agora' }).click();
+  await expect(barra.getByText('Igual à versão no ar')).toBeVisible();
+  await page.getByRole('button', { name: 'Abas' }).click();
+
+  const ordemNaTela = () =>
+    page
+      .getByLabel('Nome na barra')
+      .evaluateAll((campos) => campos.map((campo) => (campo as HTMLInputElement).value));
+  // O nome de cada aba na barra da prévia (o selo do carrinho fica de fora).
+  const ordemNaPrevia = () =>
+    page.locator('[data-aparelho] button[aria-pressed] > span:last-child').allInnerTexts();
+  const ordemNoBanco = async () => (await rascunhoNoBanco(lojaId)).tabs.map((aba) => aba.label);
+  const anuncio = page.getByTestId('anuncio-das-abas');
+  const alcas = page.getByTestId('alca-da-aba');
+  const arrastada = page.locator('li[data-arrastada]');
+  const linha = (id: string) =>
+    page.getByRole('listitem').filter({ has: page.locator(`#aba-${id}-nome`) });
+
+  await expect.poll(ordemNaTela).toEqual(['Início', 'Buscar', 'Carrinho', 'Conta']);
+  await expect(
+    page.getByText(
+      'Para mudar a ordem, arraste a aba pelos pontinhos à esquerda ou use as setas.',
+      {
+        exact: false,
+      },
+    ),
+  ).toBeVisible();
+
+  /** Pega a aba pelos pontinhos e leva o ponteiro até `y`, em passos, como a mão faz. */
+  async function pegarELevar(indice: number, y: number) {
+    const caixa = await alcas.nth(indice).boundingBox();
+    if (caixa === null) throw new Error('Os pontinhos da aba não estão na tela.');
+    const x = caixa.x + caixa.width / 2;
+    await page.mouse.move(x, caixa.y + caixa.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(x, y, { steps: 12 });
+  }
+
+  // A Conta, arrastada para cima de tudo, vira a primeira: na lista, na prévia e no banco.
+  const inicio = await linha('inicio').boundingBox();
+  await pegarELevar(3, (inicio?.y ?? 0) + 4);
+  await expect(arrastada).toHaveCount(1);
+  await page.mouse.up();
+  await expect(arrastada).toHaveCount(0);
+  await expect.poll(ordemNaTela).toEqual(['Conta', 'Início', 'Buscar', 'Carrinho']);
+  await expect.poll(ordemNaPrevia).toEqual(['Conta', 'Início', 'Buscar', 'Carrinho']);
+  await expect(anuncio).toHaveText('“Conta” agora é a 1ª de 4 abas.');
+  await expect(barra.getByText(/Rascunho salvo às/)).toBeVisible();
+  await expect.poll(ordemNoBanco).toEqual(['Conta', 'Início', 'Buscar', 'Carrinho']);
+
+  // Escape desiste no meio do caminho: a aba volta ao lugar e nada grava.
+  const carrinho = await linha('carrinho').boundingBox();
+  await pegarELevar(0, (carrinho?.y ?? 0) + (carrinho?.height ?? 0) + 30);
+  await expect(arrastada).toHaveCount(1);
+  await page.keyboard.press('Escape');
+  await expect(arrastada).toHaveCount(0);
+  await page.mouse.up();
+  await page.waitForTimeout(1500);
+  expect(await ordemNaTela()).toEqual(['Conta', 'Início', 'Buscar', 'Carrinho']);
+  expect(await ordemNoBanco()).toEqual(['Conta', 'Início', 'Buscar', 'Carrinho']);
+
+  // Pelas setas, com o teclado, o foco acompanha a aba — subindo e descendo —
+  // e, quando ela chega ao topo, passa para a outra seta.
+  const subirBuscar = page.getByRole('button', { name: 'Mover Buscar para cima' });
+  const descerBuscar = page.getByRole('button', { name: 'Mover Buscar para baixo' });
+  await subirBuscar.focus();
+  await page.keyboard.press('Enter');
+  await expect.poll(ordemNaTela).toEqual(['Conta', 'Buscar', 'Início', 'Carrinho']);
+  await expect(subirBuscar).toBeFocused();
+  await page.keyboard.press('Enter');
+  await expect.poll(ordemNaTela).toEqual(['Buscar', 'Conta', 'Início', 'Carrinho']);
+  await expect(subirBuscar).toBeDisabled();
+  await expect(descerBuscar).toBeFocused();
+  await expect(anuncio).toHaveText('“Buscar” agora é a 1ª de 4 abas.');
+  await page.keyboard.press('Enter');
+  await expect.poll(ordemNaTela).toEqual(['Conta', 'Buscar', 'Início', 'Carrinho']);
+  await expect(descerBuscar).toBeFocused();
+  await expect(anuncio).toHaveText('“Buscar” agora é a 2ª de 4 abas.');
+
+  // Remover leva o foco para a aba que ficou no lugar.
+  await page.getByRole('button', { name: 'Remover Início' }).click();
+  await expect.poll(ordemNaTela).toEqual(['Conta', 'Buscar', 'Carrinho']);
+  await expect(page.locator('#aba-carrinho-nome')).toBeFocused();
+  await expect(anuncio).toHaveText('“Início” saiu da barra.');
+
+  // Numa janela baixa, levar a aba até a borda de cima rola a página, e a aba
+  // segue debaixo do ponteiro enquanto ela rola.
+  await page.setViewportSize({ width: 1280, height: 560 });
+  await alcas.nth(2).evaluate((alca) => {
+    alca.scrollIntoView({ block: 'center' });
+  });
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
+  await pegarELevar(2, 30);
+  await expect.poll(() => page.evaluate(() => window.scrollY), { timeout: 10_000 }).toBe(0);
+  await expect
+    .poll(async () => {
+      const caixa = await arrastada.boundingBox();
+      return caixa !== null && caixa.y <= 30 && caixa.y + caixa.height >= 30;
+    })
+    .toBe(true);
+  await page.mouse.up();
+  await expect.poll(ordemNaTela).toEqual(['Carrinho', 'Conta', 'Buscar']);
+
+  // O que vai ao ar diz a ordem nova, e a de quem saiu.
+  await expect(barra.getByText(/Rascunho salvo às/)).toBeVisible();
+  await expect.poll(ordemNoBanco).toEqual(['Carrinho', 'Conta', 'Buscar']);
+  await publicar.click();
+  const aoPublicar = page.getByRole('alertdialog');
+  await expect(aoPublicar.getByText('Aba removida: “Início”')).toBeVisible();
+  await expect(aoPublicar.getByText('Nova ordem das abas: Carrinho, Conta, Buscar')).toBeVisible();
+  await aoPublicar.getByRole('button', { name: 'Cancelar' }).click();
+
+  // Quem é membro vê a ordem, mas não tem o que arrastar nem setas que funcionem.
+  const membro = emailDeTeste('editor-arraste-membro');
+  const membroId = await criarUsuarioConfirmado(membro, 'Pessoal Membro Arraste');
+  const { data: loja } = await bancoDeTeste()
+    .from('stores')
+    .select('org_id')
+    .eq('id', lojaId)
+    .single();
+  const { error } = await bancoDeTeste()
+    .from('memberships')
+    .insert({ org_id: loja?.org_id ?? '', user_id: membroId, role: 'member' });
+  if (error != null) throw new Error(error.message);
+  await page.context().clearCookies();
+  await entrar(page, membro);
+  await page.goto('/app');
+  await page.waitForLoadState('networkidle');
+  await page.getByRole('button', { name: 'Abas' }).click();
+  await expect.poll(ordemNaTela).toEqual(['Carrinho', 'Conta', 'Buscar']);
+  await expect(alcas).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Mover Conta para cima' })).toBeDisabled();
+  await expect(page.getByText('Para mudar a ordem', { exact: false })).toHaveCount(0);
+});

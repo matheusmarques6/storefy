@@ -1698,6 +1698,18 @@ Também achado pela auditoria das telas contra o plano.
 | Comparar no histórico | ✅ cada versão tem "Comparar": o que muda no rascunho se ela for restaurada, com carregando, erro com "Tentar de novo" e "igual ao seu rascunho"; dali, "Restaurar esta versão" leva à confirmação de sempre. Quem é membro compara e não restaura |
 | Testes | ✅ 8 das frases (cores, abas em todas as formas, itens escondidos, recursos, aviso, config antiga, dados da loja) e os 9 do contador, agora sobre a mesma lista; e2e: o diálogo de publicar com as frases e a comparação levando à restauração |
 
+#### Fase 8n — Entregue (29/09/2026): arrastar e soltar as abas (C06b)
+
+| Item | Estado |
+|---|---|
+| O que faltava | ❌→✅ o C06b pede "arrastar e soltar", e as abas só mudavam de ordem pelas setas, uma posição por clique |
+| O gesto | ✅ cada aba tem pontinhos à esquerda: pega com o mouse ou com o dedo, a aba acompanha o ponteiro com sombra, e as vizinhas deslizam para abrir o espaço onde ela vai cair. Soltar grava sozinho, como toda mudança do editor, e a prévia troca a ordem na hora. Escape (ou o sistema tirando o ponteiro, numa ligação) desiste sem mudar nada |
+| Lista maior que a janela | ✅ levar a aba até a borda de cima ou de baixo rola a página, e a roda do mouse no meio do arraste também vale: a conta é feita a partir do topo da lista, e não da janela, então a aba segue debaixo do ponteiro enquanto a página rola |
+| Teclado e leitor de tela | ✅ as setas continuam sendo o caminho de quem não arrasta, e ficaram melhores: o foco acompanha a aba ao subir e ao descer (antes, descer tirava a aba do lugar na página e o foco sumia), e passa para a outra seta quando a aba chega ao topo ou ao fim. Toda mudança de ordem é anunciada ("“Conta” agora é a 1ª de 4 abas."), e remover uma aba leva o foco para a que ficou no lugar |
+| Sem biblioteca nova | ✅ o levantamento apontava `@hello-pangea/dnd`; o arraste saiu com eventos de ponteiro, em pouco mais de cem linhas, porque as abas têm campos de texto dentro e a biblioteca traria um modo de teclado próprio competindo com eles — as setas já resolvem isso |
+| Quem é membro | ✅ vê a ordem, sem pontinhos e com as setas desligadas |
+| Testes | ✅ 13 da conta do arraste (destino, quem desliza, velocidade da rolagem na borda, anúncio); e2e com o mouse de verdade: arrastar para o topo (lista, prévia e banco), Escape desiste, setas com foco e anúncio, remover, rolagem pela borda numa janela baixa, "Nova ordem das abas" no diálogo de publicar e o membro sem o que arrastar |
+
 **Estimativa total:** cerca de 7 a 9 semanas para uma pessoa com Claude Code em ritmo forte. O MVP vendável (Fases 0–4) leva cerca de 4 a 5 semanas.
 
 ---
