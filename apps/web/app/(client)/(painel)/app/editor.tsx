@@ -45,6 +45,8 @@ import { SecaoLoja } from './secao-loja';
 import type { Preset } from '@/lib/presets';
 import type { OndeBaixarAPrevia } from '@/lib/configuracoes-da-plataforma';
 import { conteudoDaConfig, mudancasPendentes } from '@/lib/mudancas-pendentes';
+import { diferencasDaConfig } from '@/lib/diferencas-da-config';
+import { ListaDeDiferencas } from './lista-de-diferencas';
 import { SecaoRecursos } from './secao-recursos';
 import { SecaoVersoes } from './secao-versoes';
 
@@ -54,7 +56,11 @@ const ESPERA_PARA_GRAVAR_MS = 1000;
 type Secao = 'aparencia' | 'abas' | 'loja' | 'recursos' | 'versoes';
 
 const SECOES: { id: Secao; rotulo: string; descricao: string }[] = [
-  { id: 'aparencia', rotulo: 'Aparência', descricao: 'Cores do app e barra de status.' },
+  {
+    id: 'aparencia',
+    rotulo: 'Aparência',
+    descricao: 'Nome, ícone, tela de abertura, cores e barra de status.',
+  },
   { id: 'abas', rotulo: 'Abas', descricao: 'O que aparece na barra de baixo, e em que ordem.' },
   { id: 'loja', rotulo: 'Loja', descricao: 'O que esconder do site dentro do app.' },
   {
@@ -62,7 +68,11 @@ const SECOES: { id: Secao; rotulo: string; descricao: string }[] = [
     rotulo: 'Recursos',
     descricao: 'Boas-vindas, banner, aviso no topo, notificações e Face ID.',
   },
-  { id: 'versoes', rotulo: 'Versões', descricao: 'O que já foi publicado, e como voltar atrás.' },
+  {
+    id: 'versoes',
+    rotulo: 'Versões',
+    descricao: 'O que já foi publicado: comparar com o rascunho e voltar atrás.',
+  },
 ];
 
 interface Props {
@@ -446,6 +456,7 @@ export function Editor({
               {secao === 'versoes' ? (
                 <SecaoVersoes
                   storeId={storeId}
+                  rascunho={config}
                   versoes={historico}
                   somenteLeitura={somenteLeitura}
                   fuso={fuso}
@@ -530,9 +541,24 @@ export function Editor({
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Publicar a versão {versao}?</AlertDialogTitle>
-            <AlertDialogDescription>
-              O app de todos os seus clientes passa a usar esta configuração em até um minuto. A
-              versão que está no ar hoje continua no histórico, e dá para voltar a ela.
+            <AlertDialogDescription asChild>
+              <div className="space-y-3">
+                <p>
+                  O app de todos os seus clientes passa a usar esta configuração em até um minuto. A
+                  versão que está no ar hoje continua no histórico, e dá para voltar a ela.
+                </p>
+                {publicada?.config == null ? (
+                  <p>É a primeira publicação: o app passa a usar tudo o que está no rascunho.</p>
+                ) : (
+                  <div className="space-y-2">
+                    <p className="text-foreground font-medium">O que vai ao ar:</p>
+                    <ListaDeDiferencas
+                      diferencas={diferencasDaConfig(publicada.config, config)}
+                      maximo={8}
+                    />
+                  </div>
+                )}
+              </div>
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

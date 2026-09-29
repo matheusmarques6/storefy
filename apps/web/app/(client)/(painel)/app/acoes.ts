@@ -131,6 +131,50 @@ export async function removerAssetDaLoja(
   return { ok: true, mensagem: 'Imagem removida.' };
 }
 
+export interface EstadoDaComparacao {
+  ok?: boolean;
+  mensagem?: string;
+  config?: AppConfig;
+}
+
+/**
+ * A config de uma versão do histórico, para comparar com o rascunho (C06f).
+ *
+ * Qualquer pessoa da empresa compara — é só leitura, e a RLS de `app_configs`
+ * é quem decide se ela enxerga esta loja. Restaurar continua sendo de dono e
+ * administrador.
+ */
+export async function configDaVersao(storeId: string, versao: number): Promise<EstadoDaComparacao> {
+  await exigirContextoCliente();
+  if (!Number.isInteger(versao) || versao < 1) return { mensagem: 'Versão inválida.' };
+
+  const supabase = await criarClientServidor();
+  const { data: app, error } = await supabase
+    .from('apps')
+    .select('id')
+    .eq('store_id', storeId)
+    .maybeSingle();
+  if (error != null) return { mensagem: traduzirErro(error.code, error.message) };
+  if (app == null) return { mensagem: 'Loja não encontrada.' };
+
+  const { data: linha, error: erroDaVersao } = await supabase
+    .from('app_configs')
+    .select('config')
+    .eq('app_id', app.id)
+    .eq('version', versao)
+    .maybeSingle();
+  if (erroDaVersao != null) {
+    return { mensagem: traduzirErro(erroDaVersao.code, erroDaVersao.message) };
+  }
+  if (linha == null) return { mensagem: 'Não encontramos essa versão. Recarregue a página.' };
+
+  const analise = safeParseAppConfig(linha.config);
+  if (!analise.success) {
+    return { mensagem: 'Essa versão foi gravada num formato antigo e não dá para comparar.' };
+  }
+  return { ok: true, config: analise.data };
+}
+
 /**
  * Troca o nome do app (C06a) — o que aparece embaixo do ícone e na loja de
  * aplicativos. Fora do rascunho: vale no próximo envio às lojas.

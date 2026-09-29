@@ -1687,6 +1687,17 @@ Também achado pela auditoria das telas contra o plano.
 | A trilha do cliente | ✅ cartão "Últimas ações" na A04, com o autor, e "Ver toda a trilha" abrindo a A12 filtrada pela organização (`?org=`); a busca por entidade mantém o filtro; um id que não é de nada não quebra a tela |
 | Testes | ✅ 4 do rótulo do autor; RLS: 4 (usuário comum recusado, e-mail lido pela equipe, marca de equipe, lista vazia); e2e: o lojista pelo e-mail na A04 e na A12, o filtro que sobrevive à busca, "O sistema" para o build movido pelo workflow e o filtro inválido |
 
+#### Fase 8m — Entregue (29/09/2026): comparar versões (C06f) e o que vai ao ar
+
+| Item | Estado |
+|---|---|
+| O que faltava | ❌→✅ o C06f pede "comparar e restaurar", e o histórico só restaurava: o lojista escolhia uma versão por número e data, sem saber o que ela trazia. E o "Publicar a versão N?" não dizia o que ia ao ar |
+| As mudanças em frases | ✅ `diferencasDaConfig` descreve o que muda de uma config para outra, por seção do editor e sem jargão: "Cor principal: #111827 → #be123c", "Aba “Buscar” agora se chama “Procurar”", "Aba nova", "Nova ordem das abas", "Itens escondidos da loja: passa a esconder…; volta a mostrar…", "Aviso no topo: ligado", "Atualização obrigatória: exige a versão 1.0.12". Um campo que o contrato ganhe depois aparece como ajuste genérico em vez de sumir da conta |
+| Uma fonte só para o contador | ✅ o número do "Publicar alterações" passou a ser o tamanho desta lista: o botão nunca discorda do que o diálogo mostra |
+| Ao publicar | ✅ o diálogo lista "O que vai ao ar", agrupado por seção (até oito, e "e mais N"); na primeira publicação, diz que o app passa a usar tudo o que está no rascunho |
+| Comparar no histórico | ✅ cada versão tem "Comparar": o que muda no rascunho se ela for restaurada, com carregando, erro com "Tentar de novo" e "igual ao seu rascunho"; dali, "Restaurar esta versão" leva à confirmação de sempre. Quem é membro compara e não restaura |
+| Testes | ✅ 8 das frases (cores, abas em todas as formas, itens escondidos, recursos, aviso, config antiga, dados da loja) e os 9 do contador, agora sobre a mesma lista; e2e: o diálogo de publicar com as frases e a comparação levando à restauração |
+
 **Estimativa total:** cerca de 7 a 9 semanas para uma pessoa com Claude Code em ritmo forte. O MVP vendável (Fases 0–4) leva cerca de 4 a 5 semanas.
 
 ---

@@ -113,19 +113,29 @@ test('o rascunho se salva sozinho, e o botão de publicar conta as mudanças', a
     'Procurar',
   );
 
+  // O diálogo de publicar diz, em frases, o que vai ao ar.
   await publicar.click();
-  await page.getByRole('button', { name: 'Publicar agora' }).click();
+  const aoPublicar = page.getByRole('alertdialog');
+  await expect(aoPublicar.getByText('O que vai ao ar:')).toBeVisible();
+  await expect(aoPublicar.getByText(`Cor principal: ${corOriginal} → #be123c`)).toBeVisible();
+  await expect(aoPublicar.getByText('Aba “Buscar” agora se chama “Procurar”')).toBeVisible();
+  await aoPublicar.getByRole('button', { name: 'Publicar agora' }).click();
   await expect(page.getByText(/Versão \d+ publicada/)).toBeVisible();
   await expect(barra.getByText('Igual à versão no ar')).toBeVisible();
 
-  // Restaurar a primeira versão troca o que está na tela — não é a volta de
-  // uma gravação — e o contador mostra o que difere do que está no ar.
+  // Comparar a primeira versão com o rascunho diz o que restaurá-la mudaria —
+  // e restaurar dali troca o que está na tela, porque não é a volta de uma
+  // gravação; o contador mostra o que difere do que está no ar.
   await page.getByRole('button', { name: 'Versões' }).click();
   await page
     .getByRole('listitem')
     .filter({ hasText: 'Histórico' })
-    .getByRole('button', { name: 'Restaurar' })
+    .getByRole('button', { name: /Comparar a versão/ })
     .click();
+  const comparacao = page.getByRole('dialog');
+  await expect(comparacao.getByText(`Cor principal: #be123c → ${corOriginal}`)).toBeVisible();
+  await expect(comparacao.getByText('Aba “Procurar” agora se chama “Buscar”')).toBeVisible();
+  await comparacao.getByRole('button', { name: 'Restaurar esta versão' }).click();
   await page.getByRole('alertdialog').getByRole('button', { name: 'Restaurar' }).click();
   await expect(page.getByText(/carregada no rascunho/)).toBeVisible();
   await expect(barra.getByText('2 mudanças desde a versão no ar')).toBeVisible();
