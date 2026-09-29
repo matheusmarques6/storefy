@@ -59,6 +59,8 @@ interface Props {
   historico: VersaoDoHistorico[];
   somenteLeitura: boolean;
   pushConfigurado: boolean;
+  /** O último número de build aprovado nas duas lojas (atualização obrigatória). */
+  numeroExigivel: number | null;
   /** Presets de tema curados pela equipe (A10). Vazio some da tela. */
   presets: Preset[];
   /** O fuso da loja, para as datas do histórico de versões. */
@@ -76,6 +78,7 @@ export function Editor({
   historico,
   somenteLeitura,
   pushConfigurado,
+  numeroExigivel,
   presets,
   fuso,
   urlDoIcone,
@@ -305,6 +308,7 @@ export function Editor({
                   aoMudar={setConfig}
                   somenteLeitura={somenteLeitura}
                   pushConfigurado={pushConfigurado}
+                  numeroExigivel={numeroExigivel}
                 />
               ) : null}
               {secao === 'versoes' ? (

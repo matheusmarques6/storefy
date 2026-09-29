@@ -75,7 +75,13 @@ test('platform admin enxerga organizações e lojas de todos os clientes', async
 
   // Detalhe mostra loja e membro.
   await paginaAdmin.getByRole('link', { name: 'Detalhes' }).first().click();
-  await expect(paginaAdmin.getByText('Loja Visivel')).toBeVisible();
+  // A loja aparece na tabela de lojas e no bloco "App e push".
+  await expect(paginaAdmin.getByRole('cell', { name: 'Loja Visivel' })).toBeVisible();
+  await expect(
+    paginaAdmin.getByRole('region', { name: 'App e push' }).getByRole('heading', {
+      name: 'Loja Visivel',
+    }),
+  ).toBeVisible();
   await expect(paginaAdmin.getByText(emailCliente)).toBeVisible();
 
   // A auditoria registrou a criação da loja.

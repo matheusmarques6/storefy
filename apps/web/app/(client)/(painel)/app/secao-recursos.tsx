@@ -10,6 +10,7 @@ import { Select } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import { editarRecursos } from '@/lib/editor-de-config';
+import { SecaoAtualizacao } from './secao-atualizacao';
 
 const MAX_SLIDES = 4;
 
@@ -18,12 +19,15 @@ export function SecaoRecursos({
   aoMudar,
   somenteLeitura,
   pushConfigurado,
+  numeroExigivel,
 }: {
   config: AppConfig;
   aoMudar: (config: AppConfig) => void;
   somenteLeitura: boolean;
   /** O app já tem push ligado? Muda o que o momento do pedido significa. */
   pushConfigurado: boolean;
+  /** O último número aprovado nas duas lojas. Ver `SecaoAtualizacao`. */
+  numeroExigivel: number | null;
 }) {
   const { features } = config;
 
@@ -251,6 +255,13 @@ export function SecaoRecursos({
           />
         </div>
       </section>
+
+      <SecaoAtualizacao
+        config={config}
+        aoMudar={aoMudar}
+        somenteLeitura={somenteLeitura}
+        numeroExigivel={numeroExigivel}
+      />
     </div>
   );
 }

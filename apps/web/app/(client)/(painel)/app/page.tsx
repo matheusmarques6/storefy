@@ -12,6 +12,7 @@ import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Editor } from './editor';
 import { lerPresets } from '@/lib/presets';
+import { numeroExigivel } from '@/lib/atualizacao-obrigatoria';
 
 export const metadata: Metadata = { title: 'Editor do app' };
 
@@ -48,28 +49,37 @@ export default async function PaginaDoEditor() {
     );
   }
 
-  const [publicada, historico, { data: app }, { data: presetsBrutos }] = await Promise.all([
-    versaoPublicada(supabase, rascunho.rascunho.appId),
-    historicoDeVersoes(supabase, rascunho.rascunho.appId),
-    supabase
-      .from('apps')
-      .select('onesignal_app_id, icon_path, splash_path')
-      .eq('id', rascunho.rascunho.appId)
-      .maybeSingle(),
-    /*
-     * Os presets ATIVOS. A RLS já libera ao lojista só os ligados — mas a
-     * equipe da plataforma lê todos, e o editor é a mesma tela para os dois.
-     * Sem o filtro aqui, alguém da equipe veria no editor presets que nenhum
-     * cliente vê: a tela precisa dizer o que o LOJISTA enxerga, e isso é uma
-     * pergunta da consulta, não de quem está olhando.
-     */
-    supabase
-      .from('config_presets')
-      .select('id, nome, tema, descricao, tabs, hide_selectors, custom_css')
-      .eq('ativo', true)
-      .order('tema', { ascending: true })
-      .order('nome', { ascending: true }),
-  ]);
+  const [publicada, historico, { data: app }, { data: presetsBrutos }, { data: aprovados }] =
+    await Promise.all([
+      versaoPublicada(supabase, rascunho.rascunho.appId),
+      historicoDeVersoes(supabase, rascunho.rascunho.appId),
+      supabase
+        .from('apps')
+        .select('onesignal_app_id, icon_path, splash_path')
+        .eq('id', rascunho.rascunho.appId)
+        .maybeSingle(),
+      /*
+       * Os presets ATIVOS. A RLS já libera ao lojista só os ligados — mas a
+       * equipe da plataforma lê todos, e o editor é a mesma tela para os dois.
+       * Sem o filtro aqui, alguém da equipe veria no editor presets que nenhum
+       * cliente vê: a tela precisa dizer o que o LOJISTA enxerga, e isso é uma
+       * pergunta da consulta, não de quem está olhando.
+       */
+      supabase
+        .from('config_presets')
+        .select('id, nome, tema, descricao, tabs, hide_selectors, custom_css')
+        .eq('ativo', true)
+        .order('tema', { ascending: true })
+        .order('nome', { ascending: true }),
+      // Os builds aprovados pelas lojas: é deles que sai o número que a
+      // atualização obrigatória pode exigir.
+      supabase
+        .from('builds')
+        .select('platform, build_number')
+        .eq('app_id', rascunho.rascunho.appId)
+        .eq('status', 'approved')
+        .not('build_number', 'is', null),
+    ]);
 
   /*
    * Um preset de formato antigo é DESCARTADO, e não derruba o editor: o
@@ -101,6 +111,13 @@ export default async function PaginaDoEditor() {
       fuso={lojaAtiva.timezone}
       somenteLeitura={!podeEscrever(papel)}
       pushConfigurado={(app?.onesignal_app_id ?? null) !== null}
+      numeroExigivel={numeroExigivel(
+        (aprovados ?? []).flatMap((build) =>
+          build.build_number == null
+            ? []
+            : [{ plataforma: build.platform, numero: build.build_number }],
+        ),
+      )}
     />
   );
 }

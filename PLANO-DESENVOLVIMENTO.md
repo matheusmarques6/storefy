@@ -956,6 +956,11 @@ verdes contra o Supabase local, e o que eles e a revisão acharam:
 Travas novas: `formularios-controlados.test.ts`, `erros.test.ts` (varredura de `.message`),
 `datas-com-fuso.test.ts`, o grupo "fuso" do `rls.test.sql` e os 9 testes novos do e2e.
 
+Depois dela, `e2e/visita.spec.ts` (3) e `e2e/plataforma.spec.ts` (4: chaves da A13 com um
+cadastro aberto no meio do caminho, suporte só lendo, atualização obrigatória do editor até a
+config no ar e a ficha A04 com e sem app publicado). A suíte está em 29 testes verdes contra o
+Supabase local, com o log do servidor limpo.
+
 ### Fase 6 — Painel Admin completo (4–6 dias)
 - Telas A02–A13, impersonação com auditoria, presets por tema (A10), feature flags e reexecução de builds.
 - Reaproveitar do admin Convertfy os padrões de tabela, filtros, página de detalhe com abas e notas internas.
@@ -967,14 +972,14 @@ Travas novas: `formularios-controlados.test.ts`, `erros.test.ts` (varredura de `
 | A01 — Login do admin | ✅ `exigirPlatformAdmin()` a cada request; quem não está em `platform_admins` vai para /admin/sem-acesso |
 | **A02 — Visão geral** | ✅ dez números numa chamada só (`resumo_do_admin`), separados em "precisa de você" (só o que é > 0) e "a plataforma hoje" (aparece zerado, porque ali zero é informação). `/admin` passou a ser esta tela |
 | A03 — Organizações (lista) | ✅ saiu de `/admin` para `/admin/organizacoes`, com busca e paginação |
-| A04 — Cliente (detalhe) | ⚠️ lojas, membros, últimos builds, **notas internas** e **"Ver como cliente"** (somente leitura, auditado — ver abaixo). Faltam as abas de app/config, push e cobrança |
+| A04 — Cliente (detalhe) | ⚠️ lojas, membros, últimos builds, **notas internas**, **"Ver como cliente"** (somente leitura, auditado — ver abaixo) e **App e push** por loja: config no ar e desde quando, rascunho parado, atualização obrigatória, versão aprovada em cada loja de aplicativos, projeto Expo, identificadores, notificações, push de 30 dias e automações ligadas. Falta a aba de cobrança (Fase 7) |
 | **A05 — Fila de builds** | ✅ recortes por situação na URL, abrindo no que quebrou; erro da EAS na própria linha; link dos logs; reexecutar com confirmação, travado para build que ainda roda ou que está com a loja |
 | **A06 — Revisões das lojas** | ✅ ordenada do mais ANTIGO para o mais novo (aqui o interessante é o que está parado), com alerta a partir de 7 dias e o motivo da recusa na linha |
 | **A07 — Contas de desenvolvedor** | ✅ estado e identificadores públicos (Team ID, Key ID) de cada cliente. Nenhuma coluna `_enc` é lida: o segredo não passa pela tela |
 | **A08 — Push global** | ✅ envios, falhas e aparelhos ativos por app, ordenado por ativos (é o que a OneSignal cobra). "App com problema" é RAZÃO com piso de volume, não contagem: 1 falha em 1 envio não acusa ninguém |
 | **A11 — Equipe interna** | ✅ convidar, trocar papel e remover, com três travas — só superadmin mexe, ninguém altera a si mesmo, e o último superadmin não sai. Conferidas de novo no servidor, com a contagem vinda do banco |
 | A12 — Logs de auditoria | ✅ |
-| **A13 — Configurações do sistema** | ⚠️ o bloco de CHAVES está pronto: as 19 variáveis que a aplicação lê, em três níveis (essencial, por recurso, opcional) pelo que quebra sem cada uma, com um teste que varre o código e falha quando alguém soma uma variável sem descrevê-la. Opcional desligada aparece como "Não usado", e não como falta. Feature flags e versão mínima ainda não |
+| **A13 — Configurações do sistema** | ✅ as 19 variáveis que a aplicação lê, em três níveis (essencial, por recurso, opcional) pelo que quebra sem cada uma, com um teste que varre o código e falha quando alguém soma uma variável sem descrevê-la; opcional desligada aparece como "Não usado". **Chaves de funcionamento**: cadastro aberto/fechado e um aviso no topo do painel de todos os lojistas, com prévia, só superadmin muda (o servidor confere de novo) e cada chave mudada vai para a auditoria com o antes e o depois. **Versão mínima**: a lista dos apps que estão exigindo atualização, com link para o cliente. ⚠️ O cadastro fechado ainda vale só pelo painel (tela e ação): o Auth do Supabase aceita cadastro direto pela chave pública, e ainda não há convite para quem deve entrar com o cadastro fechado — é a próxima entrega (C16, convites) |
 | **A10 — Presets por tema** | ✅ os dois lados: a equipe cria o preset COPIANDO de uma loja publicada, e o lojista aplica no editor com a troca descrita antes de confirmar |
 | A09 | ⬜ ainda não (depende da cobrança, Fase 7) |
 
@@ -1033,22 +1038,57 @@ Travas novas: `formularios-controlados.test.ts`, `erros.test.ts` (varredura de `
 > possível — engano de digitação acontece —, e apagar É auditado, com o texto da nota junto:
 > escrever não precisa, porque a nota que existe já diz quem a escreveu e quando.
 
-> **DEFEITO ENCONTRADO, e não corrigido nesta sessão: a atualização obrigatória não tem como
-> ser acionada.** `minSupportedBuild` existe na `AppConfig` com `default(1)`, e
-> `apps/mobile/src/config/decisao.ts` a respeita — manda o usuário atualizar quando o build
-> instalado é menor. Mas NENHUMA tela grava esse campo: nem o editor do cliente (C06) nem o
-> admin. É funcionalidade implementada e inalcançável.
+> **A atualização obrigatória agora é alcançável — e o que a travava era o pipeline de build.**
+> `minSupportedBuild` existia na `AppConfig` e o app a respeitava, mas nenhuma tela a gravava.
+> Ao ligar, apareceu por que ninguém tinha conseguido: **todo binário de toda loja saía como
+> versão 1.0.0, build 1**. O workflow nunca definia `APP_VERSION`, `IOS_BUILD` nem `ANDROID_VC`.
+> A primeira publicação passava; a SEGUNDA (trocar o ícone, reenviar depois de uma recusa) seria
+> recusada pela Apple ("the bundle version must be higher") e pelo Google ("version code already
+> used"), e a loja ficaria presa na primeira versão. E "exigir o build mais novo" não significava
+> nada com todos sendo o 1.
 >
-> Não foi corrigida aqui porque o conserto certo mexe no versionamento da config publicada: o
-> `publicar_config` promove o RASCUNHO, e o admin não pode publicar o rascunho do cliente (iria
-> junto o que ele estava editando). O caminho é uma RPC própria que altere a config PUBLICADA e
-> o `version` de dentro do JSON — que é o que o app compara com o cache —, sem tocar no
-> rascunho. É preciso verificar contra um app de verdade que o número novo chega ao aparelho, e
-> não há como fazer isso neste ambiente.
+> O que mudou:
 >
-> **Não é urgente**, e essa é a razão de ter sido registrada em vez de apressada: para o caso de
-> emergência existe a correção OTA (A-OTA), que já funciona e alcança todos os apps na próxima
-> abertura. `minSupportedBuild` serve para forçar atualização NATIVA, que é lenta por natureza.
+> - **o banco reserva o número e a versão de cada build** (`reservar_versao_do_build`): um
+>   contador POR APP (e não por plataforma, porque `minSupportedBuild` é um número só, comparado
+>   nas duas), sob trava para iOS e Android disparados juntos não pegarem o mesmo número,
+>   idempotente para o workflow reexecutado, e versão `1.0.<n>` — depois de aprovada, a Apple não
+>   aceita outro binário com o mesmo texto de versão;
+> - **o lojista escolhe no editor** (C06 › Recursos › Atualização obrigatória), e só pode exigir
+>   o número que JÁ ESTÁ aprovado nas duas lojas. Exigir uma versão que ainda não existe travaria
+>   todo cliente numa tela de "Atualize" sem atualização para baixar — por isso o
+>   `publicar_config` recusa no banco, e não só a tela;
+>   a equipe vê na A04 (por loja) e na A13 (quem está exigindo). O admin não grava a config do
+>   cliente: publicar iria junto com o rascunho que ele está editando;
+> - **a EAS passou a receber as variáveis da loja**: o `app.config.ts` é avaliado DE NOVO no
+>   servidor da EAS, onde só existem as variáveis do `env` do perfil. As exportadas no runner
+>   ficavam no runner, e o binário sairia com o nome, o bundle e o domínio da loja de
+>   desenvolvimento. O workflow escreve todas no `eas.json` do perfil antes do build (o segredo
+>   do aparelho, mascarado no log);
+> - **a config embutida passou a ser registrada**: o workflow gravava o JSON da loja em
+>   `brands/`, mas sem a linha de `import` o Metro não o empacotava — o primeiro uso sem internet
+>   abria em erro. `registrar-config-embutida.ts` escreve a linha entre marcadores, com teste;
+> - **o runtime do OTA ficou fixo** (`1.0.0`, o que os binários já publicados têm): com a versão
+>   subindo a cada binário, a política `appVersion` daria um runtime por build, e uma correção OTA
+>   só alcançaria os apps daquele número exato;
+> - **domínio da loja, esquema de URL e endereço da API** passaram a ir para o build: todo app
+>   reclamava o domínio da loja de desenvolvimento para os links universais, dividia o esquema
+>   `storefy://` com os outros e chamava um endereço fixo.
+>
+> Nada disso rodou contra a EAS, a Apple e o Google de verdade neste ambiente (sem as contas);
+> está coberto por testes do número (SQL), da rota que entrega os dados do build e do registro da
+> config embutida.
+
+> **Dois defeitos que o e2e das chaves da A13 achou.** A tela `/cadastrar` não lê cookie nem
+> cabeçalho, e o Next a gerava ESTÁTICA no build: fechar o cadastro não mudava a tela, que
+> continuava com o formulário das chaves do dia do deploy. `configuracoesDaPlataforma()` chama
+> `connection()`, e toda tela que lê as chaves passa a ler na hora. E a caixa "Cadastro aberto"
+> voltava a aparecer MARCADA logo depois de a equipe fechar o cadastro: no fim de toda ação, o
+> React devolve o formulário ao padrão, e numa caixa de marcar controlada o padrão é o do
+> primeiro desenho (num campo de texto controlado o React acompanha o padrão; numa caixa, não).
+> O salvamento seguinte gravava o contrário do que a tela mostrava. A caixa passou a ser livre,
+> com o padrão devolvido pela ação, e a varredura `formularios-controlados.test.ts` ganhou a
+> regra — conferida pondo o defeito de volta.
 
 > **A A13 nasceu de um prejuízo real.** `NEXT_PUBLIC_SITE_URL` foi colada sem o `https://`, e o
 > efeito não foi erro na tela: foi o OAuth da Shopify recusando o retorno e os webhooks sendo

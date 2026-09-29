@@ -115,6 +115,11 @@ jobs:
           mkdir -p "$pasta"
           jq '.config' /tmp/build.json > "$pasta/config.json"
 
+          # Sem a linha de `import` em `embutida.ts`, o Metro não empacota o
+          # JSON acima: o app sairia sem config embutida, e o primeiro uso sem
+          # internet abriria em erro.
+          pnpm exec tsx apps/mobile/scripts/registrar-config-embutida.ts "$STORE_ID"
+
           # O ícone e a splash vêm por link ASSINADO, e não por caminho: o
           # bucket é privado, e dar ao runner a chave do Storage seria dar
           # acesso aos assets de todas as lojas.
@@ -259,9 +264,11 @@ jobs:
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
           EXPO_OWNER: ${{ secrets.EXPO_OWNER }}
+          API: ${{ secrets.STOREFY_API_URL }}
           STORE_ID: ${{ steps.dados.outputs.store_id }}
           PLATFORM: ${{ steps.dados.outputs.platform }}
           PROFILE: ${{ steps.dados.outputs.profile }}
+          SPLASH_BG: ${{ steps.dados.outputs.cor }}
         working-directory: apps/mobile
         run: |
           # Cada valor vai para o ambiente do processo, e não para a linha de
@@ -269,11 +276,56 @@ jobs:
           export STOREFY_APP_ID=$(jq -r '.appId' /tmp/build.json)
           export ONESIGNAL_APP_ID=$(jq -r '.oneSignalAppId // empty' /tmp/build.json)
           export STOREFY_DEVICE_SECRET=$(jq -r '.deviceSecret // empty' /tmp/build.json)
+          # Ele vai para o `eas.json` logo abaixo (a EAS precisa dele para
+          # embutir no binário). Mascarado, nenhuma ferramenta que imprima o
+          # ambiente o deixa no log do GitHub.
+          if [ -n "$STOREFY_DEVICE_SECRET" ]; then echo "::add-mask::$STOREFY_DEVICE_SECRET"; fi
           export EAS_PROJECT_ID="${{ steps.projeto.outputs.id }}"
           export APP_SLUG=$(jq -r '.slug' /tmp/build.json)
           export APP_NAME=$(jq -r '.nomeDoApp' /tmp/build.json)
           export IOS_BUNDLE_ID=$(jq -r '.bundleIdIos // empty' /tmp/build.json)
           export ANDROID_PACKAGE=$(jq -r '.packageAndroid // empty' /tmp/build.json)
+
+          # Versão e número reservados pelo banco para ESTE build. Sem eles
+          # todo binário saía como 1.0.0 (1), e a segunda publicação de
+          # qualquer loja era recusada pela Apple e pela Google.
+          export APP_VERSION=$(jq -r '.versao' /tmp/build.json)
+          export IOS_BUILD=$(jq -r '.numeroDoBuild' /tmp/build.json)
+          export ANDROID_VC="$IOS_BUILD"
+
+          # O domínio da loja (links universais), um esquema de URL por app e
+          # a API que o app chama. Sem eles, todo app reclamava o domínio da
+          # loja de desenvolvimento, dividia o esquema `storefy://` com os
+          # outros e chamava um endereço fixo em vez do painel de verdade.
+          export STORE_DOMAIN=$(jq -r '.dominioDaLoja // empty' /tmp/build.json)
+          export APP_SCHEME=$(jq -r '.esquema' /tmp/build.json)
+          export API_BASE="$API"
+
+          # O `app.config.ts` é avaliado DE NOVO no servidor da EAS, e lá só
+          # existem as variáveis do `env` do perfil (ou as cadastradas na EAS):
+          # as exportadas acima ficam neste runner. Sem isto, o binário sairia
+          # com o nome, o bundle e o domínio da loja de desenvolvimento.
+          jq --arg perfil "$PROFILE" \
+            --arg STORE_ID "$STORE_ID" \
+            --arg APP_NAME "$APP_NAME" \
+            --arg APP_SLUG "$APP_SLUG" \
+            --arg APP_SCHEME "$APP_SCHEME" \
+            --arg APP_VERSION "$APP_VERSION" \
+            --arg IOS_BUILD "$IOS_BUILD" \
+            --arg ANDROID_VC "$ANDROID_VC" \
+            --arg EXPO_OWNER "$EXPO_OWNER" \
+            --arg EAS_PROJECT_ID "$EAS_PROJECT_ID" \
+            --arg IOS_BUNDLE_ID "$IOS_BUNDLE_ID" \
+            --arg ANDROID_PACKAGE "$ANDROID_PACKAGE" \
+            --arg STORE_DOMAIN "$STORE_DOMAIN" \
+            --arg SPLASH_BG "$SPLASH_BG" \
+            --arg STOREFY_APP_ID "$STOREFY_APP_ID" \
+            --arg API_BASE "$API_BASE" \
+            --arg ONESIGNAL_APP_ID "$ONESIGNAL_APP_ID" \
+            --arg STOREFY_DEVICE_SECRET "$STOREFY_DEVICE_SECRET" \
+            '.build[$perfil].env = ((.build[$perfil].env // {}) + ($ARGS.named | del(.perfil)))' \
+            eas.json > eas.json.novo
+          mv eas.json.novo eas.json
 
           # Os nomes abaixo são os que `eas.json` interpola com `$`.
           export EXPO_ASC_API_KEY_PATH=/tmp/cred/asc.p8

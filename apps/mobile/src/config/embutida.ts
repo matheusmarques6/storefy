@@ -8,14 +8,22 @@
  *
  * Cada loja nova entra com uma linha aqui e uma pasta em `brands/`. O teste
  * deste arquivo percorre `brands/` e cobra as duas coisas, então esquecer a
- * linha quebra no CI e não na mão do cliente. No build por loja (seção 7) o
- * workflow gera este registro com a marca única daquele app.
+ * linha quebra no CI e não na mão do cliente.
+ *
+ * No build por loja (seção 7), quem escreve a linha é o workflow, com
+ * `scripts/registrar-config-embutida.ts`, entre os marcadores abaixo. Antes
+ * disso ele só gravava o JSON em `brands/`, e nenhum app de cliente saía com
+ * config embutida: o primeiro uso sem internet abria em erro.
  */
+// registro:imports:inicio
 import oakvintage from '../../brands/oakvintage/config.json';
+// registro:imports:fim
 
 /** Toda config embutida, por `storeId`. */
 export const CONFIGS_EMBUTIDAS: Readonly<Record<string, unknown>> = {
+  // registro:mapa:inicio
   oakvintage,
+  // registro:mapa:fim
 };
 
 /**

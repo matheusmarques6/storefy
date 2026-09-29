@@ -4352,6 +4352,202 @@ reset role;
 update public.stores set timezone = 'America/Sao_Paulo'
  where id = (select loja_a from tests.lojas);
 
+-- ============================== grupo: versão do build
+--
+-- Todo binário saía como 1.0.0 (1), e a segunda publicação de qualquer loja
+-- era recusada pelas duas lojas de aplicativos. O número agora é reservado
+-- aqui, um contador POR APP, com trava para builds que começam juntos.
+
+reset role;
+select tests.logout();
+
+drop table if exists tests.maximo_do_app_a;
+create table tests.maximo_do_app_a as
+select coalesce(max(b.build_number), 0) as m
+  from public.builds b
+ where b.app_id = (select app_a from tests.lojas);
+
+drop table if exists tests.builds_novos;
+create table tests.builds_novos as
+with novos as (
+  insert into public.builds (app_id, platform, profile, status)
+  select l.app_a, p.plataforma, 'production', 'queued'
+    from tests.lojas l,
+         unnest(array['android', 'ios']::public.device_platform[]) as p(plataforma)
+  returning id, platform
+)
+select * from novos;
+
+drop table if exists tests.maximo_do_app_b;
+create table tests.maximo_do_app_b as
+select coalesce(max(b.build_number), 0) as m
+  from public.builds b
+ where b.app_id = (select app_b from tests.lojas);
+
+drop table if exists tests.build_novo_b;
+create table tests.build_novo_b as
+with novo as (
+  insert into public.builds (app_id, platform, profile, status)
+  select app_b, 'ios', 'production', 'queued' from tests.lojas
+  returning id
+)
+select * from novo;
+
+grant select on tests.maximo_do_app_a, tests.maximo_do_app_b, tests.builds_novos,
+  tests.build_novo_b to anon, authenticated, service_role;
+
+set role service_role;
+
+select tests.ok('versão do build',
+  (select numero from public.reservar_versao_do_build(
+     (select id from tests.builds_novos where platform = 'android')))
+    = (select m from tests.maximo_do_app_a) + 1,
+  'o primeiro build novo recebe o próximo número do app');
+
+select tests.ok('versão do build',
+  (select numero from public.reservar_versao_do_build(
+     (select id from tests.builds_novos where platform = 'ios')))
+    = (select m from tests.maximo_do_app_a) + 2,
+  'o contador é do APP: o iOS logo depois do Android recebe o número seguinte');
+
+select tests.ok('versão do build',
+  (select numero from public.reservar_versao_do_build(
+     (select id from tests.builds_novos where platform = 'android')))
+    = (select m from tests.maximo_do_app_a) + 1,
+  'pedir de novo devolve o MESMO número: o workflow reexecutado não gasta outro');
+
+select tests.ok('versão do build',
+  (select b.version from public.builds b
+    where b.id = (select id from tests.builds_novos where platform = 'ios'))
+    = '1.0.' || ((select m from tests.maximo_do_app_a) + 2)::text,
+  'a versão acompanha o número, e sobe junto');
+
+select tests.ok('versão do build',
+  (select numero from public.reservar_versao_do_build((select id from tests.build_novo_b)))
+    = (select m from tests.maximo_do_app_b) + 1,
+  'o app de outra loja tem o próprio contador');
+
+reset role;
+select tests.login('a-owner@teste.local');
+set role authenticated;
+
+select tests.ok('versão do build',
+  tests.erro($q$select * from public.reservar_versao_do_build(
+    (select id from tests.builds_novos where platform = 'android'))$q$),
+  'o lojista não reserva número: quem reserva é o workflow, pela service role');
+
+reset role;
+select tests.logout();
+
+-- ============================== grupo: atualização obrigatória
+--
+-- Exigir uma versão que não está nas lojas trava o app de todo cliente da
+-- loja. O banco recusa, e não só a tela.
+
+reset role;
+select tests.logout();
+
+update public.app_configs
+   set config = jsonb_set(config, '{minSupportedBuild}', '50')
+ where app_id = (select app_a from tests.lojas) and status = 'draft';
+
+select tests.login('a-owner@teste.local');
+set role authenticated;
+
+select tests.ok('atualização obrigatória',
+  tests.erro('select public.publicar_config((select app_a from tests.lojas))'),
+  'sem build aprovado, não dá para exigir versão nenhuma');
+
+reset role;
+select tests.logout();
+
+-- iPhone aprovado no 60, Android no 55: o número que dá para exigir é 55.
+insert into public.builds (app_id, platform, profile, status, version, build_number)
+select app_a, 'ios', 'production', 'approved', '1.0.60', 60 from tests.lojas;
+insert into public.builds (app_id, platform, profile, status, version, build_number)
+select app_a, 'android', 'production', 'approved', '1.0.55', 55 from tests.lojas;
+
+select tests.login('a-owner@teste.local');
+set role authenticated;
+
+select tests.ok('atualização obrigatória',
+  tests.permitido('select public.publicar_config((select app_a from tests.lojas))'),
+  'exigir uma versão que as duas lojas já aprovaram publica normalmente');
+
+reset role;
+select tests.logout();
+
+select tests.ok('atualização obrigatória',
+  (select (config ->> 'minSupportedBuild')::integer from public.app_configs
+    where app_id = (select app_a from tests.lojas) and status = 'published') = 50,
+  'a config no ar exige a versão escolhida');
+
+update public.app_configs
+   set config = jsonb_set(config, '{minSupportedBuild}', '57')
+ where app_id = (select app_a from tests.lojas) and status = 'draft';
+
+select tests.login('a-owner@teste.local');
+set role authenticated;
+
+select tests.ok('atualização obrigatória',
+  tests.erro('select public.publicar_config((select app_a from tests.lojas))'),
+  'o 57 existe no iPhone mas não no Android: exigir travaria quem usa Android');
+
+reset role;
+select tests.logout();
+
+-- ============================== grupo: A13 — chaves da plataforma
+--
+-- Só a equipe lê; ninguém escreve pela API, nem a equipe: quem escreve é a
+-- ação do servidor, pela service role, depois de conferir superadmin.
+
+reset role;
+select tests.logout();
+
+insert into public.platform_settings (chave, valor) values ('cadastro_aberto', 'false');
+
+select tests.login('a-owner@teste.local');
+set role authenticated;
+
+select tests.ok('chaves da plataforma',
+  tests.contar('select count(*) from public.platform_settings') = 0,
+  'o lojista não lê as chaves da plataforma');
+
+select tests.ok('chaves da plataforma',
+  tests.bloqueado($q$update public.platform_settings set valor = 'true'
+    where chave = 'cadastro_aberto'$q$),
+  'o lojista não reabre o cadastro');
+
+reset role;
+select tests.login('equipe@teste.local');
+set role authenticated;
+
+select tests.ok('chaves da plataforma',
+  tests.contar('select count(*) from public.platform_settings') = 1,
+  'a equipe lê as chaves');
+
+select tests.ok('chaves da plataforma',
+  tests.bloqueado($q$update public.platform_settings set valor = 'true'
+    where chave = 'cadastro_aberto'$q$),
+  'nem a equipe escreve pela API: só a ação do servidor, que confere o papel e audita');
+
+select tests.ok('chaves da plataforma',
+  tests.bloqueado($q$insert into public.platform_settings (chave, valor)
+    values ('aviso_no_painel', '"x"')$q$),
+  'nem cria chave pela API');
+
+reset role;
+set role service_role;
+
+select tests.ok('chaves da plataforma',
+  tests.erro($q$insert into public.platform_settings (chave, valor)
+    values ('chave_inventada', 'true')$q$),
+  'chave que o código não conhece é recusada pelo banco');
+
+reset role;
+select tests.logout();
+delete from public.platform_settings;
+
 \echo ''
 \echo 'Falhas:'
 select grupo, descricao from tests.resultados where not passou order by id;

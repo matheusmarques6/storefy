@@ -770,6 +770,27 @@ export type Database = {
         };
         Relationships: [];
       };
+      platform_settings: {
+        Row: {
+          chave: string;
+          valor: Json;
+          updated_at: string;
+          updated_by: string | null;
+        };
+        Insert: {
+          chave: string;
+          valor: Json;
+          updated_at?: string;
+          updated_by?: string | null;
+        };
+        Update: {
+          chave?: string;
+          valor?: Json;
+          updated_at?: string;
+          updated_by?: string | null;
+        };
+        Relationships: [];
+      };
       preview_sessions: {
         Row: {
           id: string;
@@ -1228,6 +1249,10 @@ export type Database = {
       reservar_envios_de_automacao: {
         Args: { p_limite?: number };
         Returns: { id: string | null; automation_id: string | null; app_id: string | null; subscription_id: string | null; title: string | null; body: string | null; deep_link: string | null; onesignal_app_id: string | null; onesignal_api_key_enc: string | null }[];
+      };
+      reservar_versao_do_build: {
+        Args: { p_build_id: string };
+        Returns: { numero: number | null; versao: string | null }[];
       };
       restaurar_config: {
         Args: { p_app_id: string; p_version: number };

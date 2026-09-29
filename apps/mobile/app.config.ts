@@ -82,6 +82,25 @@ const slug = modoPrevia ? 'storefy-preview' : opcional('APP_SLUG', 'storefy-oakv
 const modoApns =
   opcional('APNS_MODE', 'production') === 'development' ? 'development' : 'production';
 
+/*
+ * A versão do CÓDIGO NATIVO, e não a do app na loja.
+ *
+ * Era `{ policy: 'appVersion' }`: o runtime acompanhava a versão da loja. Com
+ * a versão subindo a cada binário (1.0.<n>, reservada pelo banco), cada app
+ * teria um runtime diferente, e a correção OTA — publicada para UM runtime —
+ * só alcançaria os apps daquele número exato. O runtime diz quais binários
+ * aceitam o mesmo JavaScript, e todo app da Storefy sai do mesmo código
+ * nativo: o runtime é um só.
+ *
+ * Mude este valor SÓ quando o nativo mudar (módulo novo, plugin novo), e
+ * publique os binários novos antes da próxima correção OTA.
+ *
+ * '1.0.0' não é arbitrário: é o runtime que os binários gerados até aqui já
+ * têm — todos saíam como 1.0.0 —, e trocá-lo agora cortaria esses apps das
+ * correções OTA.
+ */
+const RUNTIME_NATIVO = '1.0.0';
+
 const config: ExpoConfig = {
   name: nomeDoApp,
   slug,
@@ -163,7 +182,7 @@ const config: ExpoConfig = {
         : `https://u.expo.dev/${exigir('EAS_PROJECT_ID')}`,
     fallbackToCacheTimeout: 0,
   },
-  runtimeVersion: { policy: 'appVersion' },
+  runtimeVersion: RUNTIME_NATIVO,
 };
 
 export default config;

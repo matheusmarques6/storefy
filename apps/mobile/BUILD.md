@@ -56,7 +56,7 @@ pnpm --filter @storefy/mobile exec eas build --profile development --platform an
 | `EAS_PROJECT_ID`                                    | projeto EAS e canal de update                 | o app fica sem update OTA           |
 | `IOS_BUNDLE_ID`, `IOS_BUILD`, `APPLE_TEAM_ID`       | build iOS                                     | valores de desenvolvimento          |
 | `ANDROID_PACKAGE`, `ANDROID_VC`                     | build Android                                 | valores de desenvolvimento          |
-| `STORE_DOMAIN`                                      | Universal Links e App Links                   | `oakvintage.com.br`                 |
+| `STORE_DOMAIN`                                      | Universal Links e App Links (domínio da loja) | `oakvintage.com.br`                 |
 | `SPLASH_BG`                                         | cor de fundo da splash                        | branco                              |
 | `APNS_MODE`                                         | `production` ou `development`                 | `production`                        |
 | `STOREFY_APP_ID`, `API_BASE`                        | config remota                                 | o app roda só com a embutida        |
@@ -78,6 +78,30 @@ app chegando à App Store com a marca errada, e por isso ali é erro.
 `autoIncrement` fica **desligado** no `production`: quem manda no número do build
 é o `builds` do banco, via `IOS_BUILD` e `ANDROID_VC`. Deixar o EAS contar por
 conta dele faria o número do banco e o da loja divergirem na primeira rejeição.
+
+## Versão, número e runtime
+
+- **Número** (`IOS_BUILD`/`ANDROID_VC`): reservado pelo banco quando o build começa
+  (`reservar_versao_do_build`), com **um contador por app**, não por plataforma — é o
+  que deixa `minSupportedBuild`, que é um número só, valer igual no iPhone e no Android.
+- **Versão** (`APP_VERSION`): `1.0.<número>`. Depois que uma versão é aprovada, a Apple
+  não aceita outro binário com o mesmo texto de versão; amarrada ao número, ela sempre
+  sobe.
+- **Runtime do OTA**: fixo em `app.config.ts` (`RUNTIME_NATIVO`), e **não** a versão. Todo
+  app sai do mesmo código nativo, então todo app aceita a mesma correção OTA. Só mude o
+  runtime quando o nativo mudar, e publique os binários novos antes da próxima correção.
+
+Antes disso o workflow não mandava nenhum dos três, e todo binário saía como 1.0.0 (1):
+a segunda publicação de qualquer loja seria recusada pelas duas lojas de aplicativos.
+
+## As variáveis precisam chegar ao servidor da EAS
+
+O `app.config.ts` é avaliado **duas vezes**: no runner, pelo `eas build`, e de novo no
+servidor da EAS, que é quem gera o binário. No servidor só existem as variáveis do `env`
+do perfil no `eas.json` (ou as cadastradas na EAS) — as exportadas no runner ficam no
+runner. Por isso o workflow grava as variáveis da loja no `env` do perfil antes de
+chamar o `eas build`; sem isso, o binário sairia com o nome, o bundle e o domínio da loja
+de desenvolvimento.
 
 ## Push (Fase 3)
 

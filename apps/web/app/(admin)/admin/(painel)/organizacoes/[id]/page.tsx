@@ -27,6 +27,7 @@ import { lerNotas } from '@/lib/notas-internas';
 import { FUSO_PADRAO, formatarDataHora } from '@/lib/fuso';
 import { Notas } from './notas';
 import { VerComoCliente } from './ver-como-cliente';
+import { AppsDaOrganizacao } from './apps-da-organizacao';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import {
@@ -189,6 +190,8 @@ export default async function PaginaOrganizacao({ params }: { params: Promise<{ 
           </Table>
         )}
       </Card>
+
+      <AppsDaOrganizacao lojas={listaLojas.map((loja) => ({ id: loja.id, name: loja.name }))} />
 
       <Card>
         <CardHeader>

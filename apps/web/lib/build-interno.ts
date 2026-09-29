@@ -143,6 +143,26 @@ export interface DadosParaOBuild {
   /** A config publicada, inteira. */
   config: unknown;
   /**
+   * O número deste binário (`buildNumber` no iOS, `versionCode` no Android) e
+   * a versão que a loja mostra, reservados no banco quando o build começa.
+   * Sem eles, todo binário saía como 1.0.0 (1), e a segunda publicação de
+   * qualquer loja era recusada pela Apple e pela Google.
+   */
+  numeroDoBuild: number;
+  versao: string;
+  /**
+   * O domínio da loja, para os links universais (iOS) e os App Links
+   * (Android): é o que faz o link da loja, aberto no celular, cair no app.
+   * Sem ele, todo app reclamava o domínio da loja de desenvolvimento.
+   */
+  dominioDaLoja: string | null;
+  /**
+   * O esquema de URL do app (`storefy-<loja>://`). Um por loja: com um
+   * esquema só para todos, dois apps da Storefy no mesmo celular disputariam
+   * o mesmo link.
+   */
+  esquema: string;
+  /**
    * Links assinados do ícone e da tela de abertura.
    *
    * Assinados, e não caminhos: o bucket é privado, e dar ao runner a chave do

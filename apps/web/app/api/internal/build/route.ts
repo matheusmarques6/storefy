@@ -109,7 +109,7 @@ async function montar(buildId: string): Promise<DadosParaOBuild | null> {
 
   const { data: loja } = await servico
     .from('stores')
-    .select('id, org_id, name')
+    .select('id, org_id, name, primary_url')
     .eq('id', app.store_id)
     .maybeSingle();
   if (loja == null) return null;
@@ -130,6 +130,20 @@ async function montar(buildId: string): Promise<DadosParaOBuild | null> {
   ]);
 
   if (config == null) return null;
+
+  /*
+   * O número vem ANTES do status: se a reserva falhar, o build continua na
+   * fila, e o workflow reexecutado tenta de novo. Um build marcado como
+   * "gerando" sem número sairia como 1.0.0 (1) — exatamente o que isto
+   * existe para impedir.
+   */
+  const { data: reservada, error: erroDaReserva } = await servico.rpc('reservar_versao_do_build', {
+    p_build_id: build.id,
+  });
+  const versao = reservada?.[0];
+  if (erroDaReserva != null || versao?.numero == null || versao.versao == null) {
+    throw new Error(`reserva da versão falhou: ${erroDaReserva?.message ?? 'sem retorno'}`);
+  }
 
   // A partir daqui o build está de fato começando.
   await servico
@@ -163,6 +177,10 @@ async function montar(buildId: string): Promise<DadosParaOBuild | null> {
     canal: canalDaLoja(loja.id, build.profile),
     corDeFundo: tema,
     config: config.config,
+    numeroDoBuild: versao.numero,
+    versao: versao.versao,
+    dominioDaLoja: dominioDe(loja.primary_url),
+    esquema: slugDoProjeto(loja.id),
     urlDoIcone,
     urlDaSplash,
     credenciais: lerCredenciais(contas ?? []),
@@ -259,4 +277,13 @@ function corDoTema(config: unknown): string {
   return typeof fundo === 'string' && /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i.test(fundo)
     ? fundo
     : '#ffffff';
+}
+
+/** `https://www.loja.com.br/` vira `www.loja.com.br`. Endereço ilegível, `null`. */
+function dominioDe(endereco: string): string | null {
+  try {
+    return new URL(endereco).hostname || null;
+  } catch {
+    return null;
+  }
 }

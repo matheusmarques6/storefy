@@ -7,6 +7,7 @@ import { COOKIE_LOJA_DA_VISITA, COOKIE_VISITA } from '@/lib/visita-nomes';
 import { criarClientServidor } from '@/lib/supabase/server';
 import { urlDoSite } from '@/lib/env';
 import { traduzirErroAuth } from '@/lib/erros-do-auth';
+import { configuracoesDaPlataforma } from '@/lib/configuracoes-da-plataforma-servidor';
 import {
   cadastroSchema,
   extrairErros,
@@ -56,6 +57,18 @@ export async function cadastrar(
   dados: FormData,
 ): Promise<EstadoFormulario> {
   const valores = valoresDigitados(dados, ['nomeEmpresa', 'email']);
+
+  // A tela já esconde o formulário com o cadastro fechado (A13); a ação
+  // confere de novo, porque o formulário pode ter sido aberto antes.
+  const { cadastroAberto } = await configuracoesDaPlataforma();
+  if (!cadastroAberto) {
+    return {
+      mensagem:
+        'Os cadastros estão fechados por enquanto. Se você recebeu um convite, entre com o e-mail do convite.',
+      valores,
+    };
+  }
+
   const analise = cadastroSchema.safeParse({
     nomeEmpresa: dados.get('nomeEmpresa'),
     email: dados.get('email'),

@@ -31,6 +31,13 @@ let gravadoNoApp: Record<string, unknown> | null = null;
 let filtros: { coluna: string; valor: unknown }[] = [];
 /** Os filtros aplicados no update de `apps`, com o nome do método. */
 let filtrosDoApp: { metodo: string; coluna: string; valor: unknown }[] = [];
+/** A ordem em que a rota chamou o banco: reserva da versão e updates. */
+let ordem: string[] = [];
+/** O que a reserva da versão responde. */
+let reserva: {
+  data: { numero: number; versao: string }[] | null;
+  error: { message: string } | null;
+} = { data: [{ numero: 7, versao: '1.0.7' }], error: null };
 
 vi.mock('@/lib/env', () => ({
   supabaseConfigurado: true,
@@ -70,9 +77,14 @@ const LINHA_DO_APP = {
 
 vi.mock('@/lib/supabase/admin', () => ({
   criarClientServiceRole: () => ({
+    rpc: (nome: string) => {
+      ordem.push(nome);
+      return Promise.resolve(reserva);
+    },
     from: (tabela: string) => ({
       select: () => leitura(tabela),
       update: (valores: Record<string, unknown>) => {
+        ordem.push(`update:${tabela}`);
         if (tabela === 'builds') gravadoNoBuild = valores;
         else gravadoNoApp = valores;
 
@@ -103,7 +115,12 @@ function leitura(tabela: string): Record<string, unknown> {
       : tabela === 'apps'
         ? { ...LINHA_DO_APP }
         : tabela === 'stores'
-          ? { id: LOJA, org_id: ORG, name: 'Loja de Teste' }
+          ? {
+              id: LOJA,
+              org_id: ORG,
+              name: 'Loja de Teste',
+              primary_url: 'https://www.loja.com.br/',
+            }
           : tabela === 'app_configs'
             ? { config: { theme: { background: '#112233' } }, version: 3 }
             : null;
@@ -156,6 +173,8 @@ beforeEach(() => {
   gravadoNoApp = null;
   filtros = [];
   filtrosDoApp = [];
+  ordem = [];
+  reserva = { data: [{ numero: 7, versao: '1.0.7' }], error: null };
   avisos = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
   erros = vi.spyOn(console, 'error').mockImplementation(() => undefined);
 });
@@ -268,6 +287,40 @@ describe('POST /api/internal/build — etapa de envio', () => {
     // Slug e canal carregam o id da loja: é o que separa um projeto do outro.
     expect(dados.slug).toContain(LOJA);
     expect(dados.canal).toContain(LOJA);
+  });
+
+  /*
+   * O defeito: o workflow não recebia número nem versão, e todo binário saía
+   * como 1.0.0 (1) — a segunda publicação de qualquer loja era recusada pela
+   * Apple e pela Google. A reserva vem ANTES de marcar "gerando": se ela
+   * falhar, o build continua na fila para a próxima tentativa.
+   */
+  it('a etapa de geração leva o número e a versão reservados para este build', async () => {
+    statusDoBuild = 'queued';
+    const resposta = await postarBuild(requisicao('/api/internal/build', { buildId: BUILD }));
+    expect(resposta.status).toBe(200);
+
+    const dados = (await resposta.json()) as {
+      numeroDoBuild: number;
+      versao: string;
+      dominioDaLoja: string;
+      esquema: string;
+    };
+    expect(dados.numeroDoBuild).toBe(7);
+    expect(dados.versao).toBe('1.0.7');
+    // O domínio da loja para os links universais, e um esquema por loja.
+    expect(dados.dominioDaLoja).toBe('www.loja.com.br');
+    expect(dados.esquema).toBe(slugDoProjeto(LOJA));
+    expect(ordem.indexOf('reservar_versao_do_build')).toBeLessThan(ordem.indexOf('update:builds'));
+  });
+
+  it('sem número reservado, o build não começa e fica na fila', async () => {
+    statusDoBuild = 'queued';
+    reserva = { data: null, error: { message: 'falhou' } };
+    const resposta = await postarBuild(requisicao('/api/internal/build', { buildId: BUILD }));
+
+    expect(resposta.status).toBe(503);
+    expect(ordem).not.toContain('update:builds');
   });
 
   it('a etapa de geração não serve um build que já terminou', async () => {

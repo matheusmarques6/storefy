@@ -277,6 +277,8 @@ async function main(): Promise<void> {
     'apagar_dados_da_shopify',
     // Usada pelo envio de teste do painel, pela service role.
     'consumir_limite',
+    // O número e a versão de cada binário, reservados quando o build começa.
+    'reservar_versao_do_build',
   ];
 
   const { rows: funcoes } = await client.query<FuncaoSql>(

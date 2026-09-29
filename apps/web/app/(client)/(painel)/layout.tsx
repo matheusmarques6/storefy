@@ -1,5 +1,7 @@
 /** Moldura do painel do cliente: cabeçalho, seletor de loja e navegação. */
 import Link from 'next/link';
+import { Megaphone } from 'lucide-react';
+import { configuracoesDaPlataforma } from '@/lib/configuracoes-da-plataforma-servidor';
 import { ehPlatformAdmin, exigirContextoCliente } from '@/lib/contexto';
 import { FaixaDaVisita } from './faixa-da-visita';
 import { MenuUsuario } from './menu-usuario';
@@ -11,11 +13,22 @@ export default async function LayoutPainel({ children }: { children: React.React
   // Em visita, quem está aqui é da equipe por definição: a visita só abre para
   // quem está em `platform_admins`, conferido a cada request.
   const admin = contexto.visita != null || (await ehPlatformAdmin(contexto.usuario.id));
+  const { avisoNoPainel } = await configuracoesDaPlataforma();
 
   return (
     <div className="flex min-h-dvh flex-col">
       {contexto.visita == null ? null : (
         <FaixaDaVisita cliente={contexto.organizacao.name} expiraEm={contexto.visita.expiraEm} />
+      )}
+      {avisoNoPainel === '' ? null : (
+        // O aviso da Storefy para todos os lojistas (A13): manutenção,
+        // instabilidade de uma loja de aplicativos, mudança de preço.
+        <div role="status" className="bg-muted border-b">
+          <p className="mx-auto flex max-w-6xl items-start gap-2 px-4 py-2 text-sm">
+            <Megaphone className="mt-0.5 size-4 shrink-0" aria-hidden />
+            <span>{avisoNoPainel}</span>
+          </p>
+        </div>
       )}
       <header className="bg-background/95 sticky top-0 z-40 border-b backdrop-blur">
         {/*
