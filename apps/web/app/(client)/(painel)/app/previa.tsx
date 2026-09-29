@@ -9,6 +9,13 @@
  * `X-Frame-Options`, e o iframe apontado para o site cru ficaria em branco sem
  * dizer por quê.
  *
+ * A moldura alterna entre iPhone e Android (seção 10 do plano): a ilha no
+ * topo e o indicador de início de um, a câmera furada e a barra de gestos do
+ * outro. A escolha é de quem olha e fica no navegador (`aparelho-da-previa`).
+ * Claro e escuro não entram: o app roda sempre claro (`userInterfaceStyle`
+ * do `app.config.ts`), com as cores da loja — um modo escuro na prévia
+ * mostraria um app que não existe.
+ *
  * O iframe é `sandbox` SEM `allow-same-origin`, de propósito. O documento sai
  * da nossa origem, e deixá-lo mantê-la daria ao tema do lojista — e a todo
  * script de terceiro instalado nele — acesso aos cookies e ao armazenamento do
@@ -18,7 +25,9 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { AppConfig } from '@storefy/config-schema';
+import { useAparelhoDaPrevia } from '@/lib/aparelho-da-previa';
 import { MARCA_DA_PREVIA, cssDaPrevia } from '@/lib/preview-proxy';
+import { cn } from '@/lib/utils';
 import { IconeDaAba } from './icone-da-aba';
 
 /**
@@ -60,20 +69,17 @@ export function Previa({
   const { theme } = config;
   const ativa = config.tabs.find((aba) => aba.id === abaAtiva) ?? config.tabs[0];
   const iframe = useRef<HTMLIFrameElement>(null);
-
-  /*
-   * Os seletores do primeiro desenho são capturados na montagem. Eles entram na
-   * URL só para a primeira pintura não piscar com o cabeçalho do tema; se
-   * continuassem na URL, cada tecla digitada recarregaria a loja inteira.
-   */
-  const [seletoresIniciais] = useState(() => config.webview.hideSelectors);
+  const [aparelho, trocarAparelho] = useAparelhoDaPrevia();
+  const ehIphone = aparelho === 'iphone';
 
   /*
    * Os seletores entram na URL só para a primeira pintura não piscar com o
-   * cabeçalho do tema. Depois disso, quem manda é o `postMessage`, que atualiza
-   * sem recarregar a loja a cada tecla digitada — e por isso a URL NÃO depende
-   * deles: mudar a URL recarregaria tudo.
+   * cabeçalho do tema, e por isso são capturados na montagem. Depois disso,
+   * quem manda é o `postMessage`, que atualiza sem recarregar: se a URL
+   * dependesse deles, cada tecla digitada recarregaria a loja inteira.
    */
+  const [seletoresIniciais] = useState(() => config.webview.hideSelectors);
+
   const src = useMemo(() => {
     const parametros = new URLSearchParams({ loja: lojaId, caminho });
     for (const seletor of seletoresIniciais) {
@@ -132,15 +138,48 @@ export function Previa({
   return (
     <div className="flex flex-col items-center gap-3">
       <div
-        className="ring-border w-[300px] overflow-hidden rounded-[2.2rem] shadow-xl ring-8"
+        role="group"
+        aria-label="Aparelho da prévia"
+        className="border-input inline-flex gap-1 rounded-lg border p-1"
+      >
+        {(['iphone', 'android'] as const).map((opcao) => (
+          <button
+            key={opcao}
+            type="button"
+            aria-pressed={aparelho === opcao}
+            onClick={() => {
+              trocarAparelho(opcao);
+            }}
+            className={cn(
+              'focus-visible:ring-ring rounded-md px-3 py-1 text-xs font-medium transition-colors focus-visible:ring-2 focus-visible:outline-none',
+              aparelho === opcao
+                ? 'bg-accent text-accent-foreground'
+                : 'text-muted-foreground hover:bg-accent/60',
+            )}
+          >
+            {opcao === 'iphone' ? 'iPhone' : 'Android'}
+          </button>
+        ))}
+      </div>
+
+      <div
+        data-aparelho={aparelho}
+        className={cn(
+          'ring-border w-[300px] overflow-hidden shadow-xl',
+          ehIphone ? 'rounded-[2.2rem] ring-8' : 'rounded-[1.4rem] ring-[6px]',
+        )}
         style={{ backgroundColor: theme.background }}
       >
+        {/* O topo: a ilha do iPhone, ou a câmera furada do Android. */}
         <div
-          className="flex h-9 items-end justify-center pb-1"
+          className={cn(
+            'flex justify-center',
+            ehIphone ? 'h-9 items-end pb-1' : 'h-7 items-center',
+          )}
           style={{ backgroundColor: theme.background }}
         >
           <div
-            className="h-5 w-20 rounded-full"
+            className={ehIphone ? 'h-5 w-20 rounded-full' : 'size-3 rounded-full'}
             style={{ backgroundColor: theme.statusBar === 'light' ? '#ffffff22' : '#00000018' }}
           />
         </div>
@@ -163,7 +202,7 @@ export function Previa({
         </div>
 
         <div
-          className="flex border-t px-1 pt-2 pb-4"
+          className={cn('flex border-t px-1 pt-2', ehIphone ? 'pb-1' : 'pb-0.5')}
           style={{ backgroundColor: theme.tabBarBg, borderColor: `${theme.tabBarInactive}55` }}
         >
           {config.tabs.map((aba) => {
@@ -199,6 +238,17 @@ export function Previa({
               </button>
             );
           })}
+        </div>
+
+        {/* Embaixo: o indicador de início do iPhone, ou a barra de gestos do Android. */}
+        <div
+          className={cn('flex justify-center', ehIphone ? 'pt-1 pb-2' : 'py-1.5')}
+          style={{ backgroundColor: theme.tabBarBg }}
+        >
+          <div
+            className={cn('h-1 rounded-full', ehIphone ? 'w-24' : 'w-14')}
+            style={{ backgroundColor: `${theme.tabBarInactive}aa` }}
+          />
         </div>
       </div>
 

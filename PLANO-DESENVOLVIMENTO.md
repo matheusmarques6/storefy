@@ -1619,6 +1619,19 @@ por um caminho DENTRO do app (4.5.4), e o Storefy é campanha de promoção.
 |---|---|---|
 | Publicar o app Storefy Preview (uma vez, na conta da Storefy) e colar os dois links na A13 | time | App Store Connect, Google Play Console e `/admin/sistema` |
 
+#### Fase 8h — Entregue (29/09/2026): o editor que salva sozinho e a moldura de iPhone e Android
+
+| Item | Estado |
+|---|---|
+| O que faltava | ❌→✅ a seção 10 pede salvamento automático do rascunho, um botão fixo "Publicar alterações" com o contador de mudanças pendentes e a moldura alternando entre iPhone e Android. O editor tinha "Salvar rascunho" e "Publicar" separados — quem esquecia de salvar perdia o que fez —, e a moldura era só de iPhone |
+| Salvamento automático | ✅ o rascunho grava um segundo depois da última mudança, uma gravação por vez: a seguinte espera a anterior, e uma mais velha nunca termina por cima de uma mais nova. A barra diz "Salvando o rascunho…", "Rascunho salvo às 14:32" (no fuso da loja) ou o motivo de não ter salvo, com "Tentar de novo" ali mesmo. Com um ponto a corrigir (duas abas com o mesmo nome, por exemplo) não grava: o rascunho no banco continua publicável |
+| O que se digita com a gravação a caminho | ❌→✅ achado pelo e2e: cada gravação atualiza a página, e o editor adotava a config que voltava do servidor — apagando o que a pessoa digitou enquanto a gravação ia e voltava, com a barra dizendo "salvo". Agora a config do servidor só substitui a tela quando traz OUTRO conteúdo (uma versão restaurada); a volta de uma gravação, ou a publicação do que já estava salvo, passam direto. A comparação ignora `version` e `store`, que o servidor reescreve, e a ordem das chaves, que o jsonb não guarda |
+| Sair da tela no meio da pausa | ❌→✅ também achado pelo e2e: mudar a cor e clicar em outra seção do menu antes de um segundo perdia a mudança — o aviso do navegador só pega fechar ou recarregar a aba. A gravação que esperava sai na hora, na mesma fila, e um erro nela vira aviso na tela seguinte. Trocar de loja monta outro editor: nada da loja anterior passa para a nova |
+| "Publicar alterações" fixo, com contador | ✅ fixo no rodapé, com quantas mudanças o rascunho tem em relação à versão no ar — por ajuste, e não por campo do JSON: cada cor conta uma; nas abas, cada aba nova, removida ou alterada conta uma, e mudar a ordem conta uma a mais. Só destrava com o rascunho salvo: publicar lê o rascunho do banco, e publicar com uma mudança ainda não gravada poria no ar a versão anterior dela. Sem mudanças, diz "Igual à versão no ar" e o botão fica desligado |
+| Moldura de iPhone e Android | ✅ a ilha e o indicador de início no iPhone, a câmera furada e a barra de gestos no Android, no editor (C06) e no visual rápido (C03). A escolha é de quem olha e fica no navegador (não é dado sensível), lida sem brigar com a hidratação; com o armazenamento bloqueado, vale até fechar a página |
+| Claro e escuro | ➖ fora de propósito: o app roda sempre claro (`userInterfaceStyle: 'light'` no `app.config.ts`), com as cores da loja; um modo escuro na prévia mostraria um app que não existe. Se o app ganhar tema escuro, a alternância entra junto |
+| Testes | ✅ 9 do contador (inclusive a mesma aba com as chaves em outra ordem) e 6 da escolha do aparelho (inclusive armazenamento bloqueado na leitura e na gravação). E2e do editor: primeira publicação, a cor gravada sozinha (no banco e depois de recarregar), a gravação segurada por duas abas com o mesmo nome, o contador em 1 e 2, a nova publicação, a moldura trocando e lembrando o Android, a restauração de uma versão trocando a tela; e, com a gravação presa no caminho, o nome digitado que fica na tela e vai ao banco, e a mudança gravada ao sair pelo menu |
+
 **Estimativa total:** cerca de 7 a 9 semanas para uma pessoa com Claude Code em ritmo forte. O MVP vendável (Fases 0–4) leva cerca de 4 a 5 semanas.
 
 ---

@@ -79,7 +79,7 @@ test('o build recebe o segredo do app, e o aparelho assinado com ele se registra
   // O build leva a config NO AR: publica pela tela, como o lojista.
   await page.goto('/app');
   await page.waitForLoadState('networkidle');
-  await page.getByRole('button', { name: 'Publicar', exact: true }).click();
+  await page.getByRole('button', { name: /Publicar alterações/ }).click();
   await page.getByRole('button', { name: 'Publicar agora' }).click();
   await expect(page.getByText(/Versão \d+ publicada/)).toBeVisible();
 

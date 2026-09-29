@@ -111,6 +111,9 @@ export default async function PaginaDoEditor() {
 
   return (
     <Editor
+      // Trocar de loja monta outro editor: nada da loja anterior — nem a
+      // gravação que esperava a pausa — passa para a nova.
+      key={lojaAtiva.id}
       storeId={lojaAtiva.id}
       configInicialDoServidor={rascunho.rascunho.config}
       versao={rascunho.rascunho.version}

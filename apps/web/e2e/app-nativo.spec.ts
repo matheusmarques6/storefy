@@ -50,9 +50,9 @@ test('o lojista liga o Face ID, publica, e a ficha e a política passam a contar
   // Liga, salva e publica.
   await chave.click();
   await expect(chave).toBeChecked();
-  await page.getByRole('button', { name: 'Salvar rascunho' }).click();
-  await expect(page.getByText('Rascunho salvo.').first()).toBeVisible();
-  await page.getByRole('button', { name: 'Publicar', exact: true }).click();
+  // O rascunho se salva sozinho, um instante depois da última mudança.
+  await expect(page.getByText(/Rascunho salvo às/)).toBeVisible();
+  await page.getByRole('button', { name: /Publicar alterações/ }).click();
   await page.getByRole('button', { name: 'Publicar agora' }).click();
   await expect(page.getByText(/Versão \d+ publicada/)).toBeVisible();
 
@@ -96,8 +96,8 @@ test('o lojista liga o Face ID, publica, e a ficha e a política passam a contar
    * Salvo como RASCUNHO, o desligado ainda não está nos celulares: a política
    * e as notas seguem a config publicada, que continua com o Face ID.
    */
-  await page.getByRole('button', { name: 'Salvar rascunho' }).click();
-  await expect(page.getByText('Rascunho salvo.').first()).toBeVisible();
+  // O rascunho se salva sozinho, um instante depois da última mudança.
+  await expect(page.getByText(/Rascunho salvo às/)).toBeVisible();
   await page.goto(`/privacy/${lojaId}`);
   await expect(page.getByRole('heading', { name: 'Face ID e digital' })).toBeVisible();
   await page.goto('/publicacao');
@@ -142,9 +142,9 @@ test('sem a aba Conta, o envio às lojas trava nos ajustes do app; a política a
   await expect(
     page.getByText('Sem a aba Conta, o cliente não acha os ajustes do app'),
   ).toBeVisible();
-  await page.getByRole('button', { name: 'Salvar rascunho' }).click();
-  await expect(page.getByText('Rascunho salvo.').first()).toBeVisible();
-  await page.getByRole('button', { name: 'Publicar', exact: true }).click();
+  // O rascunho se salva sozinho, um instante depois da última mudança.
+  await expect(page.getByText(/Rascunho salvo às/)).toBeVisible();
+  await page.getByRole('button', { name: /Publicar alterações/ }).click();
   await page.getByRole('button', { name: 'Publicar agora' }).click();
   await expect(page.getByText(/Versão \d+ publicada/)).toBeVisible();
 
@@ -169,9 +169,9 @@ test('sem a aba Conta, o envio às lojas trava nos ajustes do app; a política a
   await expect(page.getByText('Sem a aba Conta, o cliente não acha os ajustes do app')).toHaveCount(
     0,
   );
-  await page.getByRole('button', { name: 'Salvar rascunho' }).click();
-  await expect(page.getByText('Rascunho salvo.').first()).toBeVisible();
-  await page.getByRole('button', { name: 'Publicar', exact: true }).click();
+  // O rascunho se salva sozinho, um instante depois da última mudança.
+  await expect(page.getByText(/Rascunho salvo às/)).toBeVisible();
+  await page.getByRole('button', { name: /Publicar alterações/ }).click();
   await page.getByRole('button', { name: 'Publicar agora' }).click();
   await expect(page.getByText(/Versão \d+ publicada/)).toBeVisible();
 

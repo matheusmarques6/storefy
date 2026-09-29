@@ -9,7 +9,7 @@ import 'server-only';
  */
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '@storefy/db';
-import type { AppConfig } from '@storefy/config-schema';
+import { safeParseAppConfig, type AppConfig } from '@storefy/config-schema';
 import { decidirRascunho } from '@/lib/rascunho';
 import { FALHA_GENERICA, mensagemDaFalha } from '@/lib/erros';
 
@@ -28,6 +28,11 @@ export type ResultadoDoRascunho =
 export interface VersaoPublicada {
   version: number;
   publishedAt: string | null;
+  /**
+   * A config no ar, para o editor contar o que mudou desde ela. Nula quando a
+   * gravada não passa mais pelo contrato — aí não há com o que comparar.
+   */
+  config: AppConfig | null;
 }
 
 /** Uma linha do histórico, para a tela de versões. */
@@ -170,14 +175,20 @@ export async function versaoPublicada(
 ): Promise<VersaoPublicada | null> {
   const { data, error } = await supabase
     .from('app_configs')
-    .select('version, published_at')
+    .select('version, published_at, config')
     .eq('app_id', appId)
     .eq('status', 'published')
     .maybeSingle();
   // "Nunca publicado" com o banco fora do ar faria o lojista publicar de novo.
   if (error != null) throw new Error(`Não foi possível ler a versão no ar: ${error.message}`);
+  if (data == null) return null;
 
-  return data == null ? null : { version: data.version, publishedAt: data.published_at };
+  const lida = safeParseAppConfig(data.config);
+  return {
+    version: data.version,
+    publishedAt: data.published_at,
+    config: lida.success ? lida.data : null,
+  };
 }
 
 /** Histórico completo, da versão mais nova para a mais antiga. */

@@ -3,15 +3,19 @@
 /**
  * O editor do app (C06).
  *
- * Guarda a config inteira em estado e compara com a que veio do servidor para
- * saber se há mudança não salva. A barra de salvar só aparece quando há — uma
- * barra permanente vira parte do cenário e some da atenção de quem edita.
+ * Guarda a config inteira em estado e a grava SOZINHA no rascunho, um instante
+ * depois de a pessoa parar de mexer (seção 10 do plano) — ninguém perde meia
+ * hora de ajuste por esquecer um botão. As gravações vão em fila: duas
+ * seguidas não chegam fora de ordem, e o que fica no banco é sempre a última.
+ * Config com ponto a corrigir não é gravada: o rascunho continua sendo algo
+ * que pode ir ao ar.
  *
- * Sair da página com alteração pendente avisa. O lojista pode passar meia hora
- * ajustando cor e perder tudo num clique no menu.
+ * A barra de baixo diz como está o rascunho e quantas mudanças vão ao ar com
+ * "Publicar alterações". Fechar ou recarregar a aba com gravação pendente
+ * avisa; sair pelo menu do painel grava na hora o que estava esperando.
  */
-import { useCallback, useEffect, useMemo, useState, useTransition } from 'react';
-import { AlertTriangle, Check, Eye, MousePointerClick, Rocket, Save } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from 'react';
+import { AlertTriangle, Eye, MousePointerClick } from 'lucide-react';
 import { toast } from 'sonner';
 import type { AppConfig } from '@storefy/config-schema';
 import type { VersaoDoHistorico, VersaoPublicada } from '@/lib/configs-servidor';
@@ -34,13 +38,18 @@ import {
 import { publicarConfig, salvarConfig } from './acoes';
 import { Previa, caminhoDaPrevia } from './previa';
 import { PreviaNoCelular } from './previa-no-celular';
+import { BarraDePublicacao, type SituacaoDoRascunho } from './barra-de-publicacao';
 import { SecaoAbas } from './secao-abas';
 import { SecaoAparencia } from './secao-aparencia';
 import { SecaoLoja } from './secao-loja';
 import type { Preset } from '@/lib/presets';
 import type { OndeBaixarAPrevia } from '@/lib/configuracoes-da-plataforma';
+import { conteudoDaConfig, mudancasPendentes } from '@/lib/mudancas-pendentes';
 import { SecaoRecursos } from './secao-recursos';
 import { SecaoVersoes } from './secao-versoes';
+
+/** Quanto esperar depois da última mudança para gravar o rascunho. */
+const ESPERA_PARA_GRAVAR_MS = 1000;
 
 type Secao = 'aparencia' | 'abas' | 'loja' | 'recursos' | 'versoes';
 
@@ -95,24 +104,59 @@ export function Editor({
   const [problemasDoServidor, setProblemasDoServidor] = useState<Problema[]>([]);
   const [confirmandoPublicacao, setConfirmandoPublicacao] = useState(false);
   const [selecionando, setSelecionando] = useState(false);
-  const [salvando, iniciarSalvar] = useTransition();
   const [publicando, iniciarPublicar] = useTransition();
+  /** Só o que a gravação diz: salvo, salvando ou erro. O resto é derivado. */
+  const [gravacao, setGravacao] = useState<SituacaoDoRascunho>({ tipo: 'salvo', em: null });
+  /**
+   * O conteúdo de cada gravação a caminho, para reconhecer a volta dela. É
+   * estado, e não ref, porque é lido durante o render.
+   */
+  const [emVoo, setEmVoo] = useState<string[]>([]);
+  /**
+   * As gravações vão em fila, e `pendente` é a config esperando o fim da
+   * pausa — a que sai na hora se a pessoa deixar a tela. Um objeto só, que
+   * nunca é trocado: os efeitos o leem na montagem e o usam na desmontagem.
+   */
+  const gravacoes = useRef<{ fila: Promise<void>; pendente: AppConfig | null }>({
+    fila: Promise.resolve(),
+    pendente: null,
+  });
 
   const mudou = useMemo(() => JSON.stringify(config) !== JSON.stringify(salvo), [config, salvo]);
   const problemas = useMemo(() => validarConfig(config), [config]);
   const todosOsProblemas = problemas.length > 0 ? problemas : problemasDoServidor;
 
+  const situacao: SituacaoDoRascunho =
+    gravacao.tipo === 'salvando' || gravacao.tipo === 'erro'
+      ? gravacao
+      : !mudou
+        ? gravacao
+        : problemas.length > 0
+          ? { tipo: 'com-problemas' }
+          : { tipo: 'pendente' };
+
+  const mudancas = publicada?.config == null ? null : mudancasPendentes(config, publicada.config);
+
   /*
-   * A config do servidor muda quando outra aba do navegador publica ou
-   * restaura. O ajuste é feito DURANTE o render, comparando com a anterior, e
-   * não num efeito: um `setState` dentro de efeito desenha a tela uma vez com o
-   * valor velho antes de corrigir, e num editor isso aparece como piscada.
+   * A config do servidor chega de novo depois de cada ação que atualiza a
+   * página — inclusive a própria gravação, que devolve o que acabou de gravar.
+   * Adotá-la sempre apagava o que a pessoa digitou enquanto a gravação ia e
+   * voltava, e a barra ainda dizia "salvo". Por isso ela só substitui a tela
+   * quando traz OUTRO conteúdo, como uma versão restaurada; a volta de uma
+   * gravação, ou a publicação do que já estava salvo, passam direto.
+   *
+   * O ajuste é feito DURANTE o render, comparando com a anterior, e não num
+   * efeito: um `setState` dentro de efeito desenha a tela uma vez com o valor
+   * velho antes de corrigir, e num editor isso aparece como piscada.
    */
   const [ultimaDoServidor, setUltimaDoServidor] = useState(configInicialDoServidor);
   if (ultimaDoServidor !== configInicialDoServidor) {
     setUltimaDoServidor(configInicialDoServidor);
-    setConfig(configInicialDoServidor);
-    setSalvo(configInicialDoServidor);
+    const doServidor = conteudoDaConfig(configInicialDoServidor);
+    if (doServidor !== conteudoDaConfig(salvo) && !emVoo.includes(doServidor)) {
+      setConfig(configInicialDoServidor);
+      setSalvo(configInicialDoServidor);
+    }
   }
 
   /*
@@ -122,8 +166,9 @@ export function Editor({
   const abaDaPrevia =
     config.tabs.find((aba) => aba.id === abaEscolhidaNaPrevia)?.id ?? config.tabs[0]?.id ?? '';
 
+  const pendente = mudou || gravacao.tipo === 'salvando';
   useEffect(() => {
-    if (!mudou) return;
+    if (!pendente) return;
     function avisar(evento: BeforeUnloadEvent) {
       evento.preventDefault();
     }
@@ -131,21 +176,86 @@ export function Editor({
     return () => {
       window.removeEventListener('beforeunload', avisar);
     };
-  }, [mudou]);
+  }, [pendente]);
 
-  const salvar = useCallback(() => {
-    iniciarSalvar(() => {
-      void salvarConfig(storeId, config).then((estado) => {
-        setProblemasDoServidor(estado.problemas ?? []);
-        if (estado.ok === true) {
-          setSalvo(config);
-          toast.success(estado.mensagem ?? 'Rascunho salvo.');
-        } else {
-          toast.error(estado.mensagem ?? 'Não foi possível salvar.');
+  /** Grava ESTA config, depois de qualquer gravação que já esteja a caminho. */
+  const gravar = useCallback(
+    (alvo: AppConfig) => {
+      const conteudo = conteudoDaConfig(alvo);
+      setGravacao({ tipo: 'salvando' });
+      setEmVoo((lista) => [...lista, conteudo]);
+      const estado = gravacoes.current;
+      estado.fila = estado.fila.then(async () => {
+        try {
+          const estado = await salvarConfig(storeId, alvo);
+          setProblemasDoServidor(estado.problemas ?? []);
+          if (estado.ok === true) {
+            setSalvo(alvo);
+            setGravacao({ tipo: 'salvo', em: new Date() });
+          } else {
+            setGravacao({
+              tipo: 'erro',
+              mensagem: estado.mensagem ?? 'Não foi possível salvar o rascunho.',
+            });
+          }
+        } catch {
+          // A ação nem chegou ao servidor: a rede caiu no meio do caminho.
+          setGravacao({
+            tipo: 'erro',
+            mensagem: 'Sem conexão com a Storefy: o rascunho não foi salvo.',
+          });
+        } finally {
+          setEmVoo((lista) => {
+            const indice = lista.indexOf(conteudo);
+            return indice === -1 ? lista : [...lista.slice(0, indice), ...lista.slice(indice + 1)];
+          });
         }
       });
-    });
-  }, [config, storeId]);
+    },
+    [storeId],
+  );
+
+  // Um instante depois de a pessoa parar de mexer, grava. Com ponto a
+  // corrigir, espera: gravar poria no rascunho algo que não pode ir ao ar.
+  useEffect(() => {
+    const estado = gravacoes.current;
+    if (somenteLeitura || !mudou || problemas.length > 0) {
+      estado.pendente = null;
+      return;
+    }
+    estado.pendente = config;
+    const espera = window.setTimeout(() => {
+      estado.pendente = null;
+      gravar(config);
+    }, ESPERA_PARA_GRAVAR_MS);
+    return () => {
+      window.clearTimeout(espera);
+    };
+  }, [config, gravar, mudou, problemas.length, somenteLeitura]);
+
+  /*
+   * Sair da tela no meio da pausa não pode perder a mudança. O `beforeunload`
+   * só pega fechar e recarregar a aba; ir para outra tela pelo menu do painel
+   * desmonta o editor sem passar por ele. Então a gravação que esperava sai
+   * na hora, na mesma fila — e, como a tela já foi embora, um erro vira aviso.
+   */
+  useEffect(() => {
+    const estado = gravacoes.current;
+    return () => {
+      const alvo = estado.pendente;
+      if (alvo === null) return;
+      estado.pendente = null;
+      estado.fila = estado.fila.then(async () => {
+        const falha = 'A última mudança no app não foi salva. Volte ao editor e confira.';
+        try {
+          const resultado = await salvarConfig(storeId, alvo);
+          if (resultado.ok !== true) toast.error(resultado.mensagem ?? falha);
+        } catch {
+          toast.error(falha);
+        }
+      });
+    };
+  }, [storeId]);
 
   function publicar() {
     iniciarPublicar(() => {
@@ -355,60 +465,21 @@ export function Editor({
         </div>
       </div>
 
-      {/* Barra de salvar: só existe quando há o que salvar. */}
-      {mudou && !somenteLeitura ? (
-        <div className="bg-background/95 fixed inset-x-0 bottom-0 z-40 border-t p-3 backdrop-blur">
-          <div className="mx-auto flex max-w-6xl items-center justify-between gap-3">
-            <p className="text-sm">
-              <span className="font-medium">Alterações não salvas.</span>{' '}
-              <span className="text-muted-foreground hidden sm:inline">
-                Elas ainda não estão no app dos seus clientes.
-              </span>
-            </p>
-            <div className="flex items-center gap-2">
-              <Button
-                type="button"
-                variant="ghost"
-                disabled={salvando}
-                onClick={() => {
-                  setConfig(salvo);
-                  setProblemasDoServidor([]);
-                }}
-              >
-                Descartar
-              </Button>
-              <Button type="button" onClick={salvar} disabled={salvando || problemas.length > 0}>
-                <Save className="size-4" aria-hidden />
-                {salvando ? 'Salvando…' : 'Salvar rascunho'}
-              </Button>
-            </div>
-          </div>
-        </div>
-      ) : null}
-
-      {!mudou && !somenteLeitura ? (
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border p-4">
-          <div className="flex items-center gap-2 text-sm">
-            <Check className="size-4 text-emerald-600" aria-hidden />
-            <span className="text-muted-foreground">
-              Rascunho salvo.{' '}
-              {publicada === null
-                ? 'Publique para o app começar a usar esta configuração.'
-                : `O app está usando a versão ${String(publicada.version)}.`}
-            </span>
-          </div>
-          <Button
-            type="button"
-            disabled={publicando || problemas.length > 0}
-            onClick={() => {
-              setConfirmandoPublicacao(true);
-            }}
-          >
-            <Rocket className="size-4" aria-hidden />
-            {publicando ? 'Publicando…' : 'Publicar'}
-          </Button>
-        </div>
-      ) : null}
+      {somenteLeitura ? null : (
+        <BarraDePublicacao
+          situacao={situacao}
+          versaoNoAr={publicada?.version ?? null}
+          mudancas={mudancas}
+          publicando={publicando}
+          fuso={fuso}
+          aoTentarDeNovo={() => {
+            gravar(config);
+          }}
+          aoPublicar={() => {
+            setConfirmandoPublicacao(true);
+          }}
+        />
+      )}
 
       <AlertDialog open={confirmandoPublicacao} onOpenChange={setConfirmandoPublicacao}>
         <AlertDialogContent>

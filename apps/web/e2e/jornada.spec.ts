@@ -59,9 +59,9 @@ test('do cadastro à primeira campanha, só pela tela', async ({ page }) => {
   await abrir(page, '/app');
   await page.getByRole('button', { name: 'Aparência' }).click();
   await page.getByRole('textbox', { name: 'Cor principal', exact: true }).fill('#1d4ed8');
-  await page.getByRole('button', { name: 'Salvar rascunho' }).click();
-  await expect(page.getByText('Rascunho salvo.').first()).toBeVisible();
-  await page.getByRole('button', { name: 'Publicar', exact: true }).click();
+  // O rascunho se salva sozinho, um instante depois da última mudança.
+  await expect(page.getByText(/Rascunho salvo às/)).toBeVisible();
+  await page.getByRole('button', { name: /Publicar alterações/ }).click();
   await page.getByRole('button', { name: 'Publicar agora' }).click();
   await expect(page.getByText(/Versão \d+ publicada/)).toBeVisible();
 

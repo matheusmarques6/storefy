@@ -201,9 +201,9 @@ test('atualização obrigatória: só a versão aprovada nas duas lojas, e ela c
   await page.getByRole('button', { name: 'Recursos' }).click();
   await expect(page.getByRole('radio', { name: /1\.0\.12/ })).toHaveCount(0);
   await page.getByRole('radio', { name: /Exigir a versão 1\.0\.9/ }).check();
-  await page.getByRole('button', { name: 'Salvar rascunho' }).click();
-  await expect(page.getByText('Rascunho salvo.').first()).toBeVisible();
-  await page.getByRole('button', { name: 'Publicar', exact: true }).click();
+  // O rascunho se salva sozinho, um instante depois da última mudança.
+  await expect(page.getByText(/Rascunho salvo às/)).toBeVisible();
+  await page.getByRole('button', { name: /Publicar alterações/ }).click();
   await page.getByRole('button', { name: 'Publicar agora' }).click();
   await expect(page.getByText(/Versão \d+ publicada/)).toBeVisible();
 
