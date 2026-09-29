@@ -26,6 +26,7 @@ import {
 } from '@/lib/build-interno';
 import { canalDaOta } from '@/lib/ota';
 import { log } from '@/lib/log';
+import { lido } from '@/lib/leitura';
 
 export const dynamic = 'force-dynamic';
 
@@ -69,12 +70,15 @@ export async function POST(requisicao: NextRequest): Promise<NextResponse> {
 
     // A rodada precisa existir e ainda estar aberta: um otaId antigo, que
     // apareceu num log de execução, não serve para buscar segredo nenhum.
-    const { data: rodada } = await servico
-      .from('ota_updates')
-      .select('id, status')
-      .eq('id', analise.data.otaId)
-      .in('status', ['queued', 'running'])
-      .maybeSingle();
+    const { data: rodada } = lido(
+      await servico
+        .from('ota_updates')
+        .select('id, status')
+        .eq('id', analise.data.otaId)
+        .in('status', ['queued', 'running'])
+        .maybeSingle(),
+      'a rodada de correção',
+    );
 
     if (rodada == null) {
       return NextResponse.json(

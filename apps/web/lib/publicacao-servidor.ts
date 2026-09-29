@@ -80,13 +80,13 @@ export async function dadosDaPublicacao(
   storeId: string,
   orgId: string,
 ): Promise<DadosDaPublicacao | null> {
-  const { data: loja } = await supabase
+  const { data: loja, error: erroDaLoja } = await supabase
     .from('stores')
     .select('name, primary_url, support_email, platform, shopify_scopes, shopify_conexao')
     .eq('id', storeId)
     .maybeSingle();
 
-  const { data: app } = await supabase
+  const { data: app, error: erroDoApp } = await supabase
     .from('apps')
     .select(
       'id, display_name, icon_path, splash_path, bundle_id_ios, package_android, onesignal_app_id, current_config_version, apple_team_id, android_cert_fingerprints, ios_links_linked_at, android_links_linked_at, links_error',
@@ -94,6 +94,9 @@ export async function dadosDaPublicacao(
     .eq('store_id', storeId)
     .maybeSingle();
 
+  // Erro não é "app não encontrado": a tela diria para recarregar sem razão.
+  const falha = erroDaLoja ?? erroDoApp;
+  if (falha != null) throw new Error(`Não foi possível ler a publicação: ${falha.message}`);
   if (app == null) return null;
 
   const [{ data: publicada }, { data: contas }, { data: builds }] = await Promise.all([

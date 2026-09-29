@@ -102,11 +102,16 @@ export async function POST(requisicao: NextRequest): Promise<NextResponse> {
      *   workflow gravar o `eas_build_id`. 404, para o EAS reentregar.
      */
     if (linhas.length === 0) {
-      const { count } = await servico
+      const { count, error: erroDaContagem } = await servico
         .from('builds')
         .select('id', { count: 'exact', head: true })
         .eq('eas_build_id', corpo.id);
 
+      // Sem a contagem, 500: o EAS reentrega, e a próxima leitura decide.
+      if (erroDaContagem != null) {
+        log.erro('webhook-eas.contagem-falhou', { build: corpo.id, falha: erroDaContagem });
+        return NextResponse.json({ erro: 'falhou' }, { status: 500, headers: SEM_CACHE });
+      }
       if ((count ?? 0) > 0) {
         return NextResponse.json({ ok: true, ignorado: 'ja_concluido' }, { headers: SEM_CACHE });
       }

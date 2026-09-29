@@ -15,6 +15,7 @@ import { redirecionarPara } from '@/lib/redirecionar';
 import { criarClientServidor } from '@/lib/supabase/server';
 import { DURACAO_DA_VISITA_MS, conferirToken, criarToken } from '@/lib/visita';
 import { COOKIE_LOJA_DA_VISITA, COOKIE_VISITA } from '@/lib/visita-nomes';
+import { log } from '@/lib/log';
 
 export const dynamic = 'force-dynamic';
 
@@ -30,11 +31,13 @@ export async function GET(requisicao: NextRequest): Promise<NextResponse> {
   } = await supabase.auth.getUser();
   if (user?.id !== convite.adminId) return recusar();
 
-  const { data: registro } = await supabase
+  const { data: registro, error } = await supabase
     .from('platform_admins')
     .select('user_id')
     .eq('user_id', user.id)
     .maybeSingle();
+  // Na dúvida, recusa — mas a equipe fica sabendo por quê.
+  if (error != null) log.erro('visita.equipe-nao-conferida', { falha: error });
   if (registro == null) return recusar();
 
   const resposta = redirecionarPara('/');

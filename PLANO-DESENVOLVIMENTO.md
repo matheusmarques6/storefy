@@ -1518,6 +1518,21 @@ por um caminho DENTRO do app (4.5.4), e o Storefy é campanha de promoção.
 - **Leitura com erro virava lista vazia** nas telas de notificações: "nenhuma
   campanha" com o banco fora do ar, e o lojista criaria de novo a campanha que
   existe. Agora vira a tela de erro, com "tentar de novo".
+- **A mesma doença em outras telas e rotas: leitura que joga o erro fora.**
+  Uma varredura achou 32 leituras de tela, rota e loader do tipo
+  `const { data } = await ...`, sem olhar o `error`. Com o banco fora do ar,
+  a C12 dizia "não encontramos o app", o editor dizia "nunca publicado", a
+  política pública (que o revisor da Apple abre) respondia 404, o job da
+  revisão da Apple deixava de gravar uma decisão sem avisar ninguém, e o
+  workflow do build ouvia "build não encontrado" sobre um build que existe.
+  Agora cada uma passa por `lido()` (vira a tela de erro, ou 503 nas rotas)
+  ou trata o erro; os testes de autorização continuam negando na dúvida, mas
+  registram por quê. O job da revisão conta as decisões que não gravou, e o
+  batimento dele fica "instável". `lib/leituras-com-erro.test.ts` reprova
+  leitura nova que jogue o erro fora — conferido pondo uma de volta. As ações
+  de servidor ficam fora da varredura: nelas a falha já vira mensagem de erro
+  para quem clicou (às vezes "não encontrada" quando o certo seria "tente de
+  novo"), nunca um sucesso falso.
 - **Dois textos de "em breve" que envelheceram:** a tela de automações
   prometia "numa próxima atualização" três automações que já estavam nela, e a
   A08 dizia que o custo em reais "entra na Fase 7" — que já foi entregue e não

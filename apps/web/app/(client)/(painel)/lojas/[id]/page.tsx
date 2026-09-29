@@ -14,6 +14,7 @@ import { ExcluirLoja } from './excluir-loja';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { lido } from '@/lib/leitura';
 
 export const metadata: Metadata = { title: 'Loja' };
 
@@ -32,11 +33,10 @@ export default async function PaginaLoja({
   // A RLS já limita ao que a organização do usuário pode ver: uma loja de outra
   // empresa simplesmente não é encontrada, e vira 404.
   // `COLUNAS_DA_LOJA` e não `*`: o token da Shopify não é legível pelo painel.
-  const { data: loja } = await supabase
-    .from('stores')
-    .select(COLUNAS_DA_LOJA)
-    .eq('id', id)
-    .maybeSingle();
+  const { data: loja } = lido(
+    await supabase.from('stores').select(COLUNAS_DA_LOJA).eq('id', id).maybeSingle(),
+    'a loja',
+  );
 
   if (loja == null) notFound();
 

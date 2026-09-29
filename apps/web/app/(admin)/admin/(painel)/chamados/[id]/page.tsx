@@ -11,6 +11,8 @@ import { MudarSituacao, ResponderComoEquipe } from './responder';
 import { ConversaDoChamado } from '@/components/conversa-do-chamado';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
+import { lido } from '@/lib/leitura';
+import { log } from '@/lib/log';
 
 export const metadata: Metadata = { title: 'Chamado · Admin' };
 
@@ -26,22 +28,27 @@ export default async function PaginaDoChamadoAdmin({
   if (!UUID.test(id)) notFound();
   const supabase = await criarClientServidor();
 
-  const { data: chamado } = await supabase
-    .from('support_tickets')
-    .select(
-      'id, titulo, assunto, status, created_at, org_id, author_id, organizations(name), stores(name)',
-    )
-    .eq('id', id)
-    .maybeSingle();
+  const { data: chamado } = lido(
+    await supabase
+      .from('support_tickets')
+      .select(
+        'id, titulo, assunto, status, created_at, org_id, author_id, organizations(name), stores(name)',
+      )
+      .eq('id', id)
+      .maybeSingle(),
+    'o chamado',
+  );
   if (chamado == null) notFound();
 
-  const [{ data: mensagens, error }, { data: autor }] = await Promise.all([
+  const [{ data: mensagens, error }, { data: autor, error: erroDoAutor }] = await Promise.all([
     supabase.rpc('mensagens_do_chamado', { p_ticket_id: chamado.id }),
     chamado.author_id == null
-      ? Promise.resolve({ data: null })
+      ? Promise.resolve({ data: null, error: null })
       : supabase.rpc('admin_email_do_usuario', { p_user_id: chamado.author_id }),
   ]);
   if (error != null) throw new Error(`Não foi possível carregar a conversa: ${error.message}`);
+  // Sem o e-mail de quem abriu, a conversa ainda abre — e a falha fica no log.
+  if (erroDoAutor != null) log.aviso('chamados.autor-nao-lido', { falha: erroDoAutor });
 
   const fechado = chamado.status === 'fechado';
 

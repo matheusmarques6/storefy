@@ -23,6 +23,7 @@ import {
 import { criarClientServidor } from '@/lib/supabase/server';
 import { visitaDoPedido, type DadosDaVisita } from '@/lib/visita';
 import { COOKIE_LOJA_DA_VISITA } from '@/lib/visita-nomes';
+import { log } from '@/lib/log';
 
 export const COOKIE_ORG = 'storefy_org';
 export const COOKIE_LOJA = 'storefy_loja';
@@ -178,11 +179,14 @@ async function contextoDaVisita(
   usuario: User,
   visita: DadosDaVisita,
 ): Promise<ContextoCliente | null> {
-  const { data: organizacao } = await supabase
+  const { data: organizacao, error: erroDaOrganizacao } = await supabase
     .from('organizations')
     .select('*')
     .eq('id', visita.orgId)
     .maybeSingle();
+  if (erroDaOrganizacao != null) {
+    throw new Error(`Não foi possível carregar o cliente: ${erroDaOrganizacao.message}`);
+  }
   if (organizacao == null) return null;
 
   const { data: lojas, error } = await supabase
@@ -269,10 +273,12 @@ export const exigirPlatformAdminComPapel = cache(
 /** True se o usuário pertence à equipe Storefy. Usado para exibir o atalho do admin. */
 export async function ehPlatformAdmin(userId: string): Promise<boolean> {
   const supabase = await criarClientServidor();
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from('platform_admins')
     .select('user_id')
     .eq('user_id', userId)
     .maybeSingle();
+  // Na dúvida, sem o atalho: ele só LEVA ao admin, que confere de novo.
+  if (error != null) log.aviso('contexto.equipe-nao-conferida', { falha: error });
   return data != null;
 }

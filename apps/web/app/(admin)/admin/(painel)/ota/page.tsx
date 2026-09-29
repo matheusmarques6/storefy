@@ -9,6 +9,7 @@ import { EstadoVazio } from '@/components/estado-vazio';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
 import { FormularioDaOta } from './formulario';
+import { lido } from '@/lib/leitura';
 
 export const metadata: Metadata = { title: 'Correção OTA' };
 export const dynamic = 'force-dynamic';
@@ -36,11 +37,14 @@ export default async function PaginaDaOta() {
    * chegar por outro caminho.
    */
   const servico = criarClientServiceRole();
-  const { data: rodadas } = await servico
-    .from('ota_updates')
-    .select('id, status, message, total, concluidas, falhas, error, created_at, finished_at')
-    .order('created_at', { ascending: false })
-    .limit(20);
+  const { data: rodadas } = lido(
+    await servico
+      .from('ota_updates')
+      .select('id, status, message, total, concluidas, falhas, error, created_at, finished_at')
+      .order('created_at', { ascending: false })
+      .limit(20),
+    'as rodadas de correção',
+  );
 
   const lista = rodadas ?? [];
   const emAndamento = lista.some(

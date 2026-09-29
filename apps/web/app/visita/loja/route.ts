@@ -11,6 +11,7 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { criarClientServidor } from '@/lib/supabase/server';
 import { visitaDoPedido } from '@/lib/visita';
 import { COOKIE_LOJA_DA_VISITA } from '@/lib/visita-nomes';
+import { log } from '@/lib/log';
 
 export const dynamic = 'force-dynamic';
 
@@ -30,12 +31,16 @@ export async function POST(requisicao: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ erro: 'loja_invalida' }, { status: 400 });
   }
 
-  const { data: loja } = await supabase
+  const { data: loja, error } = await supabase
     .from('stores')
     .select('id')
     .eq('id', lojaId)
     .eq('org_id', visita.orgId)
     .maybeSingle();
+  if (error != null) {
+    log.erro('visita.loja-nao-lida', { falha: error });
+    return NextResponse.json({ erro: 'indisponivel' }, { status: 503 });
+  }
   if (loja == null) return NextResponse.json({ erro: 'loja_de_fora' }, { status: 404 });
 
   const resposta = NextResponse.json({ ok: true });

@@ -11,6 +11,7 @@ import { FecharChamado, ResponderChamado } from './conversa';
 import { ConversaDoChamado } from '@/components/conversa-do-chamado';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
+import { lido } from '@/lib/leitura';
 
 export const metadata: Metadata = { title: 'Chamado · Ajuda' };
 
@@ -25,12 +26,15 @@ export default async function PaginaDoChamado({ params }: { params: Promise<{ id
 
   // O filtro pela empresa ATIVA, além da RLS: o chamado de outra empresa da
   // mesma pessoa abre com aquela empresa selecionada, e não misturado nesta.
-  const { data: chamado } = await supabase
-    .from('support_tickets')
-    .select('id, titulo, assunto, status, store_id, created_at')
-    .eq('id', id)
-    .eq('org_id', organizacao.id)
-    .maybeSingle();
+  const { data: chamado } = lido(
+    await supabase
+      .from('support_tickets')
+      .select('id, titulo, assunto, status, store_id, created_at')
+      .eq('id', id)
+      .eq('org_id', organizacao.id)
+      .maybeSingle(),
+    'o chamado',
+  );
   if (chamado == null) notFound();
 
   const { data: mensagens, error } = await supabase.rpc('mensagens_do_chamado', {

@@ -33,6 +33,7 @@ import {
   MOTIVO_MAXIMO_DA_VISITA,
   MOTIVO_MINIMO_DA_VISITA,
 } from '@/lib/visita-nomes';
+import { log } from '@/lib/log';
 
 export const DURACAO_DA_VISITA_MS = 60 * 60 * 1000;
 export const DURACAO_DO_CONVITE_MS = 5 * 60 * 1000;
@@ -148,12 +149,14 @@ export async function visitaDoPedido(
   const visita = conferirToken(armazem.get(COOKIE_VISITA)?.value, 'visita');
   if (visita?.adminId !== usuarioId) return null;
 
-  const { data: registro } = await supabase
+  const { data: registro, error } = await supabase
     .from('platform_admins')
     .select('user_id')
     .eq('user_id', usuarioId)
     .maybeSingle();
 
+  // Na dúvida, sem visita: a leitura segue com a sessão da pessoa, e só.
+  if (error != null) log.erro('visita.equipe-nao-conferida', { falha: error });
   return registro == null ? null : visita;
 }
 

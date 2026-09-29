@@ -31,6 +31,7 @@ import {
   type DadosParaOEnvio,
 } from '@/lib/build-interno';
 import { log } from '@/lib/log';
+import { lido } from '@/lib/leitura';
 
 export const dynamic = 'force-dynamic';
 
@@ -91,31 +92,42 @@ export async function POST(requisicao: NextRequest): Promise<NextResponse> {
 async function montar(buildId: string): Promise<DadosParaOBuild | null> {
   const servico = criarClientServiceRole();
 
-  const { data: build } = await servico
-    .from('builds')
-    .select('id, app_id, platform, profile, status, config_version')
-    .eq('id', buildId)
-    .maybeSingle();
+  // `lido` em cada leitura: com o banco fora, 503 e o workflow tenta de novo
+  // — e não um 404 que diria "build não encontrado" sobre um build que existe.
+  const { data: build } = lido(
+    await servico
+      .from('builds')
+      .select('id, app_id, platform, profile, status, config_version')
+      .eq('id', buildId)
+      .maybeSingle(),
+    'o build',
+  );
 
   if (build == null || !podeBuscarCredenciais(build.status, 'build')) return null;
 
-  const { data: app } = await servico
-    .from('apps')
-    .select(
-      'id, store_id, display_name, bundle_id_ios, package_android, expo_project_id, onesignal_app_id, device_secret_enc, icon_path, splash_path',
-    )
-    .eq('id', build.app_id)
-    .maybeSingle();
+  const { data: app } = lido(
+    await servico
+      .from('apps')
+      .select(
+        'id, store_id, display_name, bundle_id_ios, package_android, expo_project_id, onesignal_app_id, device_secret_enc, icon_path, splash_path',
+      )
+      .eq('id', build.app_id)
+      .maybeSingle(),
+    'o app',
+  );
   if (app == null) return null;
 
-  const { data: loja } = await servico
-    .from('stores')
-    .select('id, org_id, name, primary_url')
-    .eq('id', app.store_id)
-    .maybeSingle();
+  const { data: loja } = lido(
+    await servico
+      .from('stores')
+      .select('id, org_id, name, primary_url')
+      .eq('id', app.store_id)
+      .maybeSingle(),
+    'a loja',
+  );
   if (loja == null) return null;
 
-  const [{ data: config }, { data: contas }] = await Promise.all([
+  const [lidaConfig, lidasContas] = await Promise.all([
     servico
       .from('app_configs')
       .select('config, version')
@@ -129,6 +141,8 @@ async function montar(buildId: string): Promise<DadosParaOBuild | null> {
       )
       .eq('org_id', loja.org_id),
   ]);
+  const { data: config } = lido(lidaConfig, 'a configuração no ar');
+  const { data: contas } = lido(lidasContas, 'as contas de desenvolvedor');
 
   if (config == null) return null;
 
@@ -201,34 +215,42 @@ async function montar(buildId: string): Promise<DadosParaOBuild | null> {
 async function montarEnvio(buildId: string): Promise<DadosParaOEnvio | null> {
   const servico = criarClientServiceRole();
 
-  const { data: build } = await servico
-    .from('builds')
-    .select('id, app_id, platform, profile, status, eas_build_id')
-    .eq('id', buildId)
-    .maybeSingle();
+  const { data: build } = lido(
+    await servico
+      .from('builds')
+      .select('id, app_id, platform, profile, status, eas_build_id')
+      .eq('id', buildId)
+      .maybeSingle(),
+    'o build',
+  );
 
   if (build == null || !podeBuscarCredenciais(build.status, 'submit')) return null;
 
-  const { data: app } = await servico
-    .from('apps')
-    .select('id, store_id, display_name, bundle_id_ios, package_android, expo_project_id')
-    .eq('id', build.app_id)
-    .maybeSingle();
+  const { data: app } = lido(
+    await servico
+      .from('apps')
+      .select('id, store_id, display_name, bundle_id_ios, package_android, expo_project_id')
+      .eq('id', build.app_id)
+      .maybeSingle(),
+    'o app',
+  );
   if (app == null) return null;
 
-  const { data: loja } = await servico
-    .from('stores')
-    .select('id, org_id')
-    .eq('id', app.store_id)
-    .maybeSingle();
+  const { data: loja } = lido(
+    await servico.from('stores').select('id, org_id').eq('id', app.store_id).maybeSingle(),
+    'a loja',
+  );
   if (loja == null) return null;
 
-  const { data: contas } = await servico
-    .from('developer_accounts')
-    .select(
-      'platform, apple_team_id, asc_key_id, asc_issuer_id, asc_key_enc, google_service_account_enc',
-    )
-    .eq('org_id', loja.org_id);
+  const { data: contas } = lido(
+    await servico
+      .from('developer_accounts')
+      .select(
+        'platform, apple_team_id, asc_key_id, asc_issuer_id, asc_key_enc, google_service_account_enc',
+      )
+      .eq('org_id', loja.org_id),
+    'as contas de desenvolvedor',
+  );
 
   return {
     buildId: build.id,

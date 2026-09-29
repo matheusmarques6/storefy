@@ -16,6 +16,7 @@ import { safeParseAppConfig } from '@storefy/config-schema';
 import { criarClientServiceRole } from '@/lib/supabase/admin';
 import { serviceRoleConfigurada, supabaseConfigurado } from '@/lib/env';
 import { montarPolitica } from '@/lib/politica-de-privacidade';
+import { lido } from '@/lib/leitura';
 
 export const dynamic = 'force-dynamic';
 
@@ -39,11 +40,16 @@ async function buscarLoja(id: string): Promise<Loja | null> {
 
   const servico = criarClientServiceRole();
 
-  const { data: loja } = await servico
-    .from('stores')
-    .select('name, primary_url, support_email, updated_at')
-    .eq('id', id)
-    .maybeSingle();
+  // Erro de leitura é página de erro, e não "política não encontrada": o
+  // revisor da Apple que visse um 404 recusaria o app.
+  const { data: loja } = lido(
+    await servico
+      .from('stores')
+      .select('name, primary_url, support_email, updated_at')
+      .eq('id', id)
+      .maybeSingle(),
+    'a loja',
+  );
   if (loja == null) return null;
 
   /*
@@ -52,11 +58,10 @@ async function buscarLoja(id: string): Promise<Loja | null> {
    * que o revisor às vezes pega; uma que as omite num app que notifica é um
    * problema jurídico do lojista.
    */
-  const { data: app } = await servico
-    .from('apps')
-    .select('id, onesignal_app_id')
-    .eq('store_id', id)
-    .maybeSingle();
+  const { data: app } = lido(
+    await servico.from('apps').select('id, onesignal_app_id').eq('store_id', id).maybeSingle(),
+    'o app da loja',
+  );
 
   /*
    * Sem o segredo do aparelho o app não consegue assinar o que manda, então
@@ -67,12 +72,15 @@ async function buscarLoja(id: string): Promise<Loja | null> {
   const { count: comSegredo } =
     app == null
       ? { count: 0 }
-      : await servico
-          .from('apps')
-          .select('id', { count: 'exact', head: true })
-          .eq('id', app.id)
-          .not('device_secret_enc', 'is', null)
-          .neq('device_secret_enc', '');
+      : lido(
+          await servico
+            .from('apps')
+            .select('id', { count: 'exact', head: true })
+            .eq('id', app.id)
+            .not('device_secret_enc', 'is', null)
+            .neq('device_secret_enc', ''),
+          'o segredo do app',
+        );
 
   /*
    * O Face ID é da config NO AR — a que está nos celulares. Um rascunho com o
@@ -81,12 +89,15 @@ async function buscarLoja(id: string): Promise<Loja | null> {
   const { data: publicada } =
     app == null
       ? { data: null }
-      : await servico
-          .from('app_configs')
-          .select('config, published_at')
-          .eq('app_id', app.id)
-          .eq('status', 'published')
-          .maybeSingle();
+      : lido(
+          await servico
+            .from('app_configs')
+            .select('config, published_at')
+            .eq('app_id', app.id)
+            .eq('status', 'published')
+            .maybeSingle(),
+          'a configuração no ar',
+        );
   const lida = publicada == null ? null : safeParseAppConfig(publicada.config);
   const config = lida?.success === true ? lida.data : null;
 

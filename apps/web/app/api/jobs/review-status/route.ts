@@ -54,6 +54,8 @@ export async function GET(requisicao: NextRequest): Promise<NextResponse> {
   let consultados = 0;
   let mudados = 0;
   let avisados = 0;
+  /** Builds cuja revisão não pôde ser gravada: o batimento conta como falha. */
+  let naoGravados = 0;
   const inicio = Date.now();
 
   try {
@@ -71,13 +73,15 @@ export async function GET(requisicao: NextRequest): Promise<NextResponse> {
       let p8: string;
       try {
         p8 = descriptografar(build.asc_key_enc);
-      } catch {
+      } catch (erro) {
         /*
          * A chave de uma loja não abrir não pode parar as outras. Ela vai
          * aparecer como falha no próximo build, com o motivo — aqui, gravar
          * erro seria transformar um problema nosso de criptografia numa
-         * mensagem que o lojista não consegue agir.
+         * mensagem que o lojista não consegue agir. Mas a equipe precisa
+         * saber: é problema NOSSO.
          */
+        log.erro('job-revisao.chave-nao-abre', { build: build.id, erro });
         continue;
       }
 
@@ -87,15 +91,29 @@ export async function GET(requisicao: NextRequest): Promise<NextResponse> {
       );
 
       if (!consulta.ok) {
-        // Falha passageira: a próxima hora tenta de novo, em silêncio.
-        if (consulta.passageiro) continue;
+        // Falha passageira: a próxima hora tenta de novo, sem mexer no build.
+        if (consulta.passageiro) {
+          log.aviso('job-revisao.consulta-passageira', {
+            build: build.id,
+            motivo: consulta.motivo,
+          });
+          continue;
+        }
 
         /*
          * Sem `p_status`: o build fica onde está e só a mensagem aparece. Uma
          * chave revogada não é uma decisão da Apple sobre o app, e mover o
          * status por causa dela mentiria sobre a revisão.
          */
-        await supabase.rpc('gravar_revisao', { p_id: build.id, p_erro: consulta.motivo });
+        const { error: erroAoGravar } = await supabase.rpc('gravar_revisao', {
+          p_id: build.id,
+          p_erro: consulta.motivo,
+        });
+        if (erroAoGravar != null) {
+          log.erro('job-revisao.gravacao-falhou', { build: build.id, falha: erroAoGravar });
+          naoGravados += 1;
+          continue;
+        }
         mudados += 1;
         continue;
       }
@@ -104,14 +122,19 @@ export async function GET(requisicao: NextRequest): Promise<NextResponse> {
       if (consulta.status === null) continue;
 
       const motivo = mensagemDaRevisao(consulta.status, consulta.estado);
-      const { data: mudou } = await supabase.rpc('gravar_revisao', {
+      const { data: mudou, error: erroAoGravar } = await supabase.rpc('gravar_revisao', {
         p_id: build.id,
         p_status: consulta.status,
         // Sem mensagem, o campo é limpo: um "aprovado" não pode carregar o
         // texto de uma recusa anterior.
         p_erro: motivo ?? undefined,
       });
-      if (mudou !== true) continue;
+      if (erroAoGravar != null) {
+        log.erro('job-revisao.gravacao-falhou', { build: build.id, falha: erroAoGravar });
+        naoGravados += 1;
+        continue;
+      }
+      if (!mudou) continue;
 
       mudados += 1;
 
@@ -134,9 +157,15 @@ export async function GET(requisicao: NextRequest): Promise<NextResponse> {
     );
   }
 
-  log.info('job-revisao.concluido', { consultados, mudados, avisados });
-  await registrarBatimento('review-status', inicio);
-  return NextResponse.json({ consultados, mudados, avisados }, { headers: SEM_CACHE });
+  log.info('job-revisao.concluido', { consultados, mudados, avisados, naoGravados });
+  // Um build que não gravou é revisão que o lojista não vai ver: o batimento
+  // diz, e a página de status mostra "instável" em vez de "funcionando".
+  await registrarBatimento(
+    'review-status',
+    inicio,
+    naoGravados > 0 ? `${String(naoGravados)} revisão(ões) não gravada(s)` : undefined,
+  );
+  return NextResponse.json({ consultados, mudados, avisados, naoGravados }, { headers: SEM_CACHE });
 }
 
 /**
@@ -156,14 +185,26 @@ async function avisar(
   decisao: 'approved' | 'rejected',
   motivo: string | null,
 ): Promise<boolean> {
-  const { data: reservado } = await supabase.rpc('reservar_aviso', {
+  const { data: reservado, error: erroDaReserva } = await supabase.rpc('reservar_aviso', {
     p_id: buildId,
     p_status: decisao,
   });
-  if (reservado !== true) return false;
+  if (erroDaReserva != null) {
+    log.erro('job-revisao.reserva-falhou', { build: buildId, falha: erroDaReserva });
+    return false;
+  }
+  if (!reservado) return false;
 
-  const { data: destinos } = await supabase.rpc('emails_do_build', { p_id: buildId });
-  const para = (destinos ?? [])
+  const { data: destinos, error: erroDosDestinos } = await supabase.rpc('emails_do_build', {
+    p_id: buildId,
+  });
+  if (erroDosDestinos != null) {
+    // Sem saber para quem, a reserva volta: "ninguém para avisar" seria mentira.
+    log.erro('job-revisao.destinos-falharam', { build: buildId, falha: erroDosDestinos });
+    await supabase.rpc('devolver_aviso', { p_id: buildId });
+    return false;
+  }
+  const para = destinos
     .map((linha) => linha.email)
     .filter((email): email is string => email !== null && email !== '');
 
@@ -173,15 +214,21 @@ async function avisar(
     return false;
   }
 
-  const { data: plataforma } = await supabase
+  const { data: plataforma, error: erroDaPlataforma } = await supabase
     .from('builds')
     .select('platform')
     .eq('id', buildId)
     .maybeSingle();
+  if (erroDaPlataforma != null) {
+    // O e-mail diria a loja errada ("App Store" para um build do Android).
+    log.erro('job-revisao.plataforma-falhou', { build: buildId, falha: erroDaPlataforma });
+    await supabase.rpc('devolver_aviso', { p_id: buildId });
+    return false;
+  }
 
   const mensagem = montarAviso({
     decisao,
-    nomeDaLoja: destinos?.[0]?.nome_da_loja ?? '',
+    nomeDaLoja: destinos[0]?.nome_da_loja ?? '',
     plataforma: plataforma?.platform ?? 'ios',
     motivo,
     url: `${urlDoSite()}/publicacao`,

@@ -11,6 +11,7 @@
 import { notFound, redirect } from 'next/navigation';
 import { criarClientServiceRole } from '@/lib/supabase/admin';
 import { serviceRoleConfigurada, supabaseConfigurado } from '@/lib/env';
+import { lido } from '@/lib/leitura';
 
 export const dynamic = 'force-dynamic';
 
@@ -21,11 +22,10 @@ async function lojaDoApp(appId: string): Promise<string | null> {
   // Um id que não é uuid vira 404 sem ir ao banco: o Postgres estouraria.
   if (!UUID.test(appId)) return null;
 
-  const { data } = await criarClientServiceRole()
-    .from('apps')
-    .select('store_id')
-    .eq('id', appId)
-    .maybeSingle();
+  const { data } = lido(
+    await criarClientServiceRole().from('apps').select('store_id').eq('id', appId).maybeSingle(),
+    'o app',
+  );
   return data?.store_id ?? null;
 }
 

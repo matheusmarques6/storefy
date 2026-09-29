@@ -23,6 +23,7 @@ import { serviceRoleConfigurada, supabaseConfigurado } from '@/lib/env';
 import { montarBanner, type DadosDoBanner, type RespostaDoBanner } from '@/lib/banner-do-app';
 import { ehDominioDeLoja } from '@/lib/shopify';
 import { log } from '@/lib/log';
+import { lido } from '@/lib/leitura';
 
 export const dynamic = 'force-dynamic';
 
@@ -79,18 +80,22 @@ export async function GET(
 async function buscar(dominio: string): Promise<DadosDoBanner | null> {
   const servico = criarClientServiceRole();
 
-  const { data: loja } = await servico
-    .from('stores')
-    .select('id')
-    .eq('shop_domain', dominio)
-    .maybeSingle();
+  // Cada leitura passa por `lido`: um erro vira a exceção que o GET registra
+  // e responde "desligado" — e não um "loja sem app" calado.
+  const { data: loja } = lido(
+    await servico.from('stores').select('id').eq('shop_domain', dominio).maybeSingle(),
+    'a loja do banner',
+  );
   if (loja == null) return null;
 
-  const { data: app } = await servico
-    .from('apps')
-    .select('id, ios_asc_app_id, package_android, current_config_version')
-    .eq('store_id', loja.id)
-    .maybeSingle();
+  const { data: app } = lido(
+    await servico
+      .from('apps')
+      .select('id, ios_asc_app_id, package_android, current_config_version')
+      .eq('store_id', loja.id)
+      .maybeSingle(),
+    'o app do banner',
+  );
   if (app == null) return null;
 
   /*
@@ -98,14 +103,17 @@ async function buscar(dominio: string): Promise<DadosDoBanner | null> {
    * do lojista tem que ser o que ele publicou, e não o que ele está editando
    * agora no painel.
    */
-  const { data: linha } = await servico
-    .from('app_configs')
-    .select('config')
-    .eq('app_id', app.id)
-    .eq('status', 'published')
-    .order('version', { ascending: false })
-    .limit(1)
-    .maybeSingle();
+  const { data: linha } = lido(
+    await servico
+      .from('app_configs')
+      .select('config')
+      .eq('app_id', app.id)
+      .eq('status', 'published')
+      .order('version', { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+    'a configuração do banner',
+  );
 
   const analise = linha == null ? null : safeParseAppConfig(linha.config);
   const banner = analise?.success === true ? analise.data.features.appBanner : null;

@@ -23,6 +23,7 @@ import {
   prepararHtmlDaPrevia,
 } from '@/lib/preview-proxy';
 import { dominiosDaLoja } from '@storefy/config-schema';
+import { log } from '@/lib/log';
 
 export const dynamic = 'force-dynamic';
 
@@ -63,12 +64,17 @@ export async function GET(requisicao: NextRequest): Promise<NextResponse> {
   if (user == null) return erro(401, 'Faça login no painel para ver a prévia.');
 
   // A RLS decide: quem não é da organização da loja simplesmente não a acha.
-  const { data: loja } = await supabase
+  const { data: loja, error: erroDaLoja } = await supabase
     .from('stores')
     .select('primary_url, shop_domain')
     .eq('id', lojaId)
     .maybeSingle();
 
+  // Banco fora do ar não é "loja não encontrada": a pessoa tentaria outra loja.
+  if (erroDaLoja != null) {
+    log.erro('previa.loja-nao-lida', { falha: erroDaLoja });
+    return erro(503, 'Não foi possível abrir a prévia agora. Tente de novo em instantes.');
+  }
   if (loja == null) return erro(404, 'Loja não encontrada.');
 
   const dominios = dominiosDaLoja(loja.primary_url, loja.shop_domain);

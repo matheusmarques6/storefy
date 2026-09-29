@@ -157,12 +157,14 @@ export async function versaoPublicada(
   supabase: Client,
   appId: string,
 ): Promise<VersaoPublicada | null> {
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from('app_configs')
     .select('version, published_at')
     .eq('app_id', appId)
     .eq('status', 'published')
     .maybeSingle();
+  // "Nunca publicado" com o banco fora do ar faria o lojista publicar de novo.
+  if (error != null) throw new Error(`Não foi possível ler a versão no ar: ${error.message}`);
 
   return data == null ? null : { version: data.version, publishedAt: data.published_at };
 }
@@ -173,14 +175,15 @@ export async function historicoDeVersoes(
   appId: string,
   limite = 50,
 ): Promise<VersaoDoHistorico[]> {
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from('app_configs')
     .select('version, status, published_at, published_by, created_at')
     .eq('app_id', appId)
     .order('version', { ascending: false })
     .limit(limite);
+  if (error != null) throw new Error(`Não foi possível ler o histórico: ${error.message}`);
 
-  return (data ?? []).map((linha) => ({
+  return data.map((linha) => ({
     version: linha.version,
     status: linha.status,
     publishedAt: linha.published_at,

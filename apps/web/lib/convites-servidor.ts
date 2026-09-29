@@ -89,7 +89,10 @@ export async function criarOuReenviarConvite(
       .is('revoked_at', null);
     consulta =
       alvo.orgId === undefined ? consulta.is('org_id', null) : consulta.eq('org_id', alvo.orgId);
-    const { data } = await consulta.maybeSingle();
+    const { data, error } = await consulta.maybeSingle();
+    // Sem a consulta, segue para gravar: o índice único segura a duplicata, e
+    // a falha fica no log em vez de sumir.
+    if (error != null) log.erro('convites.consulta-falhou', { falha: error });
     return data?.id ?? null;
   };
 

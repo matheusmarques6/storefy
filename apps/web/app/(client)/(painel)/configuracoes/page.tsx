@@ -10,18 +10,24 @@ import { criarClientServidor } from '@/lib/supabase/server';
 import { NavegacaoConfiguracoes } from './navegacao-configuracoes';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { lido } from '@/lib/leitura';
 
 export const metadata: Metadata = { title: 'Configurações' };
 
 export default async function PaginaConfiguracoes() {
   const { organizacao, papel, lojas, usuario, visita } = await exigirContextoCliente();
   const supabase = await criarClientServidor();
-  const { data: avisos } = await supabase
-    .from('email_preferences')
-    .select('revisao_do_app, resposta_do_suporte')
-    .eq('org_id', organizacao.id)
-    .eq('user_id', usuario.id)
-    .maybeSingle();
+  // Sem ler, as chaves abririam no padrão — e salvar gravaria o padrão por
+  // cima da escolha da pessoa.
+  const { data: avisos } = lido(
+    await supabase
+      .from('email_preferences')
+      .select('revisao_do_app, resposta_do_suporte')
+      .eq('org_id', organizacao.id)
+      .eq('user_id', usuario.id)
+      .maybeSingle(),
+    'as preferências de e-mail',
+  );
 
   return (
     <div className="mx-auto max-w-2xl space-y-6">
