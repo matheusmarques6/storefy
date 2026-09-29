@@ -228,6 +228,8 @@ export type Database = {
           created_at: string;
           claimed_at: string | null;
           deep_link: string | null;
+          title: string | null;
+          body: string | null;
         };
         Insert: {
           id?: string;
@@ -241,6 +243,8 @@ export type Database = {
           created_at?: string;
           claimed_at?: string | null;
           deep_link?: string | null;
+          title?: string | null;
+          body?: string | null;
         };
         Update: {
           id?: string;
@@ -254,6 +258,8 @@ export type Database = {
           created_at?: string;
           claimed_at?: string | null;
           deep_link?: string | null;
+          title?: string | null;
+          body?: string | null;
         };
         Relationships: [
           {
@@ -266,6 +272,52 @@ export type Database = {
             foreignKeyName: "automation_runs_device_id_fkey";
             columns: ["device_id"];
             referencedRelation: "devices";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      automation_webhooks: {
+        Row: {
+          automation_id: string;
+          app_id: string;
+          token_hash: string;
+          token_hint: string;
+          created_by: string | null;
+          created_at: string;
+          last_received_at: string | null;
+          received_count: number;
+        };
+        Insert: {
+          automation_id: string;
+          app_id: string;
+          token_hash: string;
+          token_hint: string;
+          created_by?: string | null;
+          created_at?: string;
+          last_received_at?: string | null;
+          received_count?: number;
+        };
+        Update: {
+          automation_id?: string;
+          app_id?: string;
+          token_hash?: string;
+          token_hint?: string;
+          created_by?: string | null;
+          created_at?: string;
+          last_received_at?: string | null;
+          received_count?: number;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "automation_webhooks_app_id_fkey";
+            columns: ["app_id"];
+            referencedRelation: "apps";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "automation_webhooks_automation_id_fkey";
+            columns: ["automation_id"];
+            referencedRelation: "push_automations";
             referencedColumns: ["id"];
           },
         ];
@@ -1563,6 +1615,10 @@ export type Database = {
         Args: { p_app_id: string; p_shopify_order_id: string };
         Returns: boolean;
       };
+      agendar_pelo_webhook: {
+        Args: { p_automacao: string; p_clientes: string[]; p_titulo?: string; p_corpo?: string; p_link?: string; p_ref?: string };
+        Returns: number;
+      };
       apagar_dados_da_shopify: {
         Args: { p_shop_domain: string };
         Returns: number;
@@ -1635,6 +1691,10 @@ export type Database = {
         Args: { p_store_id: string };
         Returns: { app_id: string | null; store_id: string | null; nome_do_app: string | null; bundle_id_ios: string | null; package_android: string | null; expo_project_id: string | null; onesignal_app_id: string | null; device_secret_enc: string | null }[];
       };
+      definir_chave_do_webhook: {
+        Args: { p_automacao: string; p_ator: string; p_hash: string; p_dica: string };
+        Returns: unknown;
+      };
       desconectar_shopify: {
         Args: { p_shop_domain: string };
         Returns: boolean;
@@ -1691,6 +1751,10 @@ export type Database = {
         Args: { p_app_id: string; p_device_id: string; p_variant_id: string; p_deep_link?: string };
         Returns: boolean;
       };
+      ler_webhook_de_automacao: {
+        Args: { p_token_hash: string };
+        Returns: { automacao: string | null; app_id: string | null; store_id: string | null; primary_url: string | null; ligada: boolean | null }[];
+      };
       lojas_para_ota: {
         Args: Record<string, never>;
         Returns: { store_id: string | null; app_id: string | null; nome: string | null }[];
@@ -1745,6 +1809,10 @@ export type Database = {
       };
       registrar_pedido: {
         Args: { p_app_id: string; p_shopify_order_id: string; p_source: Database["public"]["Enums"]["origem_do_pedido"]; p_total_cents: number; p_ordered_at: string; p_order_number?: string; p_currency?: string; p_cart_token?: string };
+        Returns: boolean;
+      };
+      remover_chave_do_webhook: {
+        Args: { p_automacao: string; p_ator: string };
         Returns: boolean;
       };
       reservar_aviso: {

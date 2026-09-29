@@ -4,8 +4,11 @@ import { AlertCircle, CheckCircle2, TriangleAlert } from 'lucide-react';
 import { exigirContextoCliente } from '@/lib/contexto';
 import { avisoDaShopify, situacaoDaShopify } from '@/lib/integracoes';
 import { escoposPedidos, shopifyConfigurado } from '@/lib/shopify-servidor';
+import { appDaLoja, chaveDoWebhook, listarAutomacoes } from '@/lib/push-servidor';
+import { criarClientServidor } from '@/lib/supabase/server';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { CartaoShopify } from './cartao-shopify';
+import { CartaoDasFerramentasDeMarketing, CartaoDoMetaPixel } from './outras-integracoes';
 
 export const metadata: Metadata = { title: 'Integrações' };
 
@@ -28,6 +31,7 @@ export default async function PaginaDeIntegracoes({
   });
 
   const aviso = avisoDaShopify(shopify);
+  const ferramentas = lojaAtiva == null ? null : await ferramentasDaLoja(lojaAtiva.id);
 
   return (
     <div className="mx-auto max-w-2xl space-y-6">
@@ -61,6 +65,34 @@ export default async function PaginaDeIntegracoes({
       )}
 
       <CartaoShopify situacao={situacao} podeEscrever={papel === 'owner' || papel === 'admin'} />
+
+      {ferramentas == null || lojaAtiva == null ? null : (
+        <CartaoDasFerramentasDeMarketing
+          chave={ferramentas.chave}
+          ligada={ferramentas.ligada}
+          fuso={lojaAtiva.timezone}
+        />
+      )}
+
+      <CartaoDoMetaPixel />
     </div>
   );
+}
+
+/** A chave do webhook e se a automação dele está ligada, no app da loja. */
+async function ferramentasDaLoja(storeId: string) {
+  const supabase = await criarClientServidor();
+  const app = await appDaLoja(supabase, storeId);
+  if (app == null) return null;
+
+  const [chave, automacoes] = await Promise.all([
+    chaveDoWebhook(supabase, app.id),
+    listarAutomacoes(supabase, app.id),
+  ]);
+  return {
+    chave,
+    ligada: automacoes.some(
+      (automacao) => automacao.type === 'custom_webhook' && automacao.enabled,
+    ),
+  };
 }

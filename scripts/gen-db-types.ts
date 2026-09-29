@@ -303,6 +303,10 @@ async function main(): Promise<void> {
     // Fase 8 — o batimento dos jobs do cron e a página pública de status.
     'registrar_batimento',
     'agendar_inativos',
+    'definir_chave_do_webhook',
+    'remover_chave_do_webhook',
+    'ler_webhook_de_automacao',
+    'agendar_pelo_webhook',
     'batimentos_publicos',
     'salvar_quem_paga',
     'registrar_assinatura',

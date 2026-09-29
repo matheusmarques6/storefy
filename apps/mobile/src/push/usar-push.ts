@@ -36,6 +36,7 @@ import {
   ouvirToques,
   pedidoConcluido,
   registrarQuandoAssinar,
+  vincularCliente,
   type DependenciasDaSessao,
   type RespostaDoAvisoDeVolta,
 } from './sessao.ts';
@@ -447,9 +448,13 @@ export function usarPush({ ambiente, config, ativo, navegar }: Opcoes): UsoDoPus
     [dependencias, inscricao],
   );
 
-  const aoIdentificarCliente = useCallback((customerId: string | undefined): void => {
-    identificarCliente(notificadorReal, customerId);
-  }, []);
+  const aoIdentificarCliente = useCallback(
+    (customerId: string | undefined): void => {
+      identificarCliente(notificadorReal, customerId);
+      void vincularCliente(dependencias, inscricao, customerId);
+    },
+    [dependencias, inscricao],
+  );
 
   const nomeDaLoja = config?.store.name ?? 'loja';
   const aoPedirAvisoDeVolta = useCallback(

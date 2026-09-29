@@ -292,7 +292,14 @@ interface AppNoDominio {
   identificador: string;
 }
 
-type RespostaDoAdmin = { ok: true; dados: Record<string, unknown> } | { ok: false; motivo: string };
+/**
+ * `causa` diz o que resolve a recusa, para quem chama escolher a frase: a
+ * permissão da loja (reconectar), a aprovação de dados de cliente que a
+ * Shopify dá ao app da Storefy (nada que o lojista faça), ou só tempo.
+ */
+export type RespostaDoAdmin =
+  | { ok: true; dados: Record<string, unknown> }
+  | { ok: false; motivo: string; causa: 'sem-permissao' | 'dados-protegidos' | 'fora-do-ar' };
 
 const MOTIVO_SEM_PERMISSAO =
   'A Shopify recusou: falta a permissão para publicar os links. Reconecte a loja em Integrações.';
@@ -305,7 +312,7 @@ const MOTIVO_FORA_DO_AR = 'A Shopify não respondeu agora. Tente de novo em algu
  * em `errors`. Tratar só o status HTTP faria uma permissão faltando parecer
  * sucesso.
  */
-async function consultarAdmin(
+export async function consultarAdmin(
   shop: string,
   token: string,
   consulta: string,
@@ -325,35 +332,45 @@ async function consultarAdmin(
     }),
   );
 
-  if (resposta === null) return { ok: false, motivo: MOTIVO_FORA_DO_AR };
-  if (resposta.status === 401 || resposta.status === 403) {
-    return { ok: false, motivo: MOTIVO_SEM_PERMISSAO };
-  }
-  if (!resposta.ok) return { ok: false, motivo: MOTIVO_FORA_DO_AR };
+  if (resposta === null) return FORA_DO_AR;
+  if (resposta.status === 401 || resposta.status === 403) return SEM_PERMISSAO;
+  if (!resposta.ok) return FORA_DO_AR;
 
   const corpo: unknown = await resposta.json().catch(() => null);
-  if (corpo === null || typeof corpo !== 'object') {
-    return { ok: false, motivo: MOTIVO_FORA_DO_AR };
-  }
+  if (corpo === null || typeof corpo !== 'object') return FORA_DO_AR;
   const { data, errors } = corpo as { data?: unknown; errors?: unknown };
 
   if (Array.isArray(errors) && errors.length > 0) {
     const texto = JSON.stringify(errors);
     // O corpo do erro é da Shopify, em inglês e técnico: vai para o log, e a
     // tela recebe a frase que o lojista entende.
-    log.aviso('shopify-links.admin-recusou', { resposta: texto.slice(0, 500) });
-    return {
-      ok: false,
-      motivo: /access|scope|denied|permission/i.test(texto)
-        ? MOTIVO_SEM_PERMISSAO
-        : MOTIVO_FORA_DO_AR,
-    };
+    log.aviso('shopify-admin.recusou', { resposta: texto.slice(0, 500) });
+    /*
+     * Dados de cliente são "protegidos" para app público: sem a aprovação da
+     * Shopify ao app da Storefy, a recusa vem assim — e reconectar a loja não
+     * muda nada, por isso ela não vira "falta permissão".
+     */
+    if (/protected[-_ ]customer[-_ ]data|not approved to (?:access|use)/i.test(texto)) {
+      return { ok: false, motivo: MOTIVO_FORA_DO_AR, causa: 'dados-protegidos' };
+    }
+    return /access|scope|denied|permission/i.test(texto) ? SEM_PERMISSAO : FORA_DO_AR;
   }
 
   return data !== null && typeof data === 'object'
     ? { ok: true, dados: data as Record<string, unknown> }
-    : { ok: false, motivo: MOTIVO_FORA_DO_AR };
+    : FORA_DO_AR;
 }
+
+const SEM_PERMISSAO = {
+  ok: false,
+  motivo: MOTIVO_SEM_PERMISSAO,
+  causa: 'sem-permissao',
+} as const satisfies RespostaDoAdmin;
+const FORA_DO_AR = {
+  ok: false,
+  motivo: MOTIVO_FORA_DO_AR,
+  causa: 'fora-do-ar',
+} as const satisfies RespostaDoAdmin;
 
 const LISTAR_APPS = `query AppsNoDominio {
   mobilePlatformApplications(first: 50) {

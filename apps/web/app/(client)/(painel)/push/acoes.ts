@@ -25,6 +25,7 @@ import { DESCRICAO_DO_TIPO, ehTipoDeAutomacao, validarAutomacao } from '@/lib/au
 import { normalizarDeepLink } from '@/lib/campanha';
 import type { ProblemaNoFormulario } from '@/lib/campanha';
 import { FALHA_GENERICA, mensagemDaFalha } from '@/lib/erros';
+import { dicaDaChave, gerarChave, hashDaChave } from '@/lib/webhook-de-automacao';
 
 export interface EstadoDoPush {
   ok?: boolean;
@@ -52,7 +53,7 @@ function traduzirErro(codigo: string | undefined, mensagem: string): string {
  * dizia "Campanha cancelada." para quem não podia cancelar nada.
  */
 async function contexto() {
-  const { lojaAtiva, papel } = await exigirContextoCliente();
+  const { lojaAtiva, papel, usuario } = await exigirContextoCliente();
   if (lojaAtiva == null) {
     return { ok: false as const, motivo: 'Cadastre uma loja antes de usar o push.' };
   }
@@ -69,7 +70,7 @@ async function contexto() {
     return { ok: false as const, motivo: 'Não encontramos o app desta loja. Recarregue a página.' };
   }
 
-  return { ok: true as const, supabase, loja: lojaAtiva, app };
+  return { ok: true as const, supabase, loja: lojaAtiva, app, usuario };
 }
 
 export async function criarCampanha(entrada: {
@@ -536,5 +537,104 @@ export async function salvarAutomacao(entrada: {
     mensagem: validacao.valores.enabled
       ? `Automação “${DESCRICAO_DO_TIPO[tipo].nome}” ligada.`
       : `Automação “${DESCRICAO_DO_TIPO[tipo].nome}” desligada.`,
+  };
+}
+
+/*
+ * ---------------------------------------------- a chave do webhook (C09)
+ *
+ * A chave é gerada AQUI, no servidor, e devolvida uma vez: o banco guarda só o
+ * hash, numa tabela que o painel não lê. Quem grava é a service role, depois
+ * de `contexto()` conferir que a pessoa é proprietária ou administradora — e a
+ * função do banco põe o nome dela na trilha de auditoria.
+ */
+
+export async function gerarChaveDoWebhook(): Promise<
+  { ok: true; chave: string } | { ok: false; mensagem: string }
+> {
+  const base = await contexto();
+  if (!base.ok) return { ok: false, mensagem: base.motivo };
+
+  /*
+   * A automação precisa existir para ter chave. Sem linha ainda, nasce com o
+   * texto sugerido e DESLIGADA: ligar é decisão do lojista, na chave do card.
+   */
+  const sugestao = DESCRICAO_DO_TIPO.custom_webhook.sugestao;
+  const { error: erroAoCriar } = await base.supabase.from('push_automations').upsert(
+    {
+      app_id: base.app.id,
+      type: 'custom_webhook',
+      enabled: false,
+      delay_minutes: sugestao.delayMinutes,
+      title: sugestao.title,
+      body: sugestao.body,
+    },
+    { onConflict: 'app_id,type', ignoreDuplicates: true },
+  );
+  if (erroAoCriar != null) {
+    return { ok: false, mensagem: mensagemDaFalha('push.webhook', erroAoCriar, FALHA_GENERICA) };
+  }
+
+  const { data: automacao, error: erroAoLer } = await base.supabase
+    .from('push_automations')
+    .select('id')
+    .eq('app_id', base.app.id)
+    .eq('type', 'custom_webhook')
+    .maybeSingle();
+  if (erroAoLer != null || automacao == null) {
+    return {
+      ok: false,
+      mensagem: mensagemDaFalha(
+        'push.webhook',
+        erroAoLer ?? { message: 'automação sumiu' },
+        FALHA_GENERICA,
+      ),
+    };
+  }
+
+  const chave = gerarChave();
+  const { error } = await criarClientServiceRole().rpc('definir_chave_do_webhook', {
+    p_automacao: automacao.id,
+    p_ator: base.usuario.id,
+    p_hash: hashDaChave(chave),
+    p_dica: dicaDaChave(chave),
+  });
+  if (error != null) {
+    return { ok: false, mensagem: mensagemDaFalha('push.webhook', error, FALHA_GENERICA) };
+  }
+
+  revalidatePath('/push/automacoes');
+  return { ok: true, chave };
+}
+
+export async function desativarChaveDoWebhook(): Promise<EstadoDoPush> {
+  const base = await contexto();
+  if (!base.ok) return { mensagem: base.motivo };
+
+  const { data: automacao, error: erroAoLer } = await base.supabase
+    .from('push_automations')
+    .select('id')
+    .eq('app_id', base.app.id)
+    .eq('type', 'custom_webhook')
+    .maybeSingle();
+  if (erroAoLer != null) {
+    return { mensagem: mensagemDaFalha('push.webhook', erroAoLer, FALHA_GENERICA) };
+  }
+  if (automacao == null) return { mensagem: 'Esta automação ainda não tem chave.' };
+
+  const { data: removida, error } = await criarClientServiceRole().rpc('remover_chave_do_webhook', {
+    p_automacao: automacao.id,
+    p_ator: base.usuario.id,
+  });
+  if (error != null) {
+    return { mensagem: mensagemDaFalha('push.webhook', error, FALHA_GENERICA) };
+  }
+
+  revalidatePath('/push/automacoes');
+  // Outra aba desativou antes: dizer "desativada" seria contar uma ação que não houve.
+  if (!removida) return { ok: true, mensagem: 'A chave já estava desativada.' };
+  return {
+    ok: true,
+    mensagem: 'Chave desativada. A ferramenta que usava esta chave para de funcionar.',
   };
 }

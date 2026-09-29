@@ -6,7 +6,8 @@ import { exigirContextoCliente } from '@/lib/contexto';
 import { criarClientServidor } from '@/lib/supabase/server';
 import { criarClientServiceRole } from '@/lib/supabase/admin';
 import { estadoDasNotificacoes } from '@/lib/ativar-push';
-import { appDaLoja, listarAutomacoes } from '@/lib/push-servidor';
+import { appDaLoja, chaveDoWebhook, listarAutomacoes } from '@/lib/push-servidor';
+import { urlDoSite } from '@/lib/env';
 import { TIPOS_DE_AUTOMACAO } from '@/lib/automacao';
 import { EstadoVazio } from '@/components/estado-vazio';
 import { Button } from '@/components/ui/button';
@@ -46,9 +47,10 @@ export default async function PaginaDeAutomacoes() {
     );
   }
 
-  const [salvas, notificacoes] = await Promise.all([
+  const [salvas, notificacoes, chave] = await Promise.all([
     listarAutomacoes(supabase, app.id),
     estadoDasNotificacoes(criarClientServiceRole(), lojaAtiva.id),
+    chaveDoWebhook(supabase, app.id),
   ]);
   const podeEscrever = papel === 'owner' || papel === 'admin';
 
@@ -76,6 +78,10 @@ export default async function PaginaDeAutomacoes() {
             urlDaLoja={lojaAtiva.primary_url}
             nomeDoApp={lojaAtiva.name}
             podeEscrever={podeEscrever}
+            fuso={lojaAtiva.timezone}
+            {...(tipo === 'custom_webhook'
+              ? { webhook: { endereco: `${urlDoSite()}/api/webhooks/automacao`, chave } }
+              : {})}
           />
         ))}
       </div>

@@ -314,7 +314,7 @@ Conferido contra o código na Fase 8a (ver "Fase 8a — Entregue").
   - `CART_UPDATED` com `count > 0` cria ou reagenda o run (delay padrão de 60 minutos).
   - `ORDER_COMPLETED` ou o webhook Shopify `orders/create` (casando pelo `cart_token`) cancela o run.
   - Regras: no máximo 1 push de carrinho a cada 24 horas por device, e janela de silêncio das 22h às 8h no fuso da loja.
-- **Fase posterior:** "de volta ao estoque", "pedido enviado" (webhook `fulfillments/create`), "inativo há 7 dias" e webhook customizado (integração com Klaviyo/Omnisend/n8n). ✅ os três primeiros entregues (Fases 5 e 8d); o webhook customizado segue fora da tela até existir quem o chame.
+- **Fase posterior:** "de volta ao estoque", "pedido enviado" (webhook `fulfillments/create`), "inativo há 7 dias" e webhook customizado (integração com Klaviyo/Omnisend/n8n). ✅ todos entregues: os três primeiros nas Fases 5 e 8d, o webhook na 8e ("Klaviyo, Omnisend e outras ferramentas", com o endereço `POST /api/webhooks/automacao` e a chave da loja).
 - **Reaproveitamento do admin Convertfy:** o módulo **Automações** do admin Convertfy (gatilho → espera → ação → estatísticas) é o modelo mental e de UI para `push_automations`. Vale copiar os componentes do editor de fluxo se forem compatíveis.
 
 ### Onboarding de push (automático)
@@ -1546,6 +1546,44 @@ por um caminho DENTRO do app (4.5.4), e o Storefy é campanha de promoção.
 | Rodar os fluxos do Maestro num simulador do iOS e num emulador do Android, com o build de desenvolvimento da loja de teste | time | `apps/mobile/.maestro/README.md` |
 | Conferir o "Desligar notificações" num iPhone de verdade antes do primeiro envio à Apple | time | build de desenvolvimento via EAS |
 
+#### Fase 8e — Entregue (29/09/2026): Klaviyo, Omnisend e outras ferramentas (C09 e C14)
+
+| Item | Estado |
+|---|---|
+| Automação "Klaviyo, Omnisend e outras ferramentas" (C09) | ✅ o `custom_webhook` existia no enum desde a Fase 3, sem quem o chamasse. Agora o fluxo da ferramenta (a ação "Webhook" do Klaviyo, a do Omnisend, um nó do n8n ou do Zapier) chama `POST /api/webhooks/automacao` com a chave da loja e diz quem recebe — `customerId`, `customerIds` (até 50) ou `email` — e, se quiser, o título, o texto, o link e o id do evento. A Storefy acha os aparelhos desse cliente no app da chave, até 10 por cliente, e agenda pelo mesmo despacho das outras automações, com a madrugada respeitada. Sem texto no chamado, vai o da automação |
+| A chave | ✅ gerada no servidor (`sfy_wh_` + 32 bytes aleatórios), mostrada uma vez, guardada só como sha256 numa coluna que ninguém do painel lê (grant de coluna: nem o `select *` passa). Trocar derruba a anterior na hora; desativar tira do ar; as duas pedem confirmação. Gerar, trocar e desativar entram na trilha em nome de quem fez, sem o hash; os avisos recebidos não enchem a trilha. Só proprietário e administrador mexem — o membro vê a dica, a data e a contagem |
+| Cliente pelo e-mail | ✅ a ferramenta de e-mail conhece o cliente pelo e-mail; o app, pelo id da Shopify. A ponte é a busca de clientes da Admin API, com a conexão da loja, e o e-mail não é guardado em lugar nenhum. As recusas respondem diferente porque pedem coisas diferentes: loja sem conexão ou sem permissão (422, reconectar), Shopify sem liberar dados de cliente ao app público (422, mandar o `customerId`), Shopify fora do ar (503, tentar de novo) |
+| O app diz quem é o cliente | ✅ o app já detectava o cliente logado (`__st.cid`), mas não gravava no aparelho: agora `vincularCliente` registra o `externalId`, que é o que o webhook procura |
+| Respostas que dizem o que fazer | ✅ 401 chave errada ou trocada ("gere outra no painel"), 403 automação desligada — e a chegada fica anotada, para o card avisar "a sua ferramenta está chamando, mas a automação está desligada" —, 400 com o campo e o formato certo (id de cliente que não é da Shopify, e-mail inválido, texto longo), 413 corpo acima de 8 KB, 429 acima de 600 por minuto por automação, 202 com quantos aparelhos vão receber (cliente sem o app é 0, não erro). O mesmo `id` de evento não agenda duas vezes, nem com as duas entregas chegando juntas: quem segura é um índice único |
+| C14 — Integrações | ✅ cartão "Klaviyo, Omnisend e outras ferramentas" com o estado (não conectada, ligada, desligada, último aviso), levando à automação — a chave mora num lugar só, porque duas telas gerando chave seriam duas chaves, uma desfazendo a outra. Cartão do Meta Pixel explicando que o pixel da loja já registra o que acontece no app (as páginas e o checkout abrem na WebView com os scripts do site), sem botão, porque não há o que configurar |
+| Testes | ✅ 40 asserções de RLS (hash ilegível, só o servidor grava, isolamento entre organizações, dez aparelhos por cliente, evento repetido, texto do envio no despacho, troca, desativação, trilha sem hash); 27 casos da rota; 9 da busca pelo e-mail; 20 da chave e do corpo. O e2e gera a chave pela tela, chama o endereço com a automação desligada e ligada, repete o evento, troca a chave (a velha vira 401), desativa, confere a trilha e a C14; e o membro vê a chave sem poder mexer. Conferido em 1280 e 390 px, sem rolagem lateral |
+
+**O que a revisão achou**
+
+- **O teto de aparelhos era da chamada, e não do cliente.** Com 50 clientes
+  numa chamada, só os 10 aparelhos mais recentes do conjunto recebiam o push.
+  O teto agora é por cliente, e o teste de RLS pega a volta do erro —
+  conferido pondo o `limit 10` de volta.
+- **A recusa da Shopify por "dados protegidos" virava "falta permissão".** O
+  app público precisa da aprovação da Shopify para ler clientes, e reconectar
+  a loja não resolve isso. `consultarAdmin` agora diz a causa da recusa, e a
+  rota responde o que de fato resolve.
+- **Um `customerId` que não é da Shopify respondia 202 com 0 aparelhos**, e
+  quem configurava a ferramenta achava que o cliente só não tinha o app.
+  Agora é 400, dizendo o formato.
+- **O teto por minuto era contado antes de achar a chave**: cada chave
+  inventada por quem varresse a rota viraria uma linha no banco. Agora a
+  chave é conferida primeiro, e o teto é da automação.
+- **"Zapier" reprovava o teste de jargão**, por conter "api". O teste agora
+  olha a palavra inteira.
+
+**Depende de ação humana**
+
+| O quê | Quem | Onde |
+|---|---|---|
+| Pedir à Shopify o acesso a dados protegidos de cliente (incluindo o e-mail) para o app público da Storefy. Sem ele, as lojas conectadas pelo OAuth mandam o `customerId` no lugar do e-mail — a resposta 422 diz isso a quem configura | time | Partner Dashboard › app › API access › Protected customer data |
+| Conferir num fluxo real do Klaviyo (ação "Webhook") e do Omnisend (plano pago) com uma loja piloto | time | contas da loja piloto |
+
 **Estimativa total:** cerca de 7 a 9 semanas para uma pessoa com Claude Code em ritmo forte. O MVP vendável (Fases 0–4) leva cerca de 4 a 5 semanas.
 
 ---
@@ -1587,7 +1625,7 @@ Vale, porém:
 | O que | Onde | Para qual fase |
 |---|---|---|
 | Verificação HMAC de webhook Shopify, com testes | `packages/integrations/src/shopify/webhooks.ts` | **Fase 5** — é segurança fácil de errar sutilmente |
-| Cliente Klaviyo | `packages/integrations/src/klaviyo` | **Fase 5** — integração do C14 |
+| Cliente Klaviyo | `packages/integrations/src/klaviyo` | **Fase 5** — integração do C14. *Não foi preciso:* a integração entregue (Fase 8e) é a ferramenta chamando a Storefy, e não o contrário |
 | Adapter Shopify com testes | `packages/integrations/src/shopify/adapter.ts` | **Fase 5** — referência de chamadas à Admin API |
 
 **Não usar:** os parsers de seção de tema (`parsers/*.ts`). Eles servem para

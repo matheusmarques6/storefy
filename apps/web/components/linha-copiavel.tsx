@@ -14,9 +14,16 @@ import { Button } from '@/components/ui/button';
 export function LinhaCopiavel({
   valor,
   monoespacado = false,
+  codigo = false,
 }: {
   valor: string;
   monoespacado?: boolean;
+  /**
+   * Um bloco de código (um JSON de exemplo): as linhas ficam como estão e a
+   * caixa rola de lado. Quebrar no meio da palavra, como numa chave comprida,
+   * deixaria o exemplo ilegível justo no celular.
+   */
+  codigo?: boolean;
 }) {
   const [copiado, setCopiado] = useState(false);
 
@@ -58,9 +65,11 @@ export function LinhaCopiavel({
          * lateral na página inteira no celular.
          */
         className={
-          monoespacado
-            ? 'min-w-0 flex-1 font-mono text-xs break-all whitespace-pre-wrap'
-            : 'min-w-0 flex-1 font-sans text-sm break-words whitespace-pre-wrap'
+          codigo
+            ? 'min-w-0 flex-1 overflow-x-auto font-mono text-xs whitespace-pre'
+            : monoespacado
+              ? 'min-w-0 flex-1 font-mono text-xs break-all whitespace-pre-wrap'
+              : 'min-w-0 flex-1 font-sans text-sm break-words whitespace-pre-wrap'
         }
       >
         {valor}

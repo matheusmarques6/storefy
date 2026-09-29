@@ -28,6 +28,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '@storefy/db';
 import { criptografar, descriptografar } from '@/lib/cripto';
 import { precisaRenovar, trocarCredenciaisPorToken } from '@/lib/shopify-credenciais';
+import { log } from '@/lib/log';
 
 type Client = SupabaseClient<Database>;
 
@@ -52,12 +53,21 @@ export async function tokenDaLoja(
   storeId: string,
   buscador: typeof fetch = fetch,
 ): Promise<TokenDaLoja> {
-  const { data: loja } = await servico
+  const { data: loja, error } = await servico
     .from('stores')
     .select(COLUNAS)
     .eq('id', storeId)
     .maybeSingle();
 
+  // Banco fora do ar não é "loja não encontrada": tentar de novo resolve.
+  if (error != null) {
+    log.erro('shopify-conexao.loja-nao-lida', { falha: error });
+    return {
+      ok: false,
+      motivo: 'Não foi possível ler a conexão com a Shopify agora. Tente de novo.',
+      reconectar: false,
+    };
+  }
   if (loja == null) {
     return { ok: false, motivo: 'Loja não encontrada.', reconectar: false };
   }
@@ -152,11 +162,21 @@ async function renovar(
  * rota num jeito de descobrir quais lojas são clientes da Storefy.
  */
 export async function segredoDoWebhook(servico: Client, shop: string): Promise<string | null> {
-  const { data: loja } = await servico
+  const { data: loja, error } = await servico
     .from('stores')
     .select('shopify_conexao, shopify_client_secret_enc')
     .eq('shop_domain', shop)
     .maybeSingle();
+
+  /*
+   * Sem ler a loja, `null` (503: a Shopify reentrega). Cair no segredo da
+   * Storefy recusaria, até o banco voltar, todo webhook de loja conectada pelo
+   * app do próprio lojista — que assina com o segredo dela.
+   */
+  if (error != null) {
+    log.erro('shopify-conexao.segredo-nao-lido', { falha: error });
+    return null;
+  }
 
   /*
    * Loja desconhecida cai no segredo da Storefy, e não em `null`. Ela existe:

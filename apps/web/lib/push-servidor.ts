@@ -148,6 +148,35 @@ export async function listarAutomacoes(supabase: Client, appId: string): Promise
     }));
 }
 
+/** A chave do webhook de automação, como a tela pode mostrar (nunca o hash). */
+export interface ChaveDoWebhook {
+  dica: string;
+  criadaEm: string;
+  ultimoAviso: string | null;
+  avisos: number;
+}
+
+export async function chaveDoWebhook(
+  supabase: Client,
+  appId: string,
+): Promise<ChaveDoWebhook | null> {
+  const { data, error } = await supabase
+    .from('automation_webhooks')
+    .select('token_hint, created_at, last_received_at, received_count')
+    .eq('app_id', appId)
+    .maybeSingle();
+  falhouAoLer('a chave do webhook', error);
+
+  return data == null
+    ? null
+    : {
+        dica: data.token_hint,
+        criadaEm: data.created_at,
+        ultimoAviso: data.last_received_at,
+        avisos: data.received_count,
+      };
+}
+
 export interface AparelhoParaTeste {
   id: string;
   subscriptionId: string;

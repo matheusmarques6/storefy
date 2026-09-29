@@ -6640,6 +6640,385 @@ select tests.ok('inativos',
 reset role;
 drop table tests.hoje_da_loja;
 
+-- ============================== grupo: webhook de automação (C09 e C14)
+--
+-- A chave com que o Klaviyo, o Omnisend e o n8n mandam push pelo app. O
+-- banco guarda só o hash, numa coluna que ninguém do painel lê; só o servidor
+-- grava; a trilha diz quem criou, trocou e desativou, sem o hash. O
+-- agendamento acha os aparelhos do cliente só no app da chave.
+
+reset role;
+
+insert into public.push_automations (app_id, type, enabled, delay_minutes, title, body)
+select app_a, 'custom_webhook', false, 0, 'Texto da automação', 'Corpo da automação'
+  from tests.lojas;
+
+create table tests.webhook as
+select pa.id as automacao, repeat('a', 64) as hash_1, repeat('b', 64) as hash_2
+  from public.push_automations pa
+ where pa.app_id = (select app_a from tests.lojas) and pa.type = 'custom_webhook';
+grant select on tests.webhook to anon, authenticated, service_role;
+
+insert into public.devices (app_id, onesignal_subscription_id, platform, external_id)
+select app_a, v.sub, 'ios', v.cliente
+  from tests.lojas,
+       (values ('sub-wh-1001-a', '1001'), ('sub-wh-1001-b', '1001'), ('sub-wh-1002', '1002'),
+               ('sub-wh-anonimo', null)) as v(sub, cliente);
+-- O mesmo id de cliente, na loja da outra organização.
+insert into public.devices (app_id, onesignal_subscription_id, platform, external_id)
+select app_b, 'sub-wh-outra-org-1001', 'android', '1001' from tests.lojas;
+-- Um cliente com doze aparelhos: o 1 é o usado por último, o 12 o mais antigo.
+insert into public.devices (app_id, onesignal_subscription_id, platform, external_id, last_seen_at)
+select app_a, 'sub-wh-1003-' || n, 'android', '1003', now() - make_interval(mins => n)
+  from tests.lojas, generate_series(1, 12) n;
+
+set role service_role;
+select public.definir_chave_do_webhook(
+  (select automacao from tests.webhook), (select u_a_owner from tests.ids),
+  (select hash_1 from tests.webhook), 'h1h1');
+reset role;
+
+select tests.ok('webhook',
+  tests.contar($q$select count(*) from public.automation_webhooks w
+    where w.app_id = (select app_a from tests.lojas) and w.token_hint = 'h1h1'
+      and w.token_hash = (select hash_1 from tests.webhook)
+      and w.created_by = (select u_a_owner from tests.ids)$q$) = 1,
+  'o servidor grava a chave: o hash e os 4 últimos caracteres, nunca a chave');
+
+select tests.ok('webhook',
+  (select l.actor_id = t.u_a_owner and l.action = 'create' and l.org_id = t.org_a
+     from public.audit_logs l, tests.ids t
+    where l.entity = 'automation_webhooks'
+    order by l.created_at desc limit 1),
+  'a trilha credita quem gerou a chave, na organização da loja');
+
+-- ---------------------------------------------------------- quem lê o quê
+
+select tests.login('a-member@teste.local');
+set role authenticated;
+
+select tests.ok('webhook',
+  tests.contar($q$select count(*) from public.automation_webhooks
+    where token_hint = 'h1h1' and received_count = 0 and created_at is not null$q$) = 1,
+  'o membro da loja vê a dica, a data e a contagem');
+
+select tests.ok('webhook',
+  tests.erro($q$select token_hash from public.automation_webhooks$q$),
+  'mas o hash da chave, ninguém do painel lê');
+
+select tests.ok('webhook',
+  tests.erro($q$select * from public.automation_webhooks$q$),
+  'nem por select *');
+
+reset role;
+select tests.login('b-owner@teste.local');
+set role authenticated;
+
+select tests.ok('isolamento',
+  tests.contar('select count(*) from public.automation_webhooks') = 0,
+  'a outra organização não vê nem a dica da chave');
+
+reset role;
+select tests.login('equipe@teste.local');
+set role authenticated;
+
+select tests.ok('webhook',
+  tests.contar($q$select count(*) from public.automation_webhooks where token_hint = 'h1h1'$q$) = 1,
+  'a equipe da plataforma vê a dica, para o suporte');
+
+-- ------------------------------------------------------- só o servidor grava
+
+reset role;
+select tests.login('a-owner@teste.local');
+set role authenticated;
+
+select tests.ok('webhook',
+  tests.bloqueado($q$update public.automation_webhooks set token_hint = 'zzzz'$q$),
+  'nem o proprietário mexe na chave direto: só o servidor, depois de conferir o papel');
+
+select tests.ok('webhook',
+  tests.bloqueado(format(
+    $q$insert into public.automation_webhooks (automation_id, app_id, token_hash, token_hint)
+       values (%L, %L, %L, 'zzzz')$q$,
+    (select automacao from tests.webhook), (select app_a from tests.lojas), repeat('c', 64))),
+  'nem cria uma chave que ele mesmo escolheu');
+
+select tests.ok('webhook',
+  tests.bloqueado($q$delete from public.automation_webhooks$q$),
+  'nem apaga a chave por fora da trilha');
+
+select tests.ok('webhook',
+  tests.erro(format($q$select public.definir_chave_do_webhook(%L, %L, %L, 'zzzz')$q$,
+    (select automacao from tests.webhook), (select u_a_owner from tests.ids), repeat('c', 64))),
+  'o lojista não chama a função que grava a chave');
+
+select tests.ok('webhook',
+  tests.erro(format($q$select public.remover_chave_do_webhook(%L, %L)$q$,
+    (select automacao from tests.webhook), (select u_a_owner from tests.ids))),
+  'nem a que desativa');
+
+select tests.ok('webhook',
+  tests.erro(format($q$select * from public.ler_webhook_de_automacao(%L)$q$,
+    (select hash_1 from tests.webhook))),
+  'nem a que acha a automação pela chave');
+
+select tests.ok('webhook',
+  tests.erro(format($q$select public.agendar_pelo_webhook(%L, array['1001'])$q$,
+    (select automacao from tests.webhook))),
+  'nem a que agenda o envio');
+
+reset role;
+set role anon;
+
+select tests.ok('webhook',
+  tests.erro($q$select count(*) from public.automation_webhooks$q$)
+  and tests.erro(format($q$select * from public.ler_webhook_de_automacao(%L)$q$,
+    (select hash_1 from tests.webhook))),
+  'o anônimo não lê a tabela nem chama as funções');
+
+-- ------------------------------------------------------ receber e agendar
+
+reset role;
+set role service_role;
+create table tests.webhook_lido as
+select * from public.ler_webhook_de_automacao((select hash_1 from tests.webhook));
+create table tests.webhook_nao_achado as
+select * from public.ler_webhook_de_automacao(repeat('f', 64));
+create table tests.webhook_desligada as
+select public.agendar_pelo_webhook((select automacao from tests.webhook), array['1001']) as agendados;
+reset role;
+
+select tests.ok('webhook',
+  (select l.automacao = w.automacao and l.app_id = t.app_a and l.store_id = t.loja_a
+          and l.primary_url = 'https://loja-a.com.br' and not l.ligada
+     from tests.webhook_lido l, tests.lojas t, tests.webhook w),
+  'pela chave, o servidor acha a automação, a loja e se ela está ligada');
+
+select tests.ok('webhook',
+  tests.contar('select count(*) from tests.webhook_nao_achado') = 0,
+  'chave desconhecida não acha nada');
+
+select tests.ok('webhook',
+  (select agendados = 0 from tests.webhook_desligada)
+  and tests.contar(format('select count(*) from public.automation_runs where automation_id = %L',
+        (select automacao from tests.webhook))) = 0,
+  'desligada, a chamada não agenda nada');
+
+select tests.ok('webhook',
+  (select w.received_count = 1 and w.last_received_at is not null
+     from public.automation_webhooks w
+    where w.automation_id = (select automacao from tests.webhook)),
+  'mas fica anotada: é o que mostra ao lojista que a ferramenta está chamando');
+
+-- O envio vai na hora. Num fuso em que agora é de dia, a madrugada não o
+-- empurra, e o despacho lá embaixo o encontra a qualquer hora que a suíte rode.
+create table tests.fuso_original as
+select timezone from public.stores where id = (select loja_a from tests.lojas);
+update public.stores
+   set timezone = case
+     when extract(hour from now() at time zone 'America/Sao_Paulo') between 9 and 20
+       then 'America/Sao_Paulo'
+     else 'Asia/Tokyo'
+   end
+ where id = (select loja_a from tests.lojas);
+update public.push_automations set enabled = true
+ where id = (select automacao from tests.webhook);
+
+set role service_role;
+create table tests.webhook_agendado as
+select public.agendar_pelo_webhook((select automacao from tests.webhook),
+  array['1001', '1002', '9999'],
+  p_titulo => 'Seu cupom chegou', p_link => '/products/camiseta', p_ref => 'evento-1') as agendados;
+create table tests.webhook_repetido as
+select public.agendar_pelo_webhook((select automacao from tests.webhook), array['1001', '1002'],
+  p_titulo => 'Seu cupom chegou', p_ref => 'evento-1') as agendados;
+reset role;
+
+select tests.ok('webhook',
+  (select agendados = 3 from tests.webhook_agendado),
+  'ligada, agenda um envio por aparelho de cada cliente do chamado');
+
+select tests.ok('isolamento',
+  tests.contar($q$select count(*) from public.automation_runs r
+     join public.devices d on d.id = r.device_id
+    where d.onesignal_subscription_id = 'sub-wh-outra-org-1001'$q$) = 0,
+  'o mesmo id de cliente na loja de outra organização não recebe: o cliente é do app da chave');
+
+select tests.ok('webhook',
+  tests.contar($q$select count(*) from public.automation_runs r
+     join public.devices d on d.id = r.device_id
+    where d.onesignal_subscription_id = 'sub-wh-anonimo'$q$) = 0,
+  'aparelho sem cliente identificado não recebe');
+
+select tests.ok('webhook',
+  (select agendados = 0 from tests.webhook_repetido)
+  and tests.contar(format('select count(*) from public.automation_runs where automation_id = %L',
+        (select automacao from tests.webhook))) = 3,
+  'a mesma entrega repetida (mesmo id de evento) não agenda de novo');
+
+select tests.ok('webhook',
+  (select bool_and(r.trigger_ref = 'webhook:evento-1' and r.title = 'Seu cupom chegou'
+                   and r.body is null and r.deep_link = '/products/camiseta'
+                   and r.status = 'scheduled' and r.scheduled_for <= now())
+     from public.automation_runs r
+    where r.automation_id = (select automacao from tests.webhook)),
+  'o envio guarda o título e o link do chamado, e sai na hora; o texto que não veio fica para o da automação');
+
+set role service_role;
+-- O 1003 tem doze aparelhos; o 1001, dois. O teto é de cada cliente.
+create table tests.webhook_doze as
+select public.agendar_pelo_webhook((select automacao from tests.webhook),
+  array['1003', '1001']) as agendados;
+create table tests.webhook_sem_id_1 as
+select public.agendar_pelo_webhook((select automacao from tests.webhook), array['1002']) as agendados;
+create table tests.webhook_sem_id_2 as
+select public.agendar_pelo_webhook((select automacao from tests.webhook), array['1002']) as agendados;
+reset role;
+
+select tests.ok('webhook',
+  (select agendados = 12 from tests.webhook_doze),
+  'no máximo dez aparelhos POR CLIENTE, e não por chamada: o 1003 recebe em dez, o 1001 nos dois');
+
+select tests.ok('webhook',
+  tests.contar($q$select count(*) from public.automation_runs r
+     join public.devices d on d.id = r.device_id
+    where d.onesignal_subscription_id in ('sub-wh-1003-11', 'sub-wh-1003-12')$q$) = 0,
+  'os dois aparelhos esquecidos há mais tempo ficam de fora');
+
+select tests.ok('webhook',
+  (select agendados = 1 from tests.webhook_sem_id_1)
+  and (select agendados = 1 from tests.webhook_sem_id_2),
+  'sem id de evento, cada chamada é um aviso novo');
+
+select tests.ok('webhook',
+  (select w.received_count = 6
+     from public.automation_webhooks w
+    where w.automation_id = (select automacao from tests.webhook)),
+  'cada chamada conta, ligada ou desligada');
+
+select tests.ok('webhook',
+  tests.contar($q$select count(*) from public.audit_logs where entity = 'automation_webhooks'$q$) = 1,
+  'e a contagem não enche a trilha: só criar, trocar e desativar a chave entram nela');
+
+set role service_role;
+create table tests.webhook_despacho as
+select * from public.reservar_envios_de_automacao(1000);
+reset role;
+
+select tests.ok('webhook',
+  tests.contar($q$select count(*) from tests.webhook_despacho d
+     join public.automation_runs r on r.id = d.id
+    where r.trigger_ref = 'webhook:evento-1'
+      and d.title = 'Seu cupom chegou' and d.body = 'Corpo da automação'
+      and d.deep_link = '/products/camiseta'$q$) = 3,
+  'no despacho, o título do chamado vence o da automação, e o texto que não veio é o dela');
+
+select tests.ok('webhook',
+  tests.contar($q$select count(*) from tests.webhook_despacho d
+     join public.automation_runs r on r.id = d.id
+    where r.trigger_ref = 'webhook'
+      and d.title = 'Texto da automação' and d.body = 'Corpo da automação'$q$) = 14,
+  'chamado sem texto vai com o texto da automação');
+
+-- -------------------------------------------------- trocar e desativar
+
+set role service_role;
+select public.definir_chave_do_webhook(
+  (select automacao from tests.webhook), (select u_a_admin from tests.ids),
+  (select hash_2 from tests.webhook), 'h2h2');
+create table tests.webhook_velha as
+select * from public.ler_webhook_de_automacao((select hash_1 from tests.webhook));
+create table tests.webhook_nova as
+select * from public.ler_webhook_de_automacao((select hash_2 from tests.webhook));
+reset role;
+
+select tests.ok('webhook',
+  tests.contar('select count(*) from tests.webhook_velha') = 0
+  and tests.contar('select count(*) from tests.webhook_nova') = 1,
+  'trocar a chave desfaz a anterior na hora');
+
+select tests.ok('webhook',
+  (select w.received_count = 0 and w.last_received_at is null and w.token_hint = 'h2h2'
+          and w.created_by = (select u_a_admin from tests.ids)
+     from public.automation_webhooks w
+    where w.automation_id = (select automacao from tests.webhook)),
+  'chave nova, contagem nova: o "último aviso" era da anterior');
+
+select tests.ok('webhook',
+  (select l.actor_id = t.u_a_admin and l.action = 'update'
+     from public.audit_logs l, tests.ids t
+    where l.entity = 'automation_webhooks'
+    order by l.created_at desc limit 1),
+  'a troca fica na trilha, em nome de quem trocou');
+
+set role service_role;
+create table tests.webhook_remocao_1 as
+select public.remover_chave_do_webhook((select automacao from tests.webhook),
+  (select u_a_owner from tests.ids)) as removida;
+create table tests.webhook_remocao_2 as
+select public.remover_chave_do_webhook((select automacao from tests.webhook),
+  (select u_a_owner from tests.ids)) as removida;
+create table tests.webhook_depois as
+select * from public.ler_webhook_de_automacao((select hash_2 from tests.webhook));
+reset role;
+
+select tests.ok('webhook',
+  (select removida from tests.webhook_remocao_1)
+  and not (select removida from tests.webhook_remocao_2)
+  and tests.contar('select count(*) from tests.webhook_depois') = 0,
+  'desativar tira a chave do ar; desativar de novo não finge que tirou');
+
+select tests.ok('webhook',
+  (select l.actor_id = t.u_a_owner and l.action = 'delete'
+     from public.audit_logs l, tests.ids t
+    where l.entity = 'automation_webhooks'
+    order by l.created_at desc limit 1),
+  'a desativação fica na trilha, em nome de quem desativou');
+
+select tests.ok('webhook',
+  tests.contar($q$select count(*) from public.audit_logs
+    where entity = 'automation_webhooks'
+      and (diff::text like '%token_hash%'
+           or diff::text like '%aaaaaaaaaaaaaaaa%'
+           or diff::text like '%bbbbbbbbbbbbbbbb%')$q$) = 0,
+  'nenhuma linha da trilha carrega o hash da chave');
+
+set role service_role;
+create table tests.webhook_tipo_errado as
+select tests.erro_com(format($q$select public.definir_chave_do_webhook(%L, %L, %L, 'zzzz')$q$,
+  (select id from public.push_automations
+    where app_id = (select app_a from tests.lojas) and type = 'inactive_7d'),
+  (select u_a_owner from tests.ids), repeat('c', 64)), 'não encontrada') as recusou;
+create table tests.webhook_hash_errado as
+select tests.erro(format($q$select public.definir_chave_do_webhook(%L, %L, 'nao-e-um-hash', 'zzzz')$q$,
+  (select automacao from tests.webhook), (select u_a_owner from tests.ids))) as recusou;
+select public.definir_chave_do_webhook(
+  (select automacao from tests.webhook), (select u_a_owner from tests.ids),
+  (select hash_1 from tests.webhook), 'h1h1');
+reset role;
+
+select tests.ok('webhook',
+  (select recusou from tests.webhook_tipo_errado),
+  'a chave só vale para a automação de webhook');
+
+select tests.ok('webhook',
+  (select recusou from tests.webhook_hash_errado),
+  'e o banco só aceita um sha256 como hash');
+
+delete from public.push_automations where id = (select automacao from tests.webhook);
+
+select tests.ok('webhook',
+  tests.contar('select count(*) from public.automation_webhooks') = 0,
+  'excluir a automação leva a chave junto');
+
+update public.stores set timezone = (select timezone from tests.fuso_original)
+ where id = (select loja_a from tests.lojas);
+drop table tests.webhook, tests.webhook_lido, tests.webhook_nao_achado, tests.webhook_desligada,
+  tests.fuso_original, tests.webhook_agendado, tests.webhook_repetido, tests.webhook_doze,
+  tests.webhook_sem_id_1, tests.webhook_sem_id_2, tests.webhook_despacho, tests.webhook_velha,
+  tests.webhook_nova, tests.webhook_remocao_1, tests.webhook_remocao_2, tests.webhook_depois,
+  tests.webhook_tipo_errado, tests.webhook_hash_errado;
+
 -- ============================== grupo: varredura de segurança (Fase 8)
 --
 -- Duas travas que valem para o schema inteiro, e não para uma tabela: uma

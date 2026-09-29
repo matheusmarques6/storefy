@@ -14,9 +14,8 @@ import {
 describe('os tipos oferecidos', () => {
   /*
    * Só o que funciona de ponta a ponta. O "inativo" entrou quando ganhou o
-   * gatilho (`agendar_inativos`); o "webhook customizado" continua de fora
-   * enquanto ninguém o chamar — um card dele seria um botão que não faz nada,
-   * o que a regra 3 proíbe.
+   * gatilho (`agendar_inativos`); o webhook, quando ganhou quem o chama
+   * (`/api/webhooks/automacao`) e a chave para chamar.
    */
   it('só os que funcionam de ponta a ponta', () => {
     expect([...TIPOS_DE_AUTOMACAO]).toEqual([
@@ -25,9 +24,10 @@ describe('os tipos oferecidos', () => {
       'order_shipped',
       'back_in_stock',
       'inactive_7d',
+      'custom_webhook',
     ]);
     expect(ehTipoDeAutomacao('inactive_7d')).toBe(true);
-    expect(ehTipoDeAutomacao('custom_webhook')).toBe(false);
+    expect(ehTipoDeAutomacao('custom_webhook')).toBe(true);
     expect(ehTipoDeAutomacao('qualquer coisa')).toBe(false);
   });
 
@@ -38,7 +38,8 @@ describe('os tipos oferecidos', () => {
       expect(descricao.gatilho.length).toBeGreaterThan(20);
       expect(descricao.porque.length).toBeGreaterThan(20);
       for (const texto of [descricao.gatilho, descricao.porque]) {
-        expect(texto).not.toMatch(/webhook|payload|endpoint|API|RPC/i);
+        // Palavra inteira: "Zapier" é nome de ferramenta, e não o jargão "API".
+        expect(texto).not.toMatch(/\b(?:webhook|payload|endpoint|API|RPC)\b/i);
       }
     }
   });
@@ -136,5 +137,12 @@ describe('o horário do "sentimos sua falta"', () => {
     expect(resumoDaAutomacaoLigada('welcome', 10)).toBe('Ligada · envia 10 minutos depois');
     // "envia na hora depois" era o texto de antes para atraso zero.
     expect(resumoDaAutomacaoLigada('back_in_stock', 0)).toBe('Ligada · envia na hora');
+    // O webhook conta a partir do chamado da ferramenta, e é isso que diz.
+    expect(resumoDaAutomacaoLigada('custom_webhook', 0)).toBe(
+      'Ligada · envia assim que a sua ferramenta chama',
+    );
+    expect(resumoDaAutomacaoLigada('custom_webhook', 60)).toBe(
+      'Ligada · envia 1 hora depois que a sua ferramenta chama',
+    );
   });
 });

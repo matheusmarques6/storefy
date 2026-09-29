@@ -2,10 +2,10 @@
  * As automações de push (tela C09 do plano).
  *
  * Só entra aqui a automação que funciona DE PONTA A PONTA: gatilho de verdade,
- * destinatário de verdade, envio de verdade. O "webhook customizado" ainda não
- * tem quem o chame, e por isso NÃO aparece na tela — um card "em breve" é
- * exatamente o que a regra 3 do CLAUDE.md proíbe. O "inativo há 7 dias"
- * ganhou o gatilho na Fase 8 (`agendar_inativos`, pelo job de hora em hora).
+ * destinatário de verdade, envio de verdade — um card "em breve" é exatamente
+ * o que a regra 3 do CLAUDE.md proíbe. O "inativo há 7 dias" ganhou o gatilho
+ * na Fase 8 (`agendar_inativos`); o webhook, o endereço que as ferramentas de
+ * marketing chamam (`/api/webhooks/automacao`).
  *
  * O texto sugerido de cada uma é ponto de partida editável, e não dado
  * inventado: nada dele vira linha no banco antes de o lojista salvar.
@@ -20,6 +20,7 @@ export const TIPOS_DE_AUTOMACAO = [
   'order_shipped',
   'back_in_stock',
   'inactive_7d',
+  'custom_webhook',
 ] as const;
 export type TipoDeAutomacao = (typeof TIPOS_DE_AUTOMACAO)[number];
 
@@ -85,6 +86,19 @@ export const DESCRICAO_DO_TIPO: Record<TipoDeAutomacao, DescricaoDoTipo> = {
       title: 'Faz tempo que você não passa por aqui',
       body: 'Separamos as novidades da semana para você. Vem dar uma olhada.',
       delayMinutes: 10 * 60,
+    },
+  },
+  custom_webhook: {
+    nome: 'Klaviyo, Omnisend e outras ferramentas',
+    gatilho:
+      'Quando um fluxo da sua ferramenta de marketing — Klaviyo, Omnisend, n8n, Zapier — chama o endereço desta automação.',
+    porque:
+      'Leva o push para dentro dos fluxos que você já montou para o e-mail: o mesmo gatilho que manda o e-mail avisa pelo app quem tem o app instalado.',
+    rotuloDoAtraso: 'Enviar depois de',
+    sugestao: {
+      title: 'Tem novidade para você',
+      body: 'Separamos uma coisa que é a sua cara. Toque para ver.',
+      delayMinutes: 0,
     },
   },
   order_shipped: {
@@ -192,6 +206,11 @@ export function resumoDaAutomacaoLigada(tipo: TipoDeAutomacao, minutos: number):
   if (tipo === 'inactive_7d') {
     const hora = Math.floor(Math.max(0, minutos) / 60);
     return `Ligada · envia no 7º dia sem abrir o app, às ${String(Math.max(8, hora))}h`;
+  }
+  if (tipo === 'custom_webhook') {
+    return minutos <= 0
+      ? 'Ligada · envia assim que a sua ferramenta chama'
+      : `Ligada · envia ${descricaoDoAtraso(minutos)} depois que a sua ferramenta chama`;
   }
   return minutos <= 0
     ? 'Ligada · envia na hora'

@@ -18,7 +18,7 @@ import {
   type TipoDeAutomacao,
 } from '@/lib/automacao';
 import { MAXIMO_DO_CORPO, MAXIMO_DO_TITULO, type ProblemaNoFormulario } from '@/lib/campanha';
-import type { AutomacaoSalva } from '@/lib/push-servidor';
+import type { AutomacaoSalva, ChaveDoWebhook } from '@/lib/push-servidor';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -27,6 +27,7 @@ import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import { PreviaDaNotificacao } from '../previa-da-notificacao';
 import { salvarAutomacao } from '../acoes';
+import { SecaoDoWebhook } from './webhook';
 
 interface Props {
   tipo: TipoDeAutomacao;
@@ -34,9 +35,20 @@ interface Props {
   urlDaLoja: string;
   nomeDoApp: string;
   podeEscrever: boolean;
+  fuso: string;
+  /** Só no card do webhook: o endereço que a ferramenta chama e a chave em uso. */
+  webhook?: { endereco: string; chave: ChaveDoWebhook | null };
 }
 
-export function CartaoDaAutomacao({ tipo, salva, urlDaLoja, nomeDoApp, podeEscrever }: Props) {
+export function CartaoDaAutomacao({
+  tipo,
+  salva,
+  urlDaLoja,
+  nomeDoApp,
+  podeEscrever,
+  fuso,
+  webhook,
+}: Props) {
   const descricao = DESCRICAO_DO_TIPO[tipo];
   const router = useRouter();
 
@@ -129,6 +141,11 @@ export function CartaoDaAutomacao({ tipo, salva, urlDaLoja, nomeDoApp, podeEscre
         {aberto ? (
           <div className="grid gap-6 border-t pt-4 lg:grid-cols-[minmax(0,1fr)_280px]">
             <div className="space-y-4">
+              {webhook === undefined ? null : (
+                <p className="text-muted-foreground text-sm">
+                  Este texto vai quando a sua ferramenta não manda o dela no chamado.
+                </p>
+              )}
               <div className="space-y-2">
                 <Label htmlFor={`titulo-${tipo}`}>Título</Label>
                 <Input
@@ -218,6 +235,16 @@ export function CartaoDaAutomacao({ tipo, salva, urlDaLoja, nomeDoApp, podeEscre
             <PreviaDaNotificacao nomeDoApp={nomeDoApp} title={valores.title} body={valores.body} />
           </div>
         ) : null}
+
+        {webhook === undefined ? null : (
+          <SecaoDoWebhook
+            endereco={webhook.endereco}
+            chave={webhook.chave}
+            ligada={ligada}
+            fuso={fuso}
+            podeEscrever={podeEscrever}
+          />
+        )}
       </CardContent>
     </Card>
   );

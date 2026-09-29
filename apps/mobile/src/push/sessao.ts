@@ -232,6 +232,33 @@ export async function pedidoConcluido(
   return resposta.ok;
 }
 
+/**
+ * O cliente entrou na conta: o aparelho passa a ser DELE também no nosso
+ * banco, e não só no OneSignal.
+ *
+ * Sem isto, só o OneSignal sabia quem era o cliente, e nada da Storefy
+ * conseguia falar com a PESSOA — o webhook de automação (Klaviyo, n8n) manda
+ * o push pelo id do cliente na loja, e acha o aparelho por aqui. Sair da conta
+ * não desfaz: o servidor guarda o último cliente do aparelho.
+ */
+export async function vincularCliente(
+  dependencias: DependenciasDaSessao,
+  inscricao: string | null,
+  customerId: string | undefined,
+): Promise<boolean> {
+  const { credenciais } = dependencias;
+  const id = (customerId ?? '').trim();
+  if (credenciais === null || inscricao === null || id === '') return false;
+
+  const resposta = await registrarAparelho(credenciais, {
+    subscriptionId: inscricao,
+    platform: dependencias.plataforma,
+    appVersion: dependencias.appVersion,
+    externalId: id,
+  });
+  return resposta.ok;
+}
+
 /** O cliente entrou na conta da loja. */
 export function identificarCliente(notificador: Notificador, customerId: string | undefined): void {
   const id = (customerId ?? '').trim();

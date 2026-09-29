@@ -16,6 +16,7 @@ import {
   ouvirToques,
   pedidoConcluido,
   registrarQuandoAssinar,
+  vincularCliente,
   type DependenciasDaSessao,
 } from './sessao.ts';
 import type { Notificador } from './onesignal.ts';
@@ -762,5 +763,38 @@ describe('avisarQuandoVoltar', () => {
         },
       ),
     ).resolves.toEqual({ ok: false, reason: 'permission' });
+  });
+});
+
+describe('vincularCliente', () => {
+  it('grava o id do cliente no aparelho, pelo mesmo registro assinado', async () => {
+    const { notificador } = fingirNotificador('sub-1');
+    const { buscador, enviados } = fingirRede();
+    vi.stubGlobal('fetch', buscador);
+
+    await expect(vincularCliente(dependencias(notificador), 'sub-1', ' 7654321 ')).resolves.toBe(
+      true,
+    );
+    expect(enviados[0]?.url).toContain('/api/public/devices');
+    expect(enviados[0]?.corpo).toMatchObject({
+      subscriptionId: 'sub-1',
+      platform: 'ios',
+      externalId: '7654321',
+    });
+    vi.unstubAllGlobals();
+  });
+
+  it('sem inscrição, sem credencial ou sem cliente, não manda nada', async () => {
+    const { notificador } = fingirNotificador('sub-1');
+    const { buscador, enviados } = fingirRede();
+    vi.stubGlobal('fetch', buscador);
+
+    await expect(vincularCliente(dependencias(notificador), null, '1')).resolves.toBe(false);
+    await expect(
+      vincularCliente(dependencias(notificador, { credenciais: null }), 'sub-1', '1'),
+    ).resolves.toBe(false);
+    await expect(vincularCliente(dependencias(notificador), 'sub-1', '  ')).resolves.toBe(false);
+    expect(enviados).toEqual([]);
+    vi.unstubAllGlobals();
   });
 });
