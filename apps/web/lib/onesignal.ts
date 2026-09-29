@@ -11,6 +11,8 @@ import 'server-only';
  * A chave REST é POR LOJA, decifrada logo antes da chamada e nunca guardada.
  */
 
+import { filtrosDoPublico, publicoDoSegmento } from '@/lib/publico-do-push';
+
 export const BASE_DA_API = 'https://api.onesignal.com';
 
 export interface CredenciaisDaOneSignal {
@@ -29,6 +31,8 @@ export interface NotificacaoParaEnviar {
    * Vazio manda para todos os inscritos.
    */
   segment?: unknown;
+  /** Endereço público da imagem da campanha (bucket `push-imagens`). */
+  imagem?: string | null;
   /** Quando presente, manda só para estas inscrições (envio de automação). */
   inscricoes?: readonly string[];
 }
@@ -66,6 +70,17 @@ export function corpoDaNotificacao(
     corpo.data = { deep_link: notificacao.deepLink };
   }
 
+  /*
+   * A imagem vai nos DOIS campos: `big_picture` é o Android; o iPhone lê
+   * `ios_attachments`, que a extensão de notificação do app (posta pelo
+   * plugin da OneSignal) baixa na chegada. Sem o segundo, o iPhone mostraria
+   * só o texto.
+   */
+  if (notificacao.imagem != null && notificacao.imagem !== '') {
+    corpo.big_picture = notificacao.imagem;
+    corpo.ios_attachments = { imagem: notificacao.imagem };
+  }
+
   if (notificacao.inscricoes !== undefined && notificacao.inscricoes.length > 0) {
     corpo.include_subscription_ids = [...notificacao.inscricoes];
     return corpo;
@@ -88,9 +103,14 @@ export function corpoDaNotificacao(
  * Um segmento que não dá para traduzir também vira `null` — e é de propósito:
  * o alternativo seria mandar um filtro que a OneSignal interpreta de outro
  * jeito, o que entrega a oferta errada para as pessoas erradas.
+ *
+ * O formato do painel é `{ publico, dias? }` (ver `lib/publico-do-push.ts`),
+ * e o banco só aceita esse. As chaves soltas (`{ tag: valor }`) são o formato
+ * de antes do painel ter público, e continuam lidas como igualdade de tag.
  */
 export function filtrosDoSegmento(segment: unknown): Record<string, unknown>[] | null {
   if (segment === null || typeof segment !== 'object' || Array.isArray(segment)) return null;
+  if ('publico' in segment) return filtrosDoPublico(publicoDoSegmento(segment));
 
   const entradas = Object.entries(segment as Record<string, unknown>).filter(
     ([chave, valor]) => chave !== '' && typeof valor === 'string' && valor !== '',

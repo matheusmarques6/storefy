@@ -19,6 +19,7 @@ import {
 } from '@/lib/campanha';
 import type { CampanhaNaLista } from '@/lib/push-servidor';
 import { formatarDataHora } from '@/lib/fuso';
+import { descricaoDoPublico } from '@/lib/publico-do-push';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -129,6 +130,11 @@ export function ListaDeCampanhas({
                   </Badge>
                 </div>
                 <p className="text-muted-foreground line-clamp-2 text-sm">{campanha.body}</p>
+                {campanha.publico.tipo === 'todos' ? null : (
+                  <p className="text-muted-foreground text-xs">
+                    Para: {descricaoDoPublico(campanha.publico)}
+                  </p>
+                )}
                 <p className="text-muted-foreground text-xs">
                   {EXPLICACAO_DO_STATUS[campanha.status]}{' '}
                   <time dateTime={quando}>{formatar(quando, fuso)}</time>

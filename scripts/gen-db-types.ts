@@ -256,6 +256,8 @@ async function main(): Promise<void> {
     'devolver_envios_presos',
     'campanhas_para_estatistica',
     'gravar_estatistica',
+    // C08 — as imagens de push que nenhuma campanha usa, para o job apagar.
+    'imagens_de_push_sem_campanha',
     'builds_em_revisao',
     'gravar_revisao',
     'reservar_aviso',

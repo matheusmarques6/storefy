@@ -26,6 +26,13 @@ import { normalizarDeepLink } from '@/lib/campanha';
 import type { ProblemaNoFormulario } from '@/lib/campanha';
 import { FALHA_GENERICA, mensagemDaFalha } from '@/lib/erros';
 import { dicaDaChave, gerarChave, hashDaChave } from '@/lib/webhook-de-automacao';
+import {
+  caminhoDaImagemDaLoja,
+  guardarImagemDoPush,
+  imagemDoPushExiste,
+  urlDaImagemDoPush,
+} from '@/lib/imagem-do-push';
+import { lerPublico, segmentoDoPublico } from '@/lib/publico-do-push';
 
 export interface EstadoDoPush {
   ok?: boolean;
@@ -73,13 +80,123 @@ async function contexto() {
   return { ok: true as const, supabase, loja: lojaAtiva, app, usuario };
 }
 
-export async function criarCampanha(entrada: {
-  title: string;
-  body: string;
-  deepLink: string;
-  agendarPara: string;
-  enviarAgora: boolean;
-}): Promise<EstadoDoPush> {
+type Base = Extract<Awaited<ReturnType<typeof contexto>>, { ok: true }>;
+
+/** O que a campanha leva além do texto: a imagem e quem recebe (C08). */
+export interface ExtrasDaCampanha {
+  /** Caminho da imagem no bucket, como `enviarImagemDoPush` devolveu, ou `null`. */
+  imagem: string | null;
+  /** O público, como o formulário manda: o tipo e o prazo em dias (texto do campo). */
+  publico: { tipo: string; dias: string };
+}
+
+/**
+ * A imagem que chegou do navegador, conferida: tem de ser um arquivo desta
+ * loja, no formato que o servidor grava, e que ainda exista — o job apaga as
+ * que ficam um dia sem campanha, e um formulário esquecido aberto pode chegar
+ * com uma que já não está lá.
+ */
+async function conferirImagem(
+  base: Base,
+  imagem: string | null,
+): Promise<{ ok: true; caminho: string | null } | { ok: false; problema: ProblemaNoFormulario }> {
+  if (imagem === null) return { ok: true, caminho: null };
+  if (!caminhoDaImagemDaLoja(base.loja.id, imagem)) {
+    return {
+      ok: false,
+      problema: {
+        campo: 'imagem',
+        mensagem: 'Essa imagem não é desta loja. Envie a imagem de novo.',
+      },
+    };
+  }
+  const existe = await imagemDoPushExiste(criarClientServiceRole(), imagem);
+  if (existe === null) {
+    return {
+      ok: false,
+      problema: {
+        campo: 'imagem',
+        mensagem: 'Não conseguimos conferir a imagem agora. Tente de novo em instantes.',
+      },
+    };
+  }
+  if (!existe) {
+    return {
+      ok: false,
+      problema: {
+        campo: 'imagem',
+        mensagem: 'A imagem não está mais disponível. Envie a imagem de novo.',
+      },
+    };
+  }
+  return { ok: true, caminho: imagem };
+}
+
+/** Imagem e público juntos: o que vai para `image_path` e `segment`, ou os problemas. */
+async function conferirExtras(
+  base: Base,
+  extras: ExtrasDaCampanha,
+): Promise<
+  | { ok: true; imagePath: string | null; segment: Record<string, string | number> }
+  | { ok: false; problemas: ProblemaNoFormulario[] }
+> {
+  const imagem = await conferirImagem(base, extras.imagem);
+  const publico = lerPublico(extras.publico.tipo, extras.publico.dias);
+  if (!imagem.ok || !publico.ok) {
+    return {
+      ok: false,
+      problemas: [
+        ...(imagem.ok ? [] : [imagem.problema]),
+        ...(publico.ok ? [] : [{ campo: 'publico' as const, mensagem: publico.mensagem }]),
+      ],
+    };
+  }
+  return { ok: true, imagePath: imagem.caminho, segment: segmentoDoPublico(publico.publico) };
+}
+
+/** Os problemas do texto e os dos extras, numa lista só: o formulário mostra todos de uma vez. */
+function juntarProblemas(
+  texto: ReturnType<typeof validarCampanha>,
+  extras: Awaited<ReturnType<typeof conferirExtras>>,
+): ProblemaNoFormulario[] {
+  return [...(texto.ok ? [] : texto.problemas), ...(extras.ok ? [] : extras.problemas)];
+}
+
+/**
+ * Guarda a imagem escolhida no formulário e devolve o caminho (que a campanha
+ * leva) e o endereço (que a prévia mostra). Sobe na hora da escolha, e não
+ * ao salvar, porque o envio de teste e a prévia precisam dela antes.
+ */
+export async function enviarImagemDoPush(
+  formulario: FormData,
+): Promise<
+  { ok: true; caminho: string; url: string; aviso: string | null } | { ok: false; mensagem: string }
+> {
+  const base = await contexto();
+  if (!base.ok) return { ok: false, mensagem: base.motivo };
+
+  const arquivo = formulario.get('imagem');
+  if (!(arquivo instanceof File) || arquivo.size === 0) {
+    return { ok: false, mensagem: 'Escolha uma imagem.' };
+  }
+
+  const guardada = await guardarImagemDoPush(criarClientServiceRole(), base.loja.id, {
+    tipoMime: arquivo.type,
+    bytes: new Uint8Array(await arquivo.arrayBuffer()),
+  });
+  if (!guardada.ok) return { ok: false, mensagem: guardada.motivo };
+  return guardada;
+}
+
+export async function criarCampanha(
+  entrada: {
+    title: string;
+    body: string;
+    deepLink: string;
+    agendarPara: string;
+    enviarAgora: boolean;
+  } & ExtrasDaCampanha,
+): Promise<EstadoDoPush> {
   const base = await contexto();
   if (!base.ok) return { mensagem: base.motivo };
 
@@ -95,8 +212,8 @@ export async function criarCampanha(entrada: {
     },
     { urlDaLoja: base.loja.primary_url, agoraMs: Date.now(), fuso: base.loja.timezone },
   );
-
-  if (!validacao.ok) return { problemas: validacao.problemas };
+  const extras = await conferirExtras(base, entrada);
+  if (!validacao.ok || !extras.ok) return { problemas: juntarProblemas(validacao, extras) };
 
   const { title, body, deepLink, agendarPara } = validacao.valores;
 
@@ -112,6 +229,8 @@ export async function criarCampanha(entrada: {
       title,
       body,
       deep_link: deepLink,
+      image_path: extras.imagePath,
+      segment: extras.segment,
       status: 'scheduled',
       scheduled_at: (agendarPara ?? new Date()).toISOString(),
     })
@@ -128,11 +247,13 @@ export async function criarCampanha(entrada: {
   };
 }
 
-export async function salvarRascunhoDeCampanha(entrada: {
-  title: string;
-  body: string;
-  deepLink: string;
-}): Promise<EstadoDoPush> {
+export async function salvarRascunhoDeCampanha(
+  entrada: {
+    title: string;
+    body: string;
+    deepLink: string;
+  } & ExtrasDaCampanha,
+): Promise<EstadoDoPush> {
   const base = await contexto();
   if (!base.ok) return { mensagem: base.motivo };
 
@@ -140,7 +261,8 @@ export async function salvarRascunhoDeCampanha(entrada: {
     { title: entrada.title, body: entrada.body, deepLink: entrada.deepLink },
     { urlDaLoja: base.loja.primary_url, agoraMs: Date.now(), fuso: base.loja.timezone },
   );
-  if (!validacao.ok) return { problemas: validacao.problemas };
+  const extras = await conferirExtras(base, entrada);
+  if (!validacao.ok || !extras.ok) return { problemas: juntarProblemas(validacao, extras) };
 
   const { error, data } = await base.supabase
     .from('push_campaigns')
@@ -149,6 +271,8 @@ export async function salvarRascunhoDeCampanha(entrada: {
       title: validacao.valores.title,
       body: validacao.valores.body,
       deep_link: validacao.valores.deepLink,
+      image_path: extras.imagePath,
+      segment: extras.segment,
       status: 'draft',
     })
     .select('id')
@@ -243,7 +367,7 @@ export async function editarCampanha(
     deepLink: string;
     agendarPara: string;
     enviarAgora: boolean;
-  },
+  } & ExtrasDaCampanha,
 ): Promise<EstadoDoPush> {
   const base = await contexto();
   if (!base.ok) return { mensagem: base.motivo };
@@ -270,7 +394,8 @@ export async function editarCampanha(
     },
     { urlDaLoja: base.loja.primary_url, agoraMs: Date.now(), fuso: base.loja.timezone },
   );
-  if (!validacao.ok) return { problemas: validacao.problemas };
+  const extras = await conferirExtras(base, entrada);
+  if (!validacao.ok || !extras.ok) return { problemas: juntarProblemas(validacao, extras) };
 
   const { data: gravada, error } = await base.supabase
     .from('push_campaigns')
@@ -278,6 +403,8 @@ export async function editarCampanha(
       title: validacao.valores.title,
       body: validacao.valores.body,
       deep_link: validacao.valores.deepLink,
+      image_path: extras.imagePath,
+      segment: extras.segment,
       status: 'scheduled',
       scheduled_at: (validacao.valores.agendarPara ?? new Date()).toISOString(),
     })
@@ -311,7 +438,7 @@ export async function editarCampanha(
  */
 export async function atualizarRascunho(
   campanhaId: string,
-  entrada: { title: string; body: string; deepLink: string },
+  entrada: { title: string; body: string; deepLink: string } & ExtrasDaCampanha,
 ): Promise<EstadoDoPush> {
   const base = await contexto();
   if (!base.ok) return { mensagem: base.motivo };
@@ -320,7 +447,8 @@ export async function atualizarRascunho(
     { title: entrada.title, body: entrada.body, deepLink: entrada.deepLink },
     { urlDaLoja: base.loja.primary_url, agoraMs: Date.now(), fuso: base.loja.timezone },
   );
-  if (!validacao.ok) return { problemas: validacao.problemas };
+  const extras = await conferirExtras(base, entrada);
+  if (!validacao.ok || !extras.ok) return { problemas: juntarProblemas(validacao, extras) };
 
   // `status = draft` no filtro: se outra aba já agendou, o rascunho não existe
   // mais, e isto não pode devolvê-lo a rascunho por baixo dos panos.
@@ -330,6 +458,8 @@ export async function atualizarRascunho(
       title: validacao.valores.title,
       body: validacao.valores.body,
       deep_link: validacao.valores.deepLink,
+      image_path: extras.imagePath,
+      segment: extras.segment,
     })
     .eq('id', campanhaId)
     .eq('app_id', base.app.id)
@@ -361,6 +491,8 @@ export async function enviarTeste(entrada: {
   body: string;
   deepLink: string;
   deviceId: string;
+  /** A imagem da campanha, para o teste chegar como a campanha vai chegar. */
+  imagem: string | null;
 }): Promise<EstadoDoPush> {
   const base = await contexto();
   if (!base.ok) return { mensagem: base.motivo };
@@ -369,7 +501,16 @@ export async function enviarTeste(entrada: {
     { title: entrada.title, body: entrada.body, deepLink: entrada.deepLink },
     { urlDaLoja: base.loja.primary_url, agoraMs: Date.now(), fuso: base.loja.timezone },
   );
-  if (!validacao.ok) return { problemas: validacao.problemas };
+  // O público não conta aqui: o teste vai para o aparelho escolhido, e só.
+  const imagem = await conferirImagem(base, entrada.imagem);
+  if (!validacao.ok || !imagem.ok) {
+    return {
+      problemas: [
+        ...(validacao.ok ? [] : validacao.problemas),
+        ...(imagem.ok ? [] : [imagem.problema]),
+      ],
+    };
+  }
 
   /*
    * O aparelho é lido pelo client da SESSÃO, e filtrado por este app. É a RLS
@@ -428,6 +569,10 @@ export async function enviarTeste(entrada: {
       body: validacao.valores.body,
       deepLink: validacao.valores.deepLink,
       inscricoes: [aparelho.onesignal_subscription_id],
+      imagem:
+        imagem.caminho === null
+          ? null
+          : urlDaImagemDoPush(criarClientServiceRole(), imagem.caminho),
     },
   );
 

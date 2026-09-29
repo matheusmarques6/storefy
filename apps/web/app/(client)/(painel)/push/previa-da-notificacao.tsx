@@ -10,6 +10,7 @@
  * As duas plataformas são mostradas juntas de propósito: elas cortam em
  * pontos diferentes, e o lojista não escolhe quem recebe em qual.
  */
+import Image from 'next/image';
 import { Smartphone } from 'lucide-react';
 import {
   CORTE_ANDROID_CORPO,
@@ -23,9 +24,11 @@ interface Props {
   nomeDoApp: string;
   title: string;
   body: string;
+  /** Endereço da imagem da campanha, quando houver. */
+  imagem?: string | null;
 }
 
-export function PreviaDaNotificacao({ nomeDoApp, title, body }: Props) {
+export function PreviaDaNotificacao({ nomeDoApp, title, body, imagem = null }: Props) {
   const vazio = title.trim() === '' && body.trim() === '';
 
   return (
@@ -48,6 +51,10 @@ export function PreviaDaNotificacao({ nomeDoApp, title, body }: Props) {
             body={body}
             corteDoTitulo={CORTE_IOS_TITULO}
             corteDoCorpo={CORTE_IOS_CORPO}
+            imagem={imagem}
+            // O iPhone mostra a imagem pequena ao lado do texto; inteira, só
+            // quando o cliente pressiona a notificação.
+            estiloDaImagem="miniatura"
           />
           <Cartao
             sistema="Android"
@@ -56,7 +63,15 @@ export function PreviaDaNotificacao({ nomeDoApp, title, body }: Props) {
             body={body}
             corteDoTitulo={CORTE_ANDROID_TITULO}
             corteDoCorpo={CORTE_ANDROID_CORPO}
+            imagem={imagem}
+            // O Android expande a notificação com a imagem larga embaixo.
+            estiloDaImagem="grande"
           />
+          {imagem === null ? null : (
+            <p className="text-muted-foreground text-xs">
+              A imagem inteira aparece quando o cliente abre a notificação para ver mais.
+            </p>
+          )}
         </div>
       )}
     </div>
@@ -70,6 +85,8 @@ function Cartao({
   body,
   corteDoTitulo,
   corteDoCorpo,
+  imagem,
+  estiloDaImagem,
 }: {
   sistema: string;
   nomeDoApp: string;
@@ -77,6 +94,8 @@ function Cartao({
   body: string;
   corteDoTitulo: number;
   corteDoCorpo: number;
+  imagem: string | null;
+  estiloDaImagem: 'miniatura' | 'grande';
 }) {
   const t = previaDaNotificacao(title, corteDoTitulo);
   const c = previaDaNotificacao(body, corteDoCorpo);
@@ -95,12 +114,36 @@ function Cartao({
           </span>
           <span className="text-muted-foreground ml-auto text-[11px]">agora</span>
         </div>
-        <p className="mt-1.5 text-sm leading-snug font-semibold break-words">
-          {t.texto === '' ? ' ' : t.texto}
-        </p>
-        <p className="text-muted-foreground text-sm leading-snug break-words">
-          {c.texto === '' ? ' ' : c.texto}
-        </p>
+        <div className="mt-1.5 flex items-start gap-2">
+          <div className="min-w-0 flex-1">
+            <p className="text-sm leading-snug font-semibold break-words">
+              {t.texto === '' ? ' ' : t.texto}
+            </p>
+            <p className="text-muted-foreground text-sm leading-snug break-words">
+              {c.texto === '' ? ' ' : c.texto}
+            </p>
+          </div>
+          {imagem !== null && estiloDaImagem === 'miniatura' ? (
+            <Image
+              src={imagem}
+              alt=""
+              width={40}
+              height={40}
+              unoptimized
+              className="size-10 shrink-0 rounded-md object-cover"
+            />
+          ) : null}
+        </div>
+        {imagem !== null && estiloDaImagem === 'grande' ? (
+          <Image
+            src={imagem}
+            alt=""
+            width={288}
+            height={144}
+            unoptimized
+            className="mt-2 aspect-[2/1] w-full rounded-lg object-cover"
+          />
+        ) : null}
       </div>
       {cortou ? (
         <p className="text-muted-foreground text-xs">

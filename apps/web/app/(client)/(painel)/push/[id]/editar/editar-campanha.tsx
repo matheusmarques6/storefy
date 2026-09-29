@@ -1,6 +1,6 @@
 'use client';
 
-import { FormularioDaCampanha, type ValoresIniciais } from '../../formulario';
+import { FormularioDaCampanha, type ValoresDoEnvio, type ValoresIniciais } from '../../formulario';
 import type { AparelhoParaTeste } from '@/lib/push-servidor';
 import { atualizarRascunho, editarCampanha } from '../../acoes';
 
@@ -52,7 +52,7 @@ export function EditarCampanha({
       aoEnviar={(valores) => editarCampanha(campanhaId, valores)}
       {...(rascunho
         ? {
-            aoSalvarRascunho: (valores: { title: string; body: string; deepLink: string }) =>
+            aoSalvarRascunho: (valores: Omit<ValoresDoEnvio, 'agendarPara' | 'enviarAgora'>) =>
               atualizarRascunho(campanhaId, valores),
             rotuloDoRascunho: 'Salvar rascunho',
           }

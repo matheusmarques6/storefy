@@ -11,6 +11,8 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '@storefy/db';
 import { ehTipoDeAutomacao, type TipoDeAutomacao } from '@/lib/automacao';
 import type { StatusDaCampanha } from '@/lib/campanha';
+import { urlDaImagemDoPush } from '@/lib/imagem-do-push';
+import { publicoDoSegmento, type Publico } from '@/lib/publico-do-push';
 
 type Client = SupabaseClient<Database>;
 
@@ -24,6 +26,47 @@ export interface CampanhaNaLista {
   sentAt: string | null;
   createdAt: string;
   stats: unknown;
+  /** A imagem da campanha: o caminho no bucket e o endereço público. */
+  imagem: { caminho: string; url: string } | null;
+  /** Quem recebe. */
+  publico: Publico;
+}
+
+const COLUNAS_DA_CAMPANHA =
+  'id, title, body, deep_link, status, scheduled_at, sent_at, created_at, stats, image_path, segment' as const;
+
+type LinhaDaCampanha = Pick<
+  Database['public']['Tables']['push_campaigns']['Row'],
+  | 'id'
+  | 'title'
+  | 'body'
+  | 'deep_link'
+  | 'status'
+  | 'scheduled_at'
+  | 'sent_at'
+  | 'created_at'
+  | 'stats'
+  | 'image_path'
+  | 'segment'
+>;
+
+function campanhaDaLinha(supabase: Client, linha: LinhaDaCampanha): CampanhaNaLista {
+  return {
+    id: linha.id,
+    title: linha.title,
+    body: linha.body,
+    deepLink: linha.deep_link,
+    status: linha.status,
+    scheduledAt: linha.scheduled_at,
+    sentAt: linha.sent_at,
+    createdAt: linha.created_at,
+    stats: linha.stats,
+    imagem:
+      linha.image_path === null
+        ? null
+        : { caminho: linha.image_path, url: urlDaImagemDoPush(supabase, linha.image_path) },
+    publico: publicoDoSegmento(linha.segment),
+  };
 }
 
 export interface AutomacaoSalva {
@@ -75,23 +118,13 @@ export async function listarCampanhas(
 ): Promise<CampanhaNaLista[]> {
   const { data, error } = await supabase
     .from('push_campaigns')
-    .select('id, title, body, deep_link, status, scheduled_at, sent_at, created_at, stats')
+    .select(COLUNAS_DA_CAMPANHA)
     .eq('app_id', appId)
     .order('created_at', { ascending: false })
     .limit(limite);
   falhouAoLer('as campanhas', error);
 
-  return (data ?? []).map((linha) => ({
-    id: linha.id,
-    title: linha.title,
-    body: linha.body,
-    deepLink: linha.deep_link,
-    status: linha.status,
-    scheduledAt: linha.scheduled_at,
-    sentAt: linha.sent_at,
-    createdAt: linha.created_at,
-    stats: linha.stats,
-  }));
+  return (data ?? []).map((linha) => campanhaDaLinha(supabase, linha));
 }
 
 export async function buscarCampanha(
@@ -101,24 +134,13 @@ export async function buscarCampanha(
 ): Promise<CampanhaNaLista | null> {
   const { data, error } = await supabase
     .from('push_campaigns')
-    .select('id, title, body, deep_link, status, scheduled_at, sent_at, created_at, stats')
+    .select(COLUNAS_DA_CAMPANHA)
     .eq('app_id', appId)
     .eq('id', campanhaId)
     .maybeSingle();
   falhouAoLer('a campanha', error);
 
-  if (data == null) return null;
-  return {
-    id: data.id,
-    title: data.title,
-    body: data.body,
-    deepLink: data.deep_link,
-    status: data.status,
-    scheduledAt: data.scheduled_at,
-    sentAt: data.sent_at,
-    createdAt: data.created_at,
-    stats: data.stats,
-  };
+  return data == null ? null : campanhaDaLinha(supabase, data);
 }
 
 export async function listarAutomacoes(supabase: Client, appId: string): Promise<AutomacaoSalva[]> {

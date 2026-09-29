@@ -27,7 +27,14 @@ const RETORNO_PADRAO: Record<string, unknown> = {
   reservar_campanhas: [],
   reservar_envios_de_automacao: [],
   campanhas_para_estatistica: [],
+  imagens_de_push_sem_campanha: [],
 };
+
+/** O que foi pedido ao Storage para apagar, e se ele recusa. */
+let apagadosDoStorage: { bucket: string; caminhos: string[] }[] = [];
+let storageQuebrado = false;
+/** Os corpos mandados à OneSignal, para conferir o que a notificação levou. */
+let corposDaOneSignal: Record<string, unknown>[] = [];
 
 /** A resposta da OneSignal. */
 let respostaDaOneSignal: { status: number; corpo: unknown } = {
@@ -63,6 +70,23 @@ vi.mock('@/lib/supabase/admin', () => ({
         error: null,
       });
     },
+    storage: {
+      from: (bucket: string) => ({
+        getPublicUrl: (caminho: string) => ({
+          data: {
+            publicUrl: `https://exemplo.supabase.co/storage/v1/object/public/${bucket}/${caminho}`,
+          },
+        }),
+        remove: (caminhos: string[]) => {
+          apagadosDoStorage.push({ bucket, caminhos });
+          return Promise.resolve(
+            storageQuebrado
+              ? { data: null, error: { message: 'storage fora do ar' } }
+              : { data: [], error: null },
+          );
+        },
+      }),
+    },
   }),
 }));
 
@@ -83,9 +107,15 @@ beforeEach(() => {
   respostas = {};
   oneSignalQuebrada = false;
   bancoQuebrado = false;
+  apagadosDoStorage = [];
+  storageQuebrado = false;
+  corposDaOneSignal = [];
   respostaDaOneSignal = { status: 200, corpo: { id: 'notificacao-1', recipients: 42 } };
 
-  vi.stubGlobal('fetch', () => {
+  vi.stubGlobal('fetch', (_endereco: string, init?: RequestInit) => {
+    if (typeof init?.body === 'string') {
+      corposDaOneSignal.push(JSON.parse(init.body) as Record<string, unknown>);
+    }
     if (oneSignalQuebrada) return Promise.reject(new Error('sem rede'));
     return Promise.resolve(
       new Response(JSON.stringify(respostaDaOneSignal.corpo), {
@@ -127,6 +157,7 @@ function campanhaReservada(extra: Record<string, unknown> = {}) {
       body: 'Até 40% OFF',
       deep_link: '/promocoes',
       segment: {},
+      image_path: null,
       onesignal_app_id: 'os-1',
       onesignal_api_key_enc: criptografar('chave-rest'),
       ...extra,
@@ -175,6 +206,32 @@ describe('GET /api/jobs/dispatch-push', () => {
       p_notification_id: 'notificacao-1',
       p_stats: { enviados: 42 },
     });
+  });
+
+  it('a imagem e o público da campanha vão para a OneSignal', async () => {
+    respostas = {
+      reservar_campanhas: campanhaReservada({
+        image_path: 'loja-1/foto.jpg',
+        segment: { publico: 'com_carrinho' },
+      }),
+    };
+    const resposta = await despachar(comSegredo('/api/jobs/dispatch-push'));
+    await expect(resposta.json()).resolves.toMatchObject({ enviados: 1 });
+
+    const url = 'https://exemplo.supabase.co/storage/v1/object/public/push-imagens/loja-1/foto.jpg';
+    expect(corposDaOneSignal[0]).toMatchObject({
+      big_picture: url,
+      ios_attachments: { imagem: url },
+      filters: [{ field: 'tag', key: 'cart_count', relation: '>', value: '0' }],
+    });
+    expect(corposDaOneSignal[0]).not.toHaveProperty('included_segments');
+  });
+
+  it('sem imagem e sem público, vai só o texto, para todos', async () => {
+    respostas = { reservar_campanhas: campanhaReservada() };
+    await despachar(comSegredo('/api/jobs/dispatch-push'));
+    expect(corposDaOneSignal[0]).not.toHaveProperty('big_picture');
+    expect(corposDaOneSignal[0]).toMatchObject({ included_segments: ['Subscribed Users'] });
   });
 
   it('não marca nada como enviado quando a OneSignal recusa', async () => {
@@ -304,7 +361,11 @@ describe('GET /api/jobs/push-stats', () => {
     };
 
     const resposta = await estatisticas(comSegredo('/api/jobs/push-stats'));
-    await expect(resposta.json()).resolves.toEqual({ consultadas: 1, atualizadas: 1 });
+    await expect(resposta.json()).resolves.toEqual({
+      consultadas: 1,
+      atualizadas: 1,
+      imagensApagadas: 0,
+    });
     expect(chamou('gravar_estatistica')[0]?.args.p_stats).toEqual({
       enviados: 950,
       entregues: 950,
@@ -334,8 +395,45 @@ describe('GET /api/jobs/push-stats', () => {
     oneSignalQuebrada = true;
 
     const resposta = await estatisticas(comSegredo('/api/jobs/push-stats'));
-    await expect(resposta.json()).resolves.toEqual({ consultadas: 1, atualizadas: 0 });
+    await expect(resposta.json()).resolves.toEqual({
+      consultadas: 1,
+      atualizadas: 0,
+      imagensApagadas: 0,
+    });
     expect(chamou('gravar_estatistica')).toHaveLength(0);
+  });
+
+  it('apaga do Storage as imagens de push que nenhuma campanha usa', async () => {
+    respostas = {
+      imagens_de_push_sem_campanha: [{ caminho: 'loja-1/velha.jpg' }, { caminho: 'loja-2/b.jpg' }],
+    };
+    const resposta = await estatisticas(comSegredo('/api/jobs/push-stats'));
+    await expect(resposta.json()).resolves.toMatchObject({ imagensApagadas: 2 });
+    expect(apagadosDoStorage).toEqual([
+      { bucket: 'push-imagens', caminhos: ['loja-1/velha.jpg', 'loja-2/b.jpg'] },
+    ]);
+  });
+
+  it('sem imagem sobrando, não chama o Storage', async () => {
+    await estatisticas(comSegredo('/api/jobs/push-stats'));
+    expect(apagadosDoStorage).toHaveLength(0);
+  });
+
+  /*
+   * As estatísticas já foram gravadas quando a limpeza falha: o job acusa a
+   * falha (o batimento mostra), sem fingir que foi tudo bem.
+   */
+  it('Storage fora do ar acusa a falha, depois de gravar as estatísticas', async () => {
+    respostas = {
+      campanhas_para_estatistica: [campanhaEnviada()],
+      imagens_de_push_sem_campanha: [{ caminho: 'loja-1/velha.jpg' }],
+    };
+    respostaDaOneSignal = { status: 200, corpo: { successful: 10 } };
+    storageQuebrado = true;
+
+    const resposta = await estatisticas(comSegredo('/api/jobs/push-stats'));
+    expect(resposta.status).toBe(500);
+    expect(chamou('gravar_estatistica')).toHaveLength(1);
   });
 
   it('uma chave ilegível não impede as outras campanhas', async () => {
@@ -348,6 +446,10 @@ describe('GET /api/jobs/push-stats', () => {
     respostaDaOneSignal = { status: 200, corpo: { successful: 10 } };
 
     const resposta = await estatisticas(comSegredo('/api/jobs/push-stats'));
-    await expect(resposta.json()).resolves.toEqual({ consultadas: 2, atualizadas: 1 });
+    await expect(resposta.json()).resolves.toEqual({
+      consultadas: 2,
+      atualizadas: 1,
+      imagensApagadas: 0,
+    });
   });
 });

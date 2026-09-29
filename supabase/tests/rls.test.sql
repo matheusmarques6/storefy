@@ -1888,7 +1888,7 @@ select app_a, 'Antes do app', 'Isto é de antes.', 'sent', now() - interval '365
 from tests.lojas;
 
 insert into public.push_campaigns (app_id, title, body, status, sent_at, segment)
-select app_a, 'Só para VIPs', 'Preço especial.', 'sent', now(), '{"tag":"vip"}'::jsonb
+select app_a, 'Só para VIPs', 'Preço especial.', 'sent', now(), '{"publico":"compradores"}'::jsonb
 from tests.lojas;
 
 insert into public.push_campaigns (app_id, title, body, status, segment)
@@ -7549,6 +7549,191 @@ select tests.ok('segundo fator',
 
 delete from public.platform_admins
  where user_id in (select u_suporte from tests.sf union all select u_alvo from tests.sf);
+select tests.logout();
+
+-- ============================== grupo: C08 — imagem e público da campanha (migration 56)
+--
+-- A imagem é um arquivo do bucket, da loja da campanha; o público é um dos que
+-- o painel oferece. E a imagem que ninguém usa volta para o job apagar.
+
+reset role;
+select tests.logout();
+
+insert into auth.users (email, raw_user_meta_data, email_confirmed_at) values
+  ('img-dono@teste.local',   '{"company_name":"Img Dono"}'::jsonb,   now()),
+  ('img-outro@teste.local',  '{"company_name":"Img Outro"}'::jsonb,  now()),
+  ('img-membro@teste.local', '{"company_name":"Img Membro"}'::jsonb, now());
+
+drop table if exists tests.img;
+create table tests.img as
+select
+  (select id from auth.users where email = 'img-dono@teste.local')   as u_dono,
+  (select id from auth.users where email = 'img-membro@teste.local') as u_membro,
+  (select m.org_id from public.memberships m
+     join auth.users u on u.id = m.user_id where u.email = 'img-dono@teste.local')  as org_dono,
+  (select m.org_id from public.memberships m
+     join auth.users u on u.id = m.user_id where u.email = 'img-outro@teste.local') as org_outro,
+  extensions.gen_random_uuid() as arquivo_usado,
+  extensions.gen_random_uuid() as arquivo_velho,
+  extensions.gen_random_uuid() as arquivo_novo;
+
+insert into public.memberships (org_id, user_id, role)
+select org_dono, u_membro, 'member' from tests.img;
+
+insert into public.stores (org_id, name, primary_url)
+select org_dono, 'Loja Img', 'https://loja-img.com.br' from tests.img;
+insert into public.stores (org_id, name, primary_url)
+select org_outro, 'Loja Img Outra', 'https://loja-img-outra.com.br' from tests.img;
+
+alter table tests.img add column loja uuid, add column loja_outra uuid, add column app uuid;
+update tests.img set
+  loja = (select id from public.stores where name = 'Loja Img'),
+  loja_outra = (select id from public.stores where name = 'Loja Img Outra');
+update tests.img set app = (select a.id from public.apps a where a.store_id = tests.img.loja);
+grant select on tests.img to anon, authenticated, service_role;
+
+select tests.login('img-dono@teste.local');
+set role authenticated;
+
+select tests.ok('push',
+  tests.permitido($q$insert into public.push_campaigns (app_id, title, body, image_path)
+    select app, 'Com imagem', 'Da própria loja',
+           loja::text || '/' || arquivo_usado::text || '.jpg' from tests.img$q$),
+  'a campanha usa uma imagem da própria loja');
+
+select tests.ok('push',
+  tests.erro_com($q$insert into public.push_campaigns (app_id, title, body, image_path)
+    select app, 'Imagem alheia', 'De outra loja',
+           loja_outra::text || '/' || arquivo_novo::text || '.jpg' from tests.img$q$,
+    'A imagem é de outra loja.'),
+  'mas NÃO a imagem de outra loja, nem sabendo o caminho');
+
+select tests.ok('push',
+  tests.bloqueado($q$insert into public.push_campaigns (app_id, title, body, image_path)
+    select app, 'Imagem de fora', 'URL qualquer', 'https://exemplo.com/foto.jpg' from tests.img$q$),
+  'nem um endereço de fora do bucket');
+
+select tests.ok('push',
+  tests.permitido($q$insert into public.push_campaigns (app_id, title, body, segment)
+    select app, 'Compradores', 'Público', '{"publico":"compradores"}'::jsonb from tests.img$q$)
+  and tests.permitido($q$insert into public.push_campaigns (app_id, title, body, segment)
+    select app, 'Sumidos', 'Público', '{"publico":"inativos","dias":14}'::jsonb from tests.img$q$),
+  'os públicos do painel são aceitos, com e sem prazo');
+
+select tests.ok('push',
+  tests.bloqueado($q$insert into public.push_campaigns (app_id, title, body, segment)
+    select app, 'x', 'x', '{"publico":"inativos"}'::jsonb from tests.img$q$)
+  and tests.bloqueado($q$insert into public.push_campaigns (app_id, title, body, segment)
+    select app, 'x', 'x', '{"publico":"vip"}'::jsonb from tests.img$q$)
+  and tests.bloqueado($q$insert into public.push_campaigns (app_id, title, body, segment)
+    select app, 'x', 'x', '{"publico":"ativos","dias":0}'::jsonb from tests.img$q$)
+  and tests.bloqueado($q$insert into public.push_campaigns (app_id, title, body, segment)
+    select app, 'x', 'x', '{"publico":"ativos","dias":7.5}'::jsonb from tests.img$q$)
+  and tests.bloqueado($q$insert into public.push_campaigns (app_id, title, body, segment)
+    select app, 'x', 'x', '{"publico":"ativos","dias":"7"}'::jsonb from tests.img$q$)
+  and tests.bloqueado($q$insert into public.push_campaigns (app_id, title, body, segment)
+    select app, 'x', 'x', '{"publico":"compradores","tag":"vip"}'::jsonb from tests.img$q$),
+  'público desconhecido, sem prazo, com prazo fora de 1 a 365 ou com campo a mais é recusado');
+
+select tests.ok('push',
+  tests.erro_com($q$update public.push_campaigns
+    set image_path = (select loja_outra::text || '/' || arquivo_novo::text || '.jpg' from tests.img)
+    where title = 'Com imagem'$q$,
+    'A imagem é de outra loja.'),
+  'trocar depois pela imagem de outra loja também é recusado');
+
+select tests.ok('push',
+  tests.permitido($q$insert into storage.objects (bucket_id, name)
+    select 'push-imagens', loja::text || '/' || arquivo_usado::text || '.jpg' from tests.img$q$),
+  'o dono envia imagem de push para a pasta da própria loja');
+
+select tests.ok('push',
+  tests.bloqueado($q$insert into storage.objects (bucket_id, name)
+    select 'push-imagens', loja_outra::text || '/intrusa.jpg' from tests.img$q$),
+  'mas não para a pasta de outra loja');
+
+reset role;
+select tests.login('img-membro@teste.local');
+set role authenticated;
+
+select tests.ok('papéis',
+  tests.bloqueado($q$insert into storage.objects (bucket_id, name)
+    select 'push-imagens', loja::text || '/do-membro.jpg' from tests.img$q$),
+  'member NÃO envia imagem de push');
+
+select tests.ok('push',
+  tests.contar($q$select count(*) from storage.objects where bucket_id = 'push-imagens'$q$) = 1,
+  'mas enxerga as imagens da loja dele');
+
+reset role;
+select tests.login('img-outro@teste.local');
+set role authenticated;
+
+select tests.ok('isolamento',
+  tests.contar($q$select count(*) from storage.objects where bucket_id = 'push-imagens'$q$) = 0,
+  'a outra organização não lista as imagens de push desta loja');
+
+reset role;
+select tests.logout();
+set role anon;
+
+select tests.ok('push',
+  tests.contar($q$select count(*) from storage.objects where bucket_id = 'push-imagens'$q$) = 0,
+  'anon não lista imagem nenhuma: o link público não abre a listagem');
+
+reset role;
+
+select tests.ok('push',
+  (select public and file_size_limit = 1048576 and allowed_mime_types = array['image/jpeg']
+     from storage.buckets where id = 'push-imagens'),
+  'o bucket é público (a OneSignal baixa sozinha), só JPEG e até 1 MB');
+
+-- Uma imagem velha sem campanha, uma velha em uso e uma nova sem campanha.
+insert into storage.objects (bucket_id, name, created_at)
+select 'push-imagens', loja::text || '/' || arquivo_velho::text || '.jpg', now() - interval '2 days'
+  from tests.img
+union all
+select 'push-imagens', loja::text || '/' || arquivo_novo::text || '.jpg', now()
+  from tests.img;
+update storage.objects set created_at = now() - interval '2 days'
+ where bucket_id = 'push-imagens'
+   and name = (select loja::text || '/' || arquivo_usado::text || '.jpg' from tests.img);
+
+select tests.login('img-dono@teste.local');
+set role authenticated;
+
+select tests.ok('push',
+  tests.erro('select * from public.imagens_de_push_sem_campanha()'),
+  'a lista de imagens órfãs não é chamável pelo navegador');
+
+reset role;
+set role service_role;
+
+select tests.ok('push',
+  (select array_agg(caminho) from public.imagens_de_push_sem_campanha())
+    = array[(select loja::text || '/' || arquivo_velho::text || '.jpg' from tests.img)],
+  'o job recebe só a imagem velha que nenhuma campanha usa — não a em uso, nem a recém-enviada');
+
+reset role;
+
+-- O despacho leva a imagem até o job.
+insert into public.push_campaigns (app_id, title, body, image_path, segment, status, scheduled_at)
+select app, 'Sai agora', 'Com imagem e público',
+       loja::text || '/' || arquivo_usado::text || '.jpg',
+       '{"publico":"com_carrinho"}'::jsonb, 'scheduled', now() - interval '1 minute'
+  from tests.img;
+
+set role service_role;
+
+select tests.ok('push',
+  exists (
+    select 1 from public.reservar_campanhas(100) r
+     where r.title = 'Sai agora'
+       and r.image_path = (select loja::text || '/' || arquivo_usado::text || '.jpg' from tests.img)
+       and r.segment = '{"publico":"com_carrinho"}'::jsonb),
+  'o despacho devolve a imagem e o público da campanha para o job');
+
+reset role;
 select tests.logout();
 
 -- ============================== grupo: varredura de segurança (Fase 8)

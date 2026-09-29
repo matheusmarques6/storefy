@@ -18,6 +18,7 @@ import {
   entrar,
   limparUsuariosDeTeste,
 } from './apoio';
+import { pngDeCorLisa } from './imagens';
 
 test.skip(!SUPABASE_DISPONIVEL, MOTIVO_PULO);
 test.afterAll(limparUsuariosDeTeste);
@@ -72,8 +73,8 @@ async function abrir(page: Page, caminho: string) {
 }
 
 async function preencher(page: Page, titulo: string, mensagem: string) {
-  await page.getByLabel('Título').fill(titulo);
-  await page.getByLabel('Mensagem').fill(mensagem);
+  await page.getByLabel('Título', { exact: true }).fill(titulo);
+  await page.getByLabel('Mensagem', { exact: true }).fill(mensagem);
 }
 
 async function prepararLoja(page: Page, rotulo: string) {
@@ -177,8 +178,8 @@ test('o formulário recusa o que não pode sair, e não perde o que foi escrito'
 
   // Nada foi gravado, e nada do que foi escrito se perdeu.
   expect(await campanhaNoBanco('Promoção relâmpago')).toBeNull();
-  await expect(page.getByLabel('Título')).toHaveValue('Promoção relâmpago');
-  await expect(page.getByLabel('Mensagem')).toHaveValue('Só hoje.');
+  await expect(page.getByLabel('Título', { exact: true })).toHaveValue('Promoção relâmpago');
+  await expect(page.getByLabel('Mensagem', { exact: true })).toHaveValue('Só hoje.');
   await expect(page.getByLabel('Abrir em (opcional)')).toHaveValue('/colecoes/inverno');
 });
 
@@ -229,7 +230,7 @@ test('rascunho: salvar não envia; editar, agendar, cancelar e excluir', async (
    */
   await linha.getByRole('button', { name: `Ações de ${titulo}` }).click();
   await page.getByRole('menuitem', { name: 'Editar' }).click();
-  await page.getByLabel('Mensagem').fill('Texto final, revisado.');
+  await page.getByLabel('Mensagem', { exact: true }).fill('Texto final, revisado.');
   await page.getByRole('button', { name: 'Salvar rascunho' }).click();
   await page.waitForURL('/push');
   // `.last()`: o aviso do primeiro "Rascunho salvo." pode ainda estar na tela.
@@ -268,4 +269,151 @@ test('rascunho: salvar não envia; editar, agendar, cancelar e excluir', async (
   await expect(page.getByText('Campanha excluída.')).toBeVisible();
   await expect(page.getByRole('listitem').filter({ hasText: titulo })).toHaveCount(0);
   expect(await campanhaNoBanco(titulo)).toBeNull();
+});
+
+test('imagem, público e emoji: a campanha leva os três até o banco, a prévia e o detalhe', async ({
+  page,
+}) => {
+  const lojaId = await prepararLoja(page, 'publico');
+  await abrir(page, '/push/nova');
+
+  // Emoji entra onde o cursor está, e o cursor segue logo depois dele.
+  const campoTitulo = page.getByLabel('Título', { exact: true });
+  await campoTitulo.fill('Oferta hoje');
+  await campoTitulo.press('End');
+  for (let vez = 0; vez < 5; vez += 1) await campoTitulo.press('ArrowLeft');
+  await page.getByRole('button', { name: 'Inserir emoji no título' }).click();
+  await page.getByRole('menuitem', { name: 'fogo' }).click();
+  await expect(campoTitulo).toHaveValue('Oferta🔥 hoje');
+  await expect(campoTitulo).toBeFocused();
+  const sufixo = Math.random().toString(36).slice(2, 8);
+  await campoTitulo.press('End');
+  await campoTitulo.pressSequentially(` ${sufixo}`);
+  const titulo = `Oferta🔥 hoje ${sufixo}`;
+  await expect(campoTitulo).toHaveValue(titulo);
+
+  // Na mensagem que nunca recebeu o cursor, o emoji vai para o fim.
+  const campoMensagem = page.getByLabel('Mensagem', { exact: true });
+  await campoMensagem.fill('Só até domingo');
+  await campoTitulo.focus();
+  await page.getByRole('button', { name: 'Inserir emoji na mensagem' }).click();
+  await page.getByRole('menuitem', { name: 'presente' }).click();
+  await expect(campoMensagem).toHaveValue('Só até domingo🎁');
+
+  // Imagem: o que não serve é recusado com o motivo, sem subir nada.
+  const imagem = page.getByLabel('Imagem (opcional)');
+  await imagem.setInputFiles({
+    name: 'anim.gif',
+    mimeType: 'image/gif',
+    buffer: Buffer.from('GIF89a'),
+  });
+  await expect(page.getByText('Envie uma imagem JPG, PNG ou WebP.')).toBeVisible();
+  await imagem.setInputFiles({
+    name: 'quebrada.png',
+    mimeType: 'image/png',
+    buffer: Buffer.from('isto não é um png'),
+  });
+  await expect(page.getByText('Não conseguimos abrir esse arquivo como imagem.')).toBeVisible();
+  await imagem.setInputFiles({
+    name: 'pequena.png',
+    mimeType: 'image/png',
+    buffer: pngDeCorLisa(200, 100),
+  });
+  await expect(page.getByText('A imagem é pequena demais e ficaria borrada.')).toBeVisible();
+
+  // Fora de 2:1, entra — com o aviso do corte no Android. Trocada por 2:1, o aviso some.
+  await imagem.setInputFiles({
+    name: 'quadrada.png',
+    mimeType: 'image/png',
+    buffer: pngDeCorLisa(800, 800),
+  });
+  await expect(page.getByText('A imagem não está na proporção 2:1')).toBeVisible();
+  // Com a imagem a caminho, salvar gravaria a campanha sem ela: os botões esperam.
+  let soltarEnvio!: () => void;
+  const envioPreso = new Promise<void>((pronto) => {
+    soltarEnvio = pronto;
+  });
+  await page.route('**/push/nova', async (rota) => {
+    if (rota.request().method() === 'POST') await envioPreso;
+    await rota.continue();
+  });
+  await imagem.setInputFiles({
+    name: 'banner.png',
+    mimeType: 'image/png',
+    buffer: pngDeCorLisa(1600, 800),
+  });
+  await expect(page.getByRole('button', { name: 'Enviando a imagem...' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Salvar como rascunho' })).toBeDisabled();
+  await expect(page.getByRole('button', { name: 'Enviar agora' })).toBeDisabled();
+  soltarEnvio();
+  await expect(page.getByRole('img', { name: 'Imagem da campanha' })).toBeVisible();
+  await page.unroute('**/push/nova');
+  await expect(page.getByRole('button', { name: 'Salvar como rascunho' })).toBeEnabled();
+  await expect(page.getByText('A imagem não está na proporção 2:1')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Trocar imagem' })).toBeVisible();
+  // A prévia mostra a imagem nos dois aparelhos.
+  await expect(page.locator('aside img')).toHaveCount(2);
+
+  // Público: o prazo já vem sugerido; fora de 1 a 365 é recusado.
+  const publico = page.getByLabel('Quem recebe');
+  await publico.selectOption({ label: 'Quem não abre o app há alguns dias' });
+  const dias = page.getByLabel('Sem abrir o app há');
+  await expect(dias).toHaveValue('14');
+  await expect(page.getByText('a campanha não entra na caixa de avisos do app')).toBeVisible();
+  await dias.fill('0');
+  await page.getByRole('button', { name: 'Salvar como rascunho' }).click();
+  await expect(page.getByText('Diga quantos dias, de 1 a 365.')).toBeVisible();
+  await dias.fill('30');
+
+  // "Enviar agora" diz para quem vai — e "Voltar" não manda nada.
+  await page.getByRole('button', { name: 'Enviar agora' }).click();
+  const confirmacao = page.getByRole('alertdialog');
+  await expect(confirmacao.getByText('Enviar agora para este público?')).toBeVisible();
+  await expect(confirmacao.getByText('quem não abre o app há 30 dias')).toBeVisible();
+  await confirmacao.getByRole('button', { name: 'Voltar' }).click();
+
+  await page.getByRole('button', { name: 'Salvar como rascunho' }).click();
+  await page.waitForURL('/push');
+  await expect(page.getByText('Rascunho salvo.')).toBeVisible();
+
+  // No banco: a imagem da própria loja, em JPEG, e o público com o prazo.
+  const { data: gravada, error } = await bancoDeTeste()
+    .from('push_campaigns')
+    .select('id, body, image_path, segment')
+    .eq('title', titulo)
+    .single();
+  if (error != null) throw new Error(error.message);
+  expect(gravada.body).toBe('Só até domingo🎁');
+  expect(gravada.image_path).toMatch(new RegExp(`^${lojaId}/[0-9a-f-]{36}\\.jpg$`));
+  expect(gravada.segment).toEqual({ publico: 'inativos', dias: 30 });
+  const url = bancoDeTeste()
+    .storage.from('push-imagens')
+    .getPublicUrl(gravada.image_path ?? '').data.publicUrl;
+  const arquivo = await fetch(url);
+  expect(arquivo.status).toBe(200);
+  expect(arquivo.headers.get('content-type')).toBe('image/jpeg');
+
+  // A lista e o detalhe dizem para quem é.
+  const linha = page.getByRole('listitem').filter({ hasText: titulo });
+  await expect(linha.getByText('Para: Quem não abre o app há 30 dias')).toBeVisible();
+  await abrir(page, `/push/${gravada.id}`);
+  await expect(page.getByText('Quem não abre o app há 30 dias')).toBeVisible();
+  await expect(page.getByText('Com imagem', { exact: true })).toBeVisible();
+
+  // Na edição, tudo volta como foi salvo; tirar a imagem grava sem ela.
+  await abrir(page, `/push/${gravada.id}/editar`);
+  await expect(page.getByRole('img', { name: 'Imagem da campanha' })).toBeVisible();
+  await expect(page.getByLabel('Quem recebe')).toHaveValue('inativos');
+  await expect(page.getByLabel('Sem abrir o app há')).toHaveValue('30');
+  await page.getByRole('button', { name: 'Remover imagem' }).click();
+  await page.getByLabel('Quem recebe').selectOption({ label: 'Quem já comprou pelo app' });
+  await page.getByRole('button', { name: 'Salvar rascunho' }).click();
+  await page.waitForURL('/push');
+  const { data: editada } = await bancoDeTeste()
+    .from('push_campaigns')
+    .select('image_path, segment')
+    .eq('id', gravada.id)
+    .single();
+  expect(editada?.image_path).toBeNull();
+  expect(editada?.segment).toEqual({ publico: 'compradores' });
 });

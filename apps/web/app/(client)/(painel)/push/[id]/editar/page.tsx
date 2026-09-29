@@ -102,6 +102,11 @@ export default async function PaginaDeEdicao({ params }: { params: Promise<{ id:
           // errada voltar "certa" na edição e o defeito ficar invisível.
           agendarPara: paraCampoLocal(campanha.scheduledAt, lojaAtiva.timezone),
           enviarAgora: campanha.status === 'draft',
+          imagem: campanha.imagem,
+          publico:
+            campanha.publico.tipo === 'inativos' || campanha.publico.tipo === 'ativos'
+              ? { tipo: campanha.publico.tipo, dias: String(campanha.publico.dias) }
+              : { tipo: campanha.publico.tipo, dias: '' },
         }}
       />
     </div>

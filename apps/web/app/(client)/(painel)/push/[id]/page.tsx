@@ -15,6 +15,7 @@ import {
   podeEditar,
   porcentagemOuTraco,
 } from '@/lib/campanha';
+import { descricaoDoPublico } from '@/lib/publico-do-push';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -88,6 +89,8 @@ export default async function PaginaDaCampanha({ params }: { params: Promise<{ i
               valor={campanha.deepLink ?? 'Tela inicial do app'}
               icone={campanha.deepLink !== null}
             />
+            <Linha titulo="Quem recebe" valor={descricaoDoPublico(campanha.publico)} />
+            <Linha titulo="Imagem" valor={campanha.imagem === null ? 'Sem imagem' : 'Com imagem'} />
             <Linha titulo="Criada em" valor={formatar(campanha.createdAt, lojaAtiva.timezone)} />
             <Linha
               titulo={campanha.sentAt === null ? 'Agendada para' : 'Enviada em'}
@@ -107,6 +110,7 @@ export default async function PaginaDaCampanha({ params }: { params: Promise<{ i
             nomeDoApp={lojaAtiva.name}
             title={campanha.title}
             body={campanha.body}
+            imagem={campanha.imagem?.url ?? null}
           />
         </aside>
       </div>

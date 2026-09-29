@@ -1759,6 +1759,10 @@ export type Database = {
         Args: { p_id: string; p_status?: Database["public"]["Enums"]["build_status"]; p_erro?: string };
         Returns: boolean;
       };
+      imagens_de_push_sem_campanha: {
+        Args: { p_limite?: number };
+        Returns: { caminho: string | null }[];
+      };
       inscrever_de_volta: {
         Args: { p_app_id: string; p_device_id: string; p_variant_id: string; p_deep_link?: string };
         Returns: boolean;
@@ -1841,7 +1845,7 @@ export type Database = {
       };
       reservar_campanhas: {
         Args: { p_limite?: number };
-        Returns: { id: string | null; app_id: string | null; title: string | null; body: string | null; deep_link: string | null; segment: Json | null; onesignal_app_id: string | null; onesignal_api_key_enc: string | null }[];
+        Returns: { id: string | null; app_id: string | null; title: string | null; body: string | null; deep_link: string | null; segment: Json | null; image_path: string | null; onesignal_app_id: string | null; onesignal_api_key_enc: string | null }[];
       };
       reservar_envios_de_automacao: {
         Args: { p_limite?: number };

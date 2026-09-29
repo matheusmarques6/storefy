@@ -14,6 +14,7 @@ import 'server-only';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '@storefy/db';
 import { ERROS, analisarIcone, problemasDoIcone } from '@storefy/assets';
+import { MENSAGEM_DE_IMAGEM_GRANDE, TAMANHO_MAXIMO_DE_IMAGEM } from '@/lib/limites-de-imagem';
 
 type Client = SupabaseClient<Database>;
 
@@ -23,7 +24,7 @@ export const BUCKET = 'app-assets';
 export const TIPOS_ACEITOS = ['image/png', 'image/jpeg', 'image/webp'] as const;
 
 /** 8 MB, o mesmo teto do bucket. */
-export const TAMANHO_MAXIMO = 8 * 1024 * 1024;
+export const TAMANHO_MAXIMO = TAMANHO_MAXIMO_DE_IMAGEM;
 
 export type TipoDeAsset = 'icone' | 'splash';
 
@@ -51,7 +52,7 @@ export async function guardarAsset(
     return { ok: false, motivo: 'Envie uma imagem PNG, JPG ou WebP.' };
   }
   if (arquivo.bytes.byteLength > TAMANHO_MAXIMO) {
-    return { ok: false, motivo: 'A imagem passa de 8 MB. Use uma versão menor.' };
+    return { ok: false, motivo: MENSAGEM_DE_IMAGEM_GRANDE };
   }
   if (arquivo.bytes.byteLength === 0) {
     return { ok: false, motivo: 'O arquivo chegou vazio. Tente enviar de novo.' };

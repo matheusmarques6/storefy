@@ -23,6 +23,7 @@ import {
   type ResumoDoJob,
 } from '@/lib/jobs';
 import { enviarNotificacao } from '@/lib/onesignal';
+import { urlDaImagemDoPush } from '@/lib/imagem-do-push';
 import { log } from '@/lib/log';
 
 export const dynamic = 'force-dynamic';
@@ -147,6 +148,8 @@ async function despacharCampanhas(supabase: Client, resumo: ResumoDoJob): Promis
         body: campanha.body ?? '',
         deepLink: campanha.deep_link,
         segment: campanha.segment,
+        imagem:
+          campanha.image_path === null ? null : urlDaImagemDoPush(supabase, campanha.image_path),
       },
     );
 

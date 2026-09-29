@@ -25,3 +25,12 @@ export {
   type AssetsGerados,
   type ProblemaDoIcone,
 } from './icones';
+export {
+  ALTURA_MINIMA_DO_PUSH,
+  ERROS_DA_IMAGEM_DO_PUSH,
+  LADO_MAXIMO_DO_PUSH,
+  LARGURA_MINIMA_DO_PUSH,
+  prepararImagemDoPush,
+  type ImagemDoPush,
+  type ProblemaDaImagemDoPush,
+} from './imagem-do-push';

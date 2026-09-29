@@ -18,6 +18,7 @@ import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { enviarAsset, removerAssetDaLoja } from './acoes';
+import { MENSAGEM_DE_IMAGEM_GRANDE, TAMANHO_MAXIMO_DE_IMAGEM } from '@/lib/limites-de-imagem';
 
 interface Props {
   storeId: string;
@@ -37,11 +38,23 @@ export function CampoDeImagem({ storeId, tipo, rotulo, ajuda, urlAtual, somenteL
 
   function enviar(arquivo: File) {
     setErro(null);
+    // Conferido aqui para não subir 20 MB só para ouvir "grande demais".
+    if (arquivo.size > TAMANHO_MAXIMO_DE_IMAGEM) {
+      setErro(MENSAGEM_DE_IMAGEM_GRANDE);
+      return;
+    }
     iniciar(async () => {
       const formulario = new FormData();
       formulario.set('arquivo', arquivo);
 
-      const resultado = await enviarAsset(storeId, tipo, formulario);
+      let resultado: Awaited<ReturnType<typeof enviarAsset>>;
+      try {
+        resultado = await enviarAsset(storeId, tipo, formulario);
+      } catch {
+        // A ação nem respondeu (conexão caiu no meio do envio).
+        setErro('Não conseguimos enviar a imagem. Confira a conexão e tente de novo.');
+        return;
+      }
       if (resultado.ok === true) {
         toast.success(resultado.mensagem ?? 'Imagem atualizada.');
         router.refresh();
@@ -113,6 +126,9 @@ export function CampoDeImagem({ storeId, tipo, rotulo, ajuda, urlAtual, somenteL
             type="file"
             accept="image/png,image/jpeg,image/webp"
             className="sr-only"
+            // Fora da ordem do Tab: o botão ao lado é quem abre a escolha, e o
+            // campo escondido seria uma parada invisível antes dele.
+            tabIndex={-1}
             disabled={somenteLeitura || enviando}
             onChange={(evento) => {
               const arquivo = evento.target.files?.[0];

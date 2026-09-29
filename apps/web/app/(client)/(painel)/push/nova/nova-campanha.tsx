@@ -32,7 +32,15 @@ export function NovaCampanha({
       alcance={alcance}
       notificacoesLigadas={notificacoesLigadas}
       rotuloDoEnvio={{ agora: 'Enviar agora', agendado: 'Agendar campanha' }}
-      iniciais={{ title: '', body: '', deepLink: '', agendarPara: '', enviarAgora: true }}
+      iniciais={{
+        title: '',
+        body: '',
+        deepLink: '',
+        agendarPara: '',
+        enviarAgora: true,
+        imagem: null,
+        publico: { tipo: 'todos', dias: '' },
+      }}
       aoEnviar={(valores) => criarCampanha(valores)}
       aoSalvarRascunho={(valores) => salvarRascunhoDeCampanha(valores)}
     />

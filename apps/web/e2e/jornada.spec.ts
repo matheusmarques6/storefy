@@ -89,8 +89,8 @@ test('do cadastro à primeira campanha, só pela tela', async ({ page }) => {
   // 5. A primeira campanha, para amanhã às 20:00 da loja.
   const titulo = `Primeira ${sufixo}`;
   await abrir(page, '/push/nova');
-  await page.getByLabel('Título').fill(titulo);
-  await page.getByLabel('Mensagem').fill('Chegou a coleção nova. Vem ver!');
+  await page.getByLabel('Título', { exact: true }).fill(titulo);
+  await page.getByLabel('Mensagem', { exact: true }).fill('Chegou a coleção nova. Vem ver!');
   await page.getByLabel('Data e hora do envio').fill(`${amanhaEmBrasilia()}T20:00`);
   await page.getByRole('button', { name: 'Agendar campanha' }).click();
   await page.waitForURL('/push');

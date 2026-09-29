@@ -13,7 +13,7 @@
  * clientes. Uma notificação enviada não volta; o clique que a envia precisa
  * saber disso.
  */
-import { useState, useTransition } from 'react';
+import { useRef, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Loader2, Send } from 'lucide-react';
@@ -24,6 +24,7 @@ import {
   validarCampanha,
   type ProblemaNoFormulario,
 } from '@/lib/campanha';
+import { descricaoDoPublico, lerPublico } from '@/lib/publico-do-push';
 import { Button } from '@/components/ui/button';
 import {
   AlertDialog,
@@ -43,6 +44,9 @@ import { EnvioDeTeste } from './envio-de-teste';
 import type { AparelhoParaTeste } from '@/lib/push-servidor';
 import type { EstadoDoPush } from './acoes';
 import { SeletorDoCatalogo } from './catalogo/seletor';
+import { CampoDaImagem, type ImagemDaCampanha } from './campo-da-imagem';
+import { CampoDoPublico, type PublicoNoFormulario } from './campo-do-publico';
+import { SeletorDeEmoji } from './seletor-de-emoji';
 
 export interface ValoresIniciais {
   title: string;
@@ -50,6 +54,23 @@ export interface ValoresIniciais {
   deepLink: string;
   agendarPara: string;
   enviarAgora: boolean;
+  imagem: ImagemDaCampanha | null;
+  publico: PublicoNoFormulario;
+}
+
+/** O que as ações do servidor recebem: a imagem vai pelo caminho no bucket. */
+export interface ValoresDoEnvio {
+  title: string;
+  body: string;
+  deepLink: string;
+  agendarPara: string;
+  enviarAgora: boolean;
+  imagem: string | null;
+  publico: { tipo: string; dias: string };
+}
+
+function paraOEnvio(valores: ValoresIniciais): ValoresDoEnvio {
+  return { ...valores, imagem: valores.imagem?.caminho ?? null };
 }
 
 interface Props {
@@ -72,21 +93,37 @@ interface Props {
   iniciais: ValoresIniciais;
   /** O botão principal diz o que acontece com o que está marcado. */
   rotuloDoEnvio: { agora: string; agendado: string };
-  aoEnviar: (valores: ValoresIniciais) => Promise<EstadoDoPush>;
+  aoEnviar: (valores: ValoresDoEnvio) => Promise<EstadoDoPush>;
   /** Salvar sem enviar: na criação e na edição de um rascunho. */
   aoSalvarRascunho?: (
-    valores: Omit<ValoresIniciais, 'agendarPara' | 'enviarAgora'>,
+    valores: Omit<ValoresDoEnvio, 'agendarPara' | 'enviarAgora'>,
   ) => Promise<EstadoDoPush>;
   rotuloDoRascunho?: string;
 }
 
-/** O que a confirmação diz sobre o tamanho do envio. */
-function descricaoDoEnvio(alcance: number | null, ligadas: boolean): string {
+/** "quem não abre o app há 30 dias" — o público no meio de uma frase, ou `null` para todos. */
+function paraQuem(publico: PublicoNoFormulario): string | null {
+  if (publico.tipo === 'todos') return null;
+  const lido = lerPublico(publico.tipo, publico.dias);
+  const quem = lido.ok ? descricaoDoPublico(lido.publico) : 'o público escolhido';
+  return `${quem.charAt(0).toLowerCase()}${quem.slice(1)}`;
+}
+
+/** O que a confirmação diz sobre o tamanho do envio — e, com público, para quem vai. */
+function descricaoDoEnvio(
+  alcance: number | null,
+  ligadas: boolean,
+  publico: PublicoNoFormulario,
+): string {
+  const quem = paraQuem(publico);
   if (!ligadas) {
-    return 'As notificações desta loja ainda não estão ligadas. A campanha fica na fila e sai assim que a configuração terminar, para todos os aparelhos com o app. Depois de enviada, não dá para desfazer.';
+    return `As notificações desta loja ainda não estão ligadas. A campanha fica na fila e sai assim que a configuração terminar${quem === null ? '' : `, para ${quem}`}. Depois de enviada, não dá para desfazer.`;
   }
   if (alcance === 0) {
     return 'Ninguém instalou o app ainda, então ela não vai chegar a nenhum celular. Se quiser, agende para depois de divulgar o app.';
+  }
+  if (quem !== null) {
+    return `Ela sai em instantes para ${quem}. Quantos recebem depende de quem se encaixa na hora do envio. Depois de enviada, não dá para desfazer.`;
   }
   const quantos =
     alcance === null
@@ -96,6 +133,8 @@ function descricaoDoEnvio(alcance: number | null, ligadas: boolean): string {
         : `os ${alcance.toLocaleString('pt-BR')} aparelhos com o app`;
   return `Ela sai em instantes para ${quantos}. Depois de enviada, não dá para desfazer.`;
 }
+
+type CampoDeTexto = 'title' | 'body';
 
 export function FormularioDaCampanha({
   nomeDoApp,
@@ -116,6 +155,20 @@ export function FormularioDaCampanha({
   const [problemas, setProblemas] = useState<ProblemaNoFormulario[]>([]);
   const [confirmando, setConfirmando] = useState(false);
   const [enviando, iniciar] = useTransition();
+  // Com a imagem subindo, salvar gravaria a campanha sem ela.
+  const [imagemSubindo, setImagemSubindo] = useState(false);
+  const ocupado = enviando || imagemSubindo;
+
+  const titulo = useRef<HTMLInputElement>(null);
+  const corpo = useRef<HTMLTextAreaElement>(null);
+  /*
+   * Onde o cursor estava em cada campo. O emoji entra ali — e num campo que
+   * nunca recebeu o cursor, no fim do texto, e não no começo.
+   */
+  const cursores = useRef<Record<CampoDeTexto, { inicio: number; fim: number } | null>>({
+    title: null,
+    body: null,
+  });
 
   const erroDe = (campo: ProblemaNoFormulario['campo']): string | undefined =>
     problemas.find((problema) => problema.campo === campo)?.mensagem;
@@ -125,6 +178,39 @@ export function FormularioDaCampanha({
     // O erro some assim que o campo muda: manter o aviso embaixo de um campo
     // já corrigido faz o lojista procurar problema onde não há mais.
     setProblemas((anteriores) => anteriores.filter((problema) => problema.campo !== campo));
+  }
+
+  function lembrarCursor(campo: CampoDeTexto, elemento: HTMLInputElement | HTMLTextAreaElement) {
+    cursores.current[campo] = {
+      inicio: elemento.selectionStart ?? elemento.value.length,
+      fim: elemento.selectionEnd ?? elemento.value.length,
+    };
+  }
+
+  function inserirEmoji(campo: CampoDeTexto, emoji: string) {
+    const atual = valores[campo];
+    const cursor = cursores.current[campo] ?? { inicio: atual.length, fim: atual.length };
+    const novo = atual.slice(0, cursor.inicio) + emoji + atual.slice(cursor.fim);
+    const maximo = campo === 'title' ? MAXIMO_DO_TITULO : MAXIMO_DO_CORPO;
+    if (novo.length > maximo) {
+      toast.error(
+        campo === 'title'
+          ? 'O título já está no limite de caracteres: o emoji não cabe.'
+          : 'A mensagem já está no limite de caracteres: o emoji não cabe.',
+      );
+      return;
+    }
+
+    trocar(campo, novo);
+    const posicao = cursor.inicio + emoji.length;
+    cursores.current[campo] = { inicio: posicao, fim: posicao };
+    // Depois de o React desenhar o texto novo: o cursor volta para logo
+    // depois do emoji, e a pessoa continua digitando de onde parou.
+    requestAnimationFrame(() => {
+      const elemento = campo === 'title' ? titulo.current : corpo.current;
+      elemento?.focus();
+      elemento?.setSelectionRange(posicao, posicao);
+    });
   }
 
   function enviar(acao: () => Promise<EstadoDoPush>, sucessoPadrao: string) {
@@ -164,11 +250,17 @@ export function FormularioDaCampanha({
       },
       { urlDaLoja, agoraMs: Date.now(), fuso },
     );
-    if (analise.ok) return true;
-    setProblemas(analise.problemas);
+    const publico = lerPublico(valores.publico.tipo, valores.publico.dias);
+    if (analise.ok && publico.ok) return true;
+    setProblemas([
+      ...(analise.ok ? [] : analise.problemas),
+      ...(publico.ok ? [] : [{ campo: 'publico' as const, mensagem: publico.mensagem }]),
+    ]);
     toast.error('Confira os campos destacados.');
     return false;
   }
+
+  const paraTodos = valores.publico.tipo === 'todos';
 
   return (
     <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_320px]">
@@ -181,22 +273,34 @@ export function FormularioDaCampanha({
             setConfirmando(true);
             return;
           }
-          enviar(() => aoEnviar(valores), 'Campanha agendada.');
+          enviar(() => aoEnviar(paraOEnvio(valores)), 'Campanha agendada.');
         }}
       >
         <div className="space-y-2">
-          <div className="flex items-baseline justify-between">
+          <div className="flex items-center justify-between gap-2">
             <Label htmlFor="title">Título</Label>
-            <span className="text-muted-foreground text-xs tabular-nums">
-              {valores.title.length}/{MAXIMO_DO_TITULO}
-            </span>
+            <div className="flex items-center gap-1">
+              <SeletorDeEmoji
+                rotulo="Inserir emoji no título"
+                aoEscolher={(emoji) => {
+                  inserirEmoji('title', emoji);
+                }}
+              />
+              <span className="text-muted-foreground text-xs tabular-nums">
+                {valores.title.length}/{MAXIMO_DO_TITULO}
+              </span>
+            </div>
           </div>
           <Input
+            ref={titulo}
             id="title"
             value={valores.title}
             maxLength={MAXIMO_DO_TITULO}
             onChange={(evento) => {
               trocar('title', evento.target.value);
+            }}
+            onSelect={(evento) => {
+              lembrarCursor('title', evento.currentTarget);
             }}
             aria-invalid={erroDe('title') !== undefined}
             aria-describedby={erroDe('title') === undefined ? undefined : 'erro-title'}
@@ -210,19 +314,31 @@ export function FormularioDaCampanha({
         </div>
 
         <div className="space-y-2">
-          <div className="flex items-baseline justify-between">
+          <div className="flex items-center justify-between gap-2">
             <Label htmlFor="body">Mensagem</Label>
-            <span className="text-muted-foreground text-xs tabular-nums">
-              {valores.body.length}/{MAXIMO_DO_CORPO}
-            </span>
+            <div className="flex items-center gap-1">
+              <SeletorDeEmoji
+                rotulo="Inserir emoji na mensagem"
+                aoEscolher={(emoji) => {
+                  inserirEmoji('body', emoji);
+                }}
+              />
+              <span className="text-muted-foreground text-xs tabular-nums">
+                {valores.body.length}/{MAXIMO_DO_CORPO}
+              </span>
+            </div>
           </div>
           <Textarea
+            ref={corpo}
             id="body"
             rows={3}
             value={valores.body}
             maxLength={MAXIMO_DO_CORPO}
             onChange={(evento) => {
               trocar('body', evento.target.value);
+            }}
+            onSelect={(evento) => {
+              lembrarCursor('body', evento.currentTarget);
             }}
             aria-invalid={erroDe('body') !== undefined}
             aria-describedby={erroDe('body') === undefined ? undefined : 'erro-body'}
@@ -267,6 +383,23 @@ export function FormularioDaCampanha({
             }}
           />
         </div>
+
+        <CampoDaImagem
+          imagem={valores.imagem}
+          aoMudar={(imagem) => {
+            trocar('imagem', imagem);
+          }}
+          aoSubir={setImagemSubindo}
+          erro={erroDe('imagem')}
+        />
+
+        <CampoDoPublico
+          valor={valores.publico}
+          aoMudar={(publico) => {
+            trocar('publico', publico);
+          }}
+          erro={erroDe('publico')}
+        />
 
         <fieldset className="space-y-3">
           <legend className="text-sm font-medium">Quando enviar</legend>
@@ -338,11 +471,16 @@ export function FormularioDaCampanha({
 
         <EnvioDeTeste
           aparelhos={aparelhos}
-          valores={{ title: valores.title, body: valores.body, deepLink: valores.deepLink }}
+          valores={{
+            title: valores.title,
+            body: valores.body,
+            deepLink: valores.deepLink,
+            imagem: valores.imagem?.caminho ?? null,
+          }}
         />
 
         <div className="flex flex-wrap gap-3 pt-2">
-          <Button type="submit" disabled={enviando}>
+          <Button type="submit" disabled={ocupado}>
             {enviando ? (
               <Loader2 className="size-4 animate-spin" aria-hidden />
             ) : (
@@ -355,14 +493,22 @@ export function FormularioDaCampanha({
             <Button
               type="button"
               variant="outline"
-              disabled={enviando}
+              disabled={ocupado}
               onClick={() => {
+                const publico = lerPublico(valores.publico.tipo, valores.publico.dias);
+                if (!publico.ok) {
+                  setProblemas([{ campo: 'publico', mensagem: publico.mensagem }]);
+                  toast.error('Confira os campos destacados.');
+                  return;
+                }
                 enviar(
                   () =>
                     aoSalvarRascunho({
                       title: valores.title,
                       body: valores.body,
                       deepLink: valores.deepLink,
+                      imagem: valores.imagem?.caminho ?? null,
+                      publico: valores.publico,
                     }),
                   'Rascunho salvo.',
                 );
@@ -379,7 +525,12 @@ export function FormularioDaCampanha({
       </form>
 
       <aside className="lg:sticky lg:top-24 lg:self-start">
-        <PreviaDaNotificacao nomeDoApp={nomeDoApp} title={valores.title} body={valores.body} />
+        <PreviaDaNotificacao
+          nomeDoApp={nomeDoApp}
+          title={valores.title}
+          body={valores.body}
+          imagem={valores.imagem?.url ?? null}
+        />
       </aside>
 
       <AlertDialog
@@ -390,9 +541,11 @@ export function FormularioDaCampanha({
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Enviar agora para todos?</AlertDialogTitle>
+            <AlertDialogTitle>
+              {paraTodos ? 'Enviar agora para todos?' : 'Enviar agora para este público?'}
+            </AlertDialogTitle>
             <AlertDialogDescription>
-              {descricaoDoEnvio(alcance, notificacoesLigadas)}
+              {descricaoDoEnvio(alcance, notificacoesLigadas, valores.publico)}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -404,7 +557,7 @@ export function FormularioDaCampanha({
                 // fechar antes deixaria a pessoa sem saber se foi.
                 evento.preventDefault();
                 enviar(async () => {
-                  const resultado = await aoEnviar(valores);
+                  const resultado = await aoEnviar(paraOEnvio(valores));
                   setConfirmando(false);
                   return resultado;
                 }, 'Campanha na fila de envio.');

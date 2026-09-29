@@ -21,7 +21,8 @@ import { enviarTeste } from './acoes';
 
 interface Props {
   aparelhos: readonly AparelhoParaTeste[];
-  valores: { title: string; body: string; deepLink: string };
+  /** O que a campanha tem agora — a imagem vai junto, pelo caminho no bucket. */
+  valores: { title: string; body: string; deepLink: string; imagem: string | null };
 }
 
 export function EnvioDeTeste({ aparelhos, valores }: Props) {
@@ -49,8 +50,15 @@ export function EnvioDeTeste({ aparelhos, valores }: Props) {
     iniciar(async () => {
       const resultado = await enviarTeste({ ...valores, deviceId: escolhido });
 
-      if (resultado.problemas !== undefined && resultado.problemas.length > 0) {
-        toast.error('Escreva o título e a mensagem antes de testar.');
+      // O problema de verdade, e não um genérico: a imagem que sumiu não se
+      // conserta escrevendo o título.
+      const problema = resultado.problemas?.[0];
+      if (problema !== undefined) {
+        toast.error(
+          problema.campo === 'title' || problema.campo === 'body'
+            ? 'Escreva o título e a mensagem antes de testar.'
+            : problema.mensagem,
+        );
         return;
       }
       if (resultado.ok !== true) {

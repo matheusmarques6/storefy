@@ -111,7 +111,7 @@ export const FormularioDaCampanha = z.object({
 export type DadosDaCampanha = z.infer<typeof FormularioDaCampanha>;
 
 export interface ProblemaNoFormulario {
-  campo: 'title' | 'body' | 'deepLink' | 'agendarPara';
+  campo: 'title' | 'body' | 'deepLink' | 'agendarPara' | 'imagem' | 'publico';
   mensagem: string;
 }
 

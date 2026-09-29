@@ -63,6 +63,42 @@ describe('corpoDaNotificacao', () => {
     expect(corpo).not.toHaveProperty('filters');
   });
 
+  it('com imagem, manda para o Android (big_picture) e para o iPhone (ios_attachments)', () => {
+    const url = 'https://projeto.supabase.co/storage/v1/object/public/push-imagens/loja/foto.jpg';
+    const corpo = corpoDaNotificacao(CREDENCIAIS, {
+      title: 'a',
+      body: 'b',
+      deepLink: null,
+      imagem: url,
+    });
+    expect(corpo.big_picture).toBe(url);
+    expect(corpo.ios_attachments).toEqual({ imagem: url });
+  });
+
+  it('sem imagem, nenhum dos dois campos vai', () => {
+    for (const imagem of [null, undefined, '']) {
+      const corpo = corpoDaNotificacao(CREDENCIAIS, {
+        title: 'a',
+        body: 'b',
+        deepLink: null,
+        imagem,
+      });
+      expect(corpo).not.toHaveProperty('big_picture');
+      expect(corpo).not.toHaveProperty('ios_attachments');
+    }
+  });
+
+  it('com o público do painel, manda o filtro dele', () => {
+    const corpo = corpoDaNotificacao(CREDENCIAIS, {
+      title: 'a',
+      body: 'b',
+      deepLink: null,
+      segment: { publico: 'inativos', dias: 14 },
+    });
+    expect(corpo.filters).toEqual([{ field: 'last_session', relation: '>', hours_ago: '336' }]);
+    expect(corpo).not.toHaveProperty('included_segments');
+  });
+
   it('com segmento, manda filtros em vez do público inteiro', () => {
     const corpo = corpoDaNotificacao(CREDENCIAIS, {
       title: 'a',
@@ -83,6 +119,13 @@ describe('filtrosDoSegmento', () => {
     for (const vazio of [null, undefined, {}, [], 'texto', 42]) {
       expect(filtrosDoSegmento(vazio)).toBeNull();
     }
+  });
+
+  it('o público do painel vira o filtro dele; "todos" não filtra', () => {
+    expect(filtrosDoSegmento({ publico: 'compradores' })).toEqual([
+      { field: 'tag', key: 'has_purchased', relation: '=', value: 'true' },
+    ]);
+    expect(filtrosDoSegmento({ publico: 'todos' })).toBeNull();
   });
 
   it('liga dois filtros com E', () => {
