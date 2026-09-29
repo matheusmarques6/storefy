@@ -41,7 +41,7 @@ function frase(efeito: EfeitoNaEmpresa): string {
         : efeito.lojas === 1
           ? 'com 1 loja e o app dela'
           : `com ${String(efeito.lojas)} lojas e os apps delas`;
-    return `será EXCLUÍDA, ${lojas} — você é a única pessoa nela.`;
+    return `será EXCLUÍDA, ${lojas} — você é a única pessoa nela. Se ela tiver assinatura, a assinatura é cancelada.`;
   }
   if (efeito.efeito === 'passa_para') {
     return `${efeito.sucessor ?? 'a pessoa mais antiga da equipe'} passa a ser o proprietário.`;

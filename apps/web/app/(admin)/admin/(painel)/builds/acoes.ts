@@ -21,6 +21,7 @@
  */
 import { revalidatePath } from 'next/cache';
 import { exigirPlatformAdmin } from '@/lib/contexto';
+import { mensagemDaFalha } from '@/lib/erros';
 import { criarClientServiceRole } from '@/lib/supabase/admin';
 import { podeReexecutar } from '@/lib/builds-admin';
 import { dispararBuild, faltaConfiguracaoDoDisparo } from '@/lib/disparo-de-build';
@@ -86,7 +87,15 @@ export async function reexecutarBuild(buildId: string): Promise<EstadoDoBuild> {
     .single();
 
   if (error != null) {
-    return { mensagem: 'Não conseguimos registrar o build. Tente de novo.' };
+    // Cliente com a assinatura fora de dia: o banco recusa e diz por quê — a
+    // saída é estender o teste na ficha dele (A04), e a frase aponta o caminho.
+    return {
+      mensagem: mensagemDaFalha(
+        'builds',
+        error,
+        'Não conseguimos registrar o build. Tente de novo.',
+      ),
+    };
   }
 
   const disparo = await dispararBuild({

@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { Megaphone } from 'lucide-react';
 import { configuracoesDaPlataforma } from '@/lib/configuracoes-da-plataforma-servidor';
 import { ehPlatformAdmin, exigirContextoCliente } from '@/lib/contexto';
+import { FaixaDaCobranca } from './faixa-da-cobranca';
 import { FaixaDaVisita } from './faixa-da-visita';
 import { MenuUsuario } from './menu-usuario';
 import { NavegacaoAbas, NavegacaoMovel } from './navegacao';
@@ -30,6 +31,7 @@ export default async function LayoutPainel({ children }: { children: React.React
           </p>
         </div>
       )}
+      <FaixaDaCobranca orgId={contexto.organizacao.id} />
       <header className="bg-background/95 sticky top-0 z-40 border-b backdrop-blur">
         {/*
          * Linha 1: o que é da CONTA — marca, loja ativa e usuário. Linha 2 (a

@@ -5510,6 +5510,704 @@ select tests.ok('avisos e chamados',
 
 reset role;
 
+-- ============================================ grupo: Fase 7 cobrança
+--
+-- Quem paga, o que libera e o que trava. A cobrança é escrita só pelo
+-- servidor (depois da Asaas); o lojista lê a da própria empresa; a equipe cria
+-- os planos. E o que custa dinheiro (loja, campanha, publicar, build) para
+-- quando a empresa não está em dia — com a frase dizendo por quê.
+
+reset role;
+select tests.logout();
+
+insert into auth.users (email, raw_user_meta_data, email_confirmed_at) values
+  ('cb-dono@teste.local',    '{"company_name":"Empresa que Paga"}'::jsonb, now()),
+  ('cb-admin@teste.local',   '{"company_name":"Cb Admin"}'::jsonb,         now()),
+  ('cb-membro@teste.local',  '{"company_name":"Cb Membro"}'::jsonb,        now()),
+  ('cb-fora@teste.local',    '{"company_name":"Empresa Vizinha"}'::jsonb,  now()),
+  ('cb-super@teste.local',   '{"company_name":"Cb Super"}'::jsonb,         now()),
+  ('cb-suporte@teste.local', '{"company_name":"Cb Suporte"}'::jsonb,       now()),
+  ('cb-teste@teste.local',   '{"company_name":"Empresa em Teste"}'::jsonb, now());
+
+drop table if exists tests.cb;
+create table tests.cb as
+select
+  (select id from auth.users where email = 'cb-dono@teste.local')  as u_dono,
+  (select id from auth.users where email = 'cb-admin@teste.local') as u_admin,
+  (select id from auth.users where email = 'cb-membro@teste.local') as u_membro,
+  (select id from auth.users where email = 'cb-super@teste.local') as u_super,
+  (select m.org_id from public.memberships m join auth.users u on u.id = m.user_id
+    where u.email = 'cb-dono@teste.local') as org,
+  (select m.org_id from public.memberships m join auth.users u on u.id = m.user_id
+    where u.email = 'cb-fora@teste.local') as org_fora,
+  (select m.org_id from public.memberships m join auth.users u on u.id = m.user_id
+    where u.email = 'cb-teste@teste.local') as org_teste;
+
+insert into public.memberships (org_id, user_id, role)
+select org, u_admin, 'admin' from tests.cb;
+insert into public.memberships (org_id, user_id, role)
+select org, u_membro, 'member' from tests.cb;
+insert into public.platform_admins (user_id, role)
+select u_super, 'superadmin' from tests.cb;
+insert into public.platform_admins (user_id, role)
+select id, 'support' from auth.users where email = 'cb-suporte@teste.local';
+
+insert into public.stores (org_id, name, primary_url)
+select org, 'Loja que Paga', 'https://loja-que-paga.com.br' from tests.cb;
+insert into public.stores (org_id, name, primary_url)
+select org_teste, 'Loja em Teste', 'https://loja-em-teste.com.br' from tests.cb;
+
+alter table tests.cb
+  add column app uuid, add column app_teste uuid,
+  add column plano uuid, add column plano_grande uuid;
+update tests.cb set
+  app = (select a.id from public.apps a join public.stores s on s.id = a.store_id
+          where s.name = 'Loja que Paga'),
+  app_teste = (select a.id from public.apps a join public.stores s on s.id = a.store_id
+                where s.name = 'Loja em Teste');
+
+-- Um rascunho de config no app de quem paga, para a trava do "publicar".
+insert into public.app_configs (app_id, version, config, status)
+select app, 1, (select c.config from public.app_configs c order by c.version limit 1), 'draft'
+from tests.cb;
+
+-- Campanha agendada ainda em teste, que vai vencer depois de o teste acabar.
+insert into public.push_campaigns (app_id, title, body, status, scheduled_at)
+select app_teste, 'Vai ficar sem assinatura', 'Corpo', 'scheduled', now() - interval '1 minute'
+from tests.cb;
+
+grant select on tests.cb to authenticated, anon, service_role;
+
+-- ------------------------------------------- a empresa só muda o nome
+
+select tests.login('cb-admin@teste.local');
+set role authenticated;
+
+select tests.ok('cobrança',
+  tests.permitido($q$update public.organizations set name = 'Empresa que Paga Bem'
+    where id = (select org from tests.cb)$q$),
+  'o administrador muda o nome da empresa');
+
+select tests.ok('cobrança',
+  tests.bloqueado($q$update public.organizations set trial_ends_at = now() + interval '10 years'
+    where id = (select org from tests.cb)$q$),
+  'mas não estica o próprio teste');
+
+select tests.ok('cobrança',
+  tests.bloqueado($q$update public.organizations set status = 'active'
+    where id = (select org from tests.cb)$q$),
+  'nem se declara em dia');
+
+select tests.ok('cobrança',
+  tests.bloqueado($q$update public.organizations set slug = 'outro-identificador'
+    where id = (select org from tests.cb)$q$),
+  'nem troca o identificador da empresa');
+
+reset role;
+select tests.login('cb-dono@teste.local');
+set role authenticated;
+
+select tests.ok('cobrança',
+  tests.bloqueado($q$update public.organizations
+    set name = 'Nome', trial_ends_at = now() + interval '1 year'
+    where id = (select org from tests.cb)$q$),
+  'nem o proprietário, nem escondendo a data junto com o nome');
+
+-- ----------------------------------------------------------------- planos
+
+reset role;
+select tests.login('cb-super@teste.local');
+set role authenticated;
+
+select tests.ok('cobrança',
+  tests.permitido($q$insert into public.plans
+    (nome, preco_centavos, limite_lojas, limite_aparelhos, limite_campanhas_mes)
+    values ('Essencial', 9900, 2, 3, 1)$q$),
+  'o superadmin cria um plano');
+
+select tests.ok('cobrança',
+  tests.permitido($q$insert into public.plans (nome, preco_centavos) values ('Grande', 19900)$q$),
+  'e um sem limites');
+
+select tests.ok('cobrança',
+  tests.permitido($q$insert into public.plans (nome, preco_centavos, limite_lojas, vale_no_teste)
+    values ('Teste', 500, 1, true)$q$),
+  'e marca o plano cujos limites valem no teste');
+
+select tests.ok('cobrança',
+  tests.erro($q$insert into public.plans (nome, preco_centavos) values (' essencial', 1000)$q$),
+  'nome repetido (sem ligar para maiúscula e espaço) não entra');
+
+select tests.ok('cobrança',
+  tests.erro($q$insert into public.plans (nome, preco_centavos, vale_no_teste)
+    values ('Outro do teste', 1000, true)$q$),
+  'só um plano vale no teste');
+
+select tests.ok('cobrança',
+  tests.erro($q$insert into public.plans (nome, preco_centavos) values ('Barato demais', 499)$q$),
+  'nenhum custa menos que R$ 5,00, o mínimo da Asaas');
+
+reset role;
+
+update tests.cb set
+  plano = (select id from public.plans where nome = 'Essencial'),
+  plano_grande = (select id from public.plans where nome = 'Grande');
+
+select tests.ok('cobrança',
+  (select count(*) from public.audit_logs
+    where entity = 'plans' and org_id is null
+      and actor_id = (select u_super from tests.cb)) = 3,
+  'cada plano criado vai para a trilha da plataforma, com quem criou');
+
+select tests.login('cb-suporte@teste.local');
+set role authenticated;
+
+select tests.ok('cobrança',
+  tests.bloqueado($q$insert into public.plans (nome, preco_centavos) values ('Do suporte', 1000)$q$),
+  'o suporte não cria plano');
+
+select tests.ok('cobrança',
+  tests.bloqueado($q$update public.plans set preco_centavos = 100000 where nome = 'Essencial'$q$),
+  'nem muda o preço');
+
+reset role;
+select tests.login('cb-dono@teste.local');
+set role authenticated;
+
+select tests.ok('cobrança',
+  tests.bloqueado($q$update public.plans set preco_centavos = 500 where nome = 'Essencial'$q$),
+  'o lojista não baixa o próprio preço');
+
+select tests.ok('cobrança',
+  tests.bloqueado($q$delete from public.plans$q$),
+  'nem apaga planos');
+
+select tests.ok('cobrança',
+  tests.contar($q$select count(*) from public.plans
+    where nome in ('Essencial', 'Grande', 'Teste')$q$) = 3,
+  'mas enxerga os planos para escolher');
+
+reset role;
+select tests.logout();
+set role anon;
+
+select tests.ok('cobrança',
+  tests.erro('select count(*) from public.plans'),
+  'sem conta, nem os planos');
+
+reset role;
+
+-- -------------------------------------------- o limite do teste
+
+select tests.login('cb-teste@teste.local');
+set role authenticated;
+
+select tests.ok('cobrança',
+  tests.erro_com($q$insert into public.stores (org_id, name, primary_url)
+    select org_teste, 'Segunda em Teste', 'https://segunda-em-teste.com.br' from tests.cb$q$,
+    'Durante o teste, dá para ter até 1 loja'),
+  'no teste, vale o limite de lojas do plano marcado para o teste');
+
+select tests.ok('cobrança',
+  (select limites_do_teste and limite_lojas = 1
+     from public.situacao_da_cobranca((select org_teste from tests.cb))),
+  'e a situação da cobrança diz de onde vem o limite');
+
+reset role;
+
+-- ------------------------------------ só o servidor escreve a cobrança
+
+select tests.login('cb-dono@teste.local');
+set role authenticated;
+
+select tests.ok('cobrança',
+  tests.bloqueado($q$insert into public.subscriptions
+    (org_id, provider, external_id, plan_id, valor_centavos, status)
+    select org, 'asaas', 'sub_falsa', plano, 100, 'active' from tests.cb$q$),
+  'o lojista não grava assinatura pela API');
+
+select tests.ok('cobrança',
+  tests.erro($q$select public.registrar_assinatura((select org from tests.cb), 'asaas',
+    'sub_falsa', (select plano from tests.cb), 100, null)$q$),
+  'nem pela função do servidor');
+
+select tests.ok('cobrança',
+  tests.erro($q$select public.registrar_fatura(p_provider => 'asaas', p_fatura => 'pay_falso', p_assinatura => 'sub_falsa', p_valor_centavos => 9900, p_status => 'paid', p_vencimento => current_date, p_evento => 'evt_falso', p_tipo => 'PAYMENT_RECEIVED', p_paga_em => current_date, p_link => null)$q$),
+  'nem registra fatura paga');
+
+select tests.ok('cobrança',
+  tests.erro($q$select * from public.cobranca_da_org((select org from tests.cb))$q$),
+  'a leitura interna da cobrança não é exposta');
+
+select tests.ok('cobrança',
+  tests.erro($q$select * from public.situacao_da_cobranca((select org_fora from tests.cb))$q$),
+  'e a pública só responde sobre a própria empresa');
+
+select tests.ok('cobrança',
+  (select em_dia from public.situacao_da_cobranca((select org from tests.cb))),
+  'em teste, a empresa está em dia');
+
+reset role;
+set role service_role;
+
+select public.salvar_quem_paga((select org from tests.cb), 'asaas', 'cus_1',
+  'Empresa que Paga Ltda', 'cnpj', '0190', ' Financeiro@Paga.com.br ', (select u_dono from tests.cb));
+select public.registrar_assinatura((select org from tests.cb), 'asaas', 'sub_1',
+  (select plano from tests.cb), 9900, (select u_dono from tests.cb));
+
+select tests.ok('cobrança',
+  tests.erro_com($q$select public.registrar_assinatura((select org from tests.cb), 'asaas',
+    'sub_2', (select plano from tests.cb), 9900, null)$q$, 'já tem uma assinatura'),
+  'uma assinatura viva por empresa');
+
+reset role;
+
+select tests.ok('cobrança',
+  (select status from public.subscriptions where org_id = (select org from tests.cb)) = 'pending',
+  'assinada e ainda sem pagar: aguardando');
+
+select tests.ok('cobrança',
+  (select email from public.billing_customers where org_id = (select org from tests.cb))
+    = 'financeiro@paga.com.br',
+  'o e-mail de cobrança é guardado limpo e em minúsculas');
+
+select tests.ok('cobrança',
+  (select count(*) from public.audit_logs
+    where org_id = (select org from tests.cb)
+      and entity in ('subscriptions', 'billing_customers')
+      and actor_id = (select u_dono from tests.cb)) = 2,
+  'a trilha diz quem assinou e quem informou os dados de cobrança');
+
+select tests.ok('cobrança',
+  not exists (select 1 from public.audit_logs
+               where entity = 'billing_customers' and diff::text like '%0190%'),
+  'sem o documento na trilha');
+
+-- -------------------------------------------------- quem lê o quê
+
+select tests.login('cb-membro@teste.local');
+set role authenticated;
+
+select tests.ok('cobrança',
+  tests.contar('select count(*) from public.subscriptions') = 1,
+  'o membro vê o plano da empresa');
+
+select tests.ok('cobrança',
+  tests.contar('select count(*) from public.billing_customers') = 0,
+  'mas não quem paga');
+
+reset role;
+select tests.login('cb-admin@teste.local');
+set role authenticated;
+
+select tests.ok('cobrança',
+  tests.contar('select count(*) from public.billing_customers') = 1,
+  'o administrador vê quem paga');
+
+reset role;
+
+-- ------------------------------------------ o teste acabou: tolerância e trava
+
+update public.organizations set trial_ends_at = now() - interval '1 day'
+ where id = (select org from tests.cb);
+
+select tests.ok('cobrança',
+  public.org_em_dia((select org from tests.cb)),
+  'teste acabou ontem, assinatura esperando o primeiro pagamento: ainda em dia (a tolerância)');
+
+update public.organizations set trial_ends_at = now() - interval '10 days'
+ where id = (select org from tests.cb);
+
+select tests.ok('cobrança',
+  not public.org_em_dia((select org from tests.cb)),
+  'dez dias sem pagar a primeira fatura: travada');
+
+select tests.login('cb-dono@teste.local');
+set role authenticated;
+
+select tests.ok('cobrança',
+  tests.erro_com($q$insert into public.stores (org_id, name, primary_url)
+    select org, 'Loja Travada', 'https://travada.com.br' from tests.cb$q$,
+    'A primeira fatura ainda não foi paga'),
+  'travada: loja nova não entra, e a frase diz por quê');
+
+select tests.ok('cobrança',
+  tests.erro_com($q$insert into public.push_campaigns (app_id, title, body, status, scheduled_at)
+    select app, 'Promo', 'Corpo', 'scheduled', now() from tests.cb$q$,
+    'para enviar campanhas'),
+  'nem campanha para enviar');
+
+select tests.ok('cobrança',
+  tests.permitido($q$insert into public.push_campaigns (app_id, title, body)
+    select app, 'Rascunho', 'Corpo' from tests.cb$q$),
+  'mas o rascunho de campanha continua');
+
+select tests.ok('cobrança',
+  tests.erro_com($q$select public.publicar_config((select app from tests.cb))$q$,
+    'para publicar mudanças no app'),
+  'nem publicar mudança no app');
+
+select tests.ok('cobrança',
+  tests.contar($q$select count(*) from public.app_configs
+    where app_id = (select app from tests.cb) and status = 'draft'$q$) = 1,
+  'e o rascunho do editor continua lá, intacto');
+
+reset role;
+set role service_role;
+
+select tests.ok('cobrança',
+  tests.erro_com($q$insert into public.builds (app_id, platform, status)
+    select app, 'ios', 'queued' from tests.cb$q$,
+    'para gerar uma versão nova do app'),
+  'nem versão nova para as lojas, nem pela service role (a reexecução do admin)');
+
+-- -------------------------------------------------------- o pagamento
+
+select tests.ok('cobrança',
+  public.registrar_fatura(p_provider => 'asaas', p_fatura => 'pay_1', p_assinatura => 'sub_1', p_valor_centavos => 9900, p_status => 'pending', p_vencimento => public.hoje_em_brasilia() - 10, p_evento => 'evt_1', p_tipo => 'PAYMENT_CREATED', p_paga_em => null, p_link => 'https://www.asaas.com/i/pay_1') = 'aplicado',
+  'a primeira fatura chega aguardando');
+
+select tests.ok('cobrança',
+  public.registrar_fatura(p_provider => 'asaas', p_fatura => 'pay_1', p_assinatura => 'sub_1', p_valor_centavos => 9900, p_status => 'paid', p_vencimento => public.hoje_em_brasilia() - 10, p_evento => 'evt_2', p_tipo => 'PAYMENT_RECEIVED', p_paga_em => public.hoje_em_brasilia(), p_link => null) = 'aplicado',
+  'e é paga');
+
+select tests.ok('cobrança',
+  public.registrar_fatura(p_provider => 'asaas', p_fatura => 'pay_1', p_assinatura => 'sub_1', p_valor_centavos => 9900, p_status => 'paid', p_vencimento => public.hoje_em_brasilia() - 10, p_evento => 'evt_2', p_tipo => 'PAYMENT_RECEIVED', p_paga_em => public.hoje_em_brasilia(), p_link => null) = 'repetido',
+  'o mesmo aviso de novo não é aplicado de novo');
+
+select tests.ok('cobrança',
+  public.registrar_fatura(p_provider => 'asaas', p_fatura => 'pay_1', p_assinatura => 'sub_1', p_valor_centavos => 9900, p_status => 'overdue', p_vencimento => public.hoje_em_brasilia() - 10, p_evento => 'evt_3', p_tipo => 'PAYMENT_OVERDUE', p_paga_em => null, p_link => null) = 'aplicado',
+  'um "vencida" atrasado chega');
+
+select tests.ok('cobrança',
+  public.registrar_fatura(p_provider => 'asaas', p_fatura => 'pay_fora', p_assinatura => 'sub_de_outro_produto', p_valor_centavos => 1000, p_status => 'paid', p_vencimento => public.hoje_em_brasilia(), p_evento => 'evt_4', p_tipo => 'PAYMENT_RECEIVED', p_paga_em => public.hoje_em_brasilia(), p_link => null) = 'desconhecida',
+  'cobrança de fora da Storefy é ignorada');
+
+reset role;
+
+select tests.ok('cobrança',
+  (select status from public.invoices where external_id = 'pay_1') = 'paid'
+    and (select link from public.invoices where external_id = 'pay_1')
+      = 'https://www.asaas.com/i/pay_1',
+  'e não desfaz o pagamento, nem apaga o link');
+
+select tests.ok('cobrança',
+  (select status from public.subscriptions where org_id = (select org from tests.cb)) = 'active'
+    and (select status from public.organizations where id = (select org from tests.cb)) = 'active',
+  'paga: assinatura ativa, empresa ativa');
+
+select tests.ok('cobrança',
+  (select pago_ate from public.subscriptions where org_id = (select org from tests.cb))
+    = ((public.hoje_em_brasilia() - 10) + interval '1 month')::date - 1,
+  'pago até: um mês a partir do vencimento pago');
+
+select tests.ok('cobrança',
+  public.org_em_dia((select org from tests.cb)),
+  'e a empresa volta a estar em dia');
+
+select tests.ok('cobrança',
+  not exists (select 1 from public.invoices where external_id = 'pay_fora'),
+  'sem fatura de fora');
+
+select tests.ok('cobrança',
+  (select count(*) from public.billing_events where external_id in ('evt_1', 'evt_2', 'evt_3', 'evt_4')) = 4
+    and (select resultado from public.billing_events where external_id = 'evt_4') like 'ignorado%',
+  'cada aviso fica anotado uma vez, inclusive o ignorado, para a equipe ver se chegam');
+
+-- ------------------------------------------------- os limites do plano
+
+select tests.login('cb-dono@teste.local');
+set role authenticated;
+
+select tests.ok('cobrança',
+  tests.permitido($q$insert into public.stores (org_id, name, primary_url)
+    select org, 'Segunda que Paga', 'https://segunda-que-paga.com.br' from tests.cb$q$),
+  'em dia: a segunda loja entra (o plano permite duas)');
+
+select tests.ok('cobrança',
+  tests.erro_com($q$insert into public.stores (org_id, name, primary_url)
+    select org, 'Terceira que Paga', 'https://terceira-que-paga.com.br' from tests.cb$q$,
+    'O seu plano permite até 2 lojas'),
+  'a terceira não');
+
+select tests.ok('cobrança',
+  tests.permitido($q$insert into public.push_campaigns (app_id, title, body, status, scheduled_at)
+    select app, 'Uma no mês', 'Corpo', 'scheduled',
+      (date_trunc('month', now() at time zone 'America/Sao_Paulo') + interval '1 month 10 days')
+        at time zone 'America/Sao_Paulo'
+    from tests.cb$q$),
+  'a campanha do mês (o plano permite uma) entra');
+
+select tests.ok('cobrança',
+  tests.erro_com($q$insert into public.push_campaigns (app_id, title, body, status, scheduled_at)
+    select app, 'Outra no mês', 'Corpo', 'scheduled',
+      (date_trunc('month', now() at time zone 'America/Sao_Paulo') + interval '1 month 11 days')
+        at time zone 'America/Sao_Paulo'
+    from tests.cb$q$,
+    'O seu plano permite 1 campanha por mês'),
+  'a segunda do mesmo mês não');
+
+select tests.ok('cobrança',
+  tests.permitido($q$insert into public.push_campaigns (app_id, title, body, status, scheduled_at)
+    select app, 'No outro mês', 'Corpo', 'scheduled',
+      (date_trunc('month', now() at time zone 'America/Sao_Paulo') + interval '2 months 10 days')
+        at time zone 'America/Sao_Paulo'
+    from tests.cb$q$),
+  'no mês seguinte, sim');
+
+select tests.ok('cobrança',
+  tests.erro_com($q$update public.push_campaigns
+    set status = 'scheduled',
+        scheduled_at = (date_trunc('month', now() at time zone 'America/Sao_Paulo')
+                        + interval '1 month 12 days') at time zone 'America/Sao_Paulo'
+    where title = 'Rascunho' and app_id = (select app from tests.cb)$q$,
+    'por mês'),
+  'agendar um rascunho também conta no mês');
+
+select tests.ok('cobrança',
+  (select lojas = 2 and campanhas_no_mes = 0
+     from public.uso_da_org((select org from tests.cb))),
+  'o uso conta as lojas e só as campanhas deste mês');
+
+reset role;
+
+-- Quatro aparelhos abriram o app nos últimos dias; o plano permite três.
+insert into public.devices (app_id, onesignal_subscription_id, platform)
+select app, 'cb-aparelho-' || n, 'android' from tests.cb, generate_series(1, 4) n;
+insert into public.device_days (app_id, device_id, day)
+select d.app_id, d.id, public.hoje_em_brasilia() - (row_number() over ())::integer
+  from public.devices d
+ where d.onesignal_subscription_id like 'cb-aparelho-%';
+
+select tests.login('cb-dono@teste.local');
+set role authenticated;
+
+select tests.ok('cobrança',
+  (select aparelhos_30d from public.uso_da_org((select org from tests.cb))) = 4,
+  'aparelhos ativos: os distintos dos últimos 30 dias, como no Analytics');
+
+select tests.ok('cobrança',
+  tests.erro('select public.orgs_acima_do_limite_de_aparelhos()'),
+  'a conta da plataforma inteira não é do lojista');
+
+select tests.ok('cobrança',
+  (select aparelhos_30d from public.aparelhos_por_loja((select org from tests.cb))
+    where nome = 'Loja que Paga') = 4
+    and (select count(*) from public.aparelhos_por_loja((select org from tests.cb))) = 2,
+  'e loja por loja, como a OneSignal cobra');
+
+reset role;
+select tests.login('cb-fora@teste.local');
+set role authenticated;
+
+select tests.ok('cobrança',
+  tests.erro($q$select * from public.aparelhos_por_loja((select org from tests.cb))$q$),
+  'outra empresa não lê os aparelhos desta');
+
+reset role;
+select tests.login('cb-super@teste.local');
+set role authenticated;
+
+select tests.ok('cobrança',
+  (select acima_do_limite >= 1 and mrr_centavos = 9900 and assinaturas_ativas = 1
+     from public.resumo_do_admin()),
+  'a visão geral mostra o MRR das assinaturas em dia e quem passou do limite de aparelhos');
+
+reset role;
+
+-- --------------------------------- a campanha que vence com a empresa travada
+
+update public.organizations set trial_ends_at = now() - interval '2 days'
+ where id = (select org_teste from tests.cb);
+
+insert into public.push_campaigns (app_id, title, body, status, scheduled_at)
+select app, 'Sai normalmente', 'Corpo', 'scheduled', now() - interval '1 minute' from tests.cb;
+
+set role service_role;
+drop table if exists tests.cb_reservadas;
+create table tests.cb_reservadas as select * from public.reservar_campanhas(50);
+reset role;
+
+select tests.ok('cobrança',
+  (select status from public.push_campaigns where title = 'Vai ficar sem assinatura') = 'failed'
+    and (select stats ->> 'erro' from public.push_campaigns
+          where title = 'Vai ficar sem assinatura') like '%assinatura%',
+  'a campanha agendada de uma empresa que travou não sai, e diz por quê');
+
+select tests.ok('cobrança',
+  exists (select 1 from tests.cb_reservadas where title = 'Sai normalmente')
+    and not exists (select 1 from tests.cb_reservadas where title = 'Vai ficar sem assinatura'),
+  'a de quem está em dia sai normalmente');
+
+-- ------------------------------------------ trocar de plano e cancelar
+
+set role service_role;
+select public.trocar_plano_da_assinatura((select org from tests.cb), (select plano_grande from tests.cb),
+  19900, (select u_dono from tests.cb));
+reset role;
+
+select tests.ok('cobrança',
+  (select plan_id = (select plano_grande from tests.cb) and valor_centavos = 19900
+     from public.subscriptions where org_id = (select org from tests.cb)),
+  'trocar de plano muda o plano e o valor');
+
+select tests.ok('cobrança',
+  exists (select 1 from public.audit_logs
+           where entity = 'subscriptions' and org_id = (select org from tests.cb)
+             and actor_id = (select u_dono from tests.cb)
+             and diff -> 'plano' ->> 'de' = 'Essencial'
+             and diff -> 'plano' ->> 'para' = 'Grande'),
+  'e a trilha guarda de qual para qual, e quem trocou');
+
+select tests.login('cb-super@teste.local');
+set role authenticated;
+
+select tests.ok('cobrança',
+  tests.erro($q$delete from public.plans where nome = 'Grande'$q$),
+  'plano com assinatura não se apaga (a equipe tira da vitrine)');
+
+reset role;
+select tests.login('cb-dono@teste.local');
+set role authenticated;
+
+select tests.ok('cobrança',
+  tests.erro_com($q$delete from public.organizations where id = (select org from tests.cb)$q$,
+    'Cancele a assinatura'),
+  'a empresa com assinatura viva não some sem cancelar antes');
+
+reset role;
+set role service_role;
+
+select tests.ok('cobrança',
+  public.encerrar_assinatura('asaas', 'sub_1', null, null, (select u_dono from tests.cb)) = 'aplicado',
+  'o lojista cancela (o servidor grava depois da Asaas)');
+
+select tests.ok('cobrança',
+  public.encerrar_assinatura('asaas', 'sub_1', 'evt_5', 'SUBSCRIPTION_DELETED', null) = 'aplicado',
+  'e o aviso da Asaas que vem depois não muda nada');
+
+reset role;
+
+select tests.ok('cobrança',
+  (select status from public.subscriptions where org_id = (select org from tests.cb)) = 'canceled'
+    and (select count(*) from public.audit_logs
+          where entity = 'subscriptions' and org_id = (select org from tests.cb)
+            and diff ? 'cancelada') = 1
+    and (select actor_id from public.audit_logs
+          where entity = 'subscriptions' and org_id = (select org from tests.cb)
+            and diff ? 'cancelada') = (select u_dono from tests.cb),
+  'cancelada, uma vez só na trilha, com quem cancelou');
+
+select tests.ok('cobrança',
+  public.org_em_dia((select org from tests.cb)),
+  'cancelada, o período pago continua valendo');
+
+-- O período pago acaba: sem tolerância, a assinatura cancelada trava.
+update public.invoices set vencimento = public.hoje_em_brasilia() - 45
+ where external_id = 'pay_1';
+select public.recalcular_cobranca((select org from tests.cb));
+
+select tests.ok('cobrança',
+  not public.org_em_dia((select org from tests.cb))
+    and public.mensagem_de_bloqueio((select org from tests.cb), 'x') like 'A assinatura foi cancelada%',
+  'acabou o período pago de uma cancelada: travada, e a frase diz que foi cancelada');
+
+set role service_role;
+select public.registrar_assinatura((select org from tests.cb), 'asaas', 'sub_2',
+  (select plano from tests.cb), 9900, (select u_dono from tests.cb));
+
+select tests.ok('cobrança',
+  public.registrar_fatura(p_provider => 'asaas', p_fatura => 'pay_1', p_assinatura => 'sub_1', p_valor_centavos => 9900, p_status => 'refunded', p_vencimento => public.hoje_em_brasilia() - 45, p_evento => 'evt_6', p_tipo => 'PAYMENT_REFUNDED', p_paga_em => null, p_link => null) = 'aplicado',
+  'o aviso de uma fatura da assinatura antiga ainda acha a empresa');
+
+reset role;
+
+select tests.ok('cobrança',
+  (select external_id = 'sub_2' and status = 'pending' and cancelada_em is null
+     from public.subscriptions where org_id = (select org from tests.cb)),
+  'depois de cancelada, a empresa assina de novo');
+
+-- --------------------------------------------- a equipe estende o teste
+
+select tests.login('cb-suporte@teste.local');
+set role authenticated;
+
+select tests.ok('cobrança',
+  tests.erro_com($q$select public.estender_teste((select org_teste from tests.cb),
+    public.hoje_em_brasilia() + 10)$q$, 'Só superadmin'),
+  'o suporte não estende teste');
+
+reset role;
+select tests.login('cb-teste@teste.local');
+set role authenticated;
+
+select tests.ok('cobrança',
+  tests.erro($q$select public.estender_teste((select org_teste from tests.cb),
+    public.hoje_em_brasilia() + 10)$q$),
+  'nem o próprio lojista');
+
+reset role;
+select tests.login('cb-super@teste.local');
+set role authenticated;
+
+select tests.ok('cobrança',
+  tests.erro_com($q$select public.estender_teste((select org_teste from tests.cb),
+    public.hoje_em_brasilia() + 91)$q$, 'daqui a 90 dias'),
+  'no máximo 90 dias à frente');
+
+select tests.ok('cobrança',
+  tests.permitido($q$select public.estender_teste((select org_teste from tests.cb),
+    public.hoje_em_brasilia() + 10)$q$),
+  'o superadmin estende');
+
+reset role;
+
+select tests.ok('cobrança',
+  ((select trial_ends_at from public.organizations where id = (select org_teste from tests.cb))
+     at time zone 'America/Sao_Paulo')::date = public.hoje_em_brasilia() + 10
+    and public.org_em_dia((select org_teste from tests.cb)),
+  'o teste vai até o fim do dia escolhido, no horário de Brasília, e a empresa volta a ficar em dia');
+
+select tests.ok('cobrança',
+  exists (select 1 from public.audit_logs
+           where org_id = (select org_teste from tests.cb) and entity = 'organizations'
+             and actor_id = (select u_super from tests.cb) and diff ? 'trial_ends_at'),
+  'a trilha do cliente guarda quem estendeu, e até quando');
+
+-- ------------------------------------------------------ olhares de fora
+
+select tests.login('cb-fora@teste.local');
+set role authenticated;
+
+select tests.ok('cobrança',
+  tests.contar('select count(*) from public.subscriptions') = 0
+    and tests.contar('select count(*) from public.billing_customers') = 0
+    and tests.contar('select count(*) from public.invoices') = 0,
+  'outra empresa não vê nada da cobrança desta');
+
+select tests.ok('cobrança',
+  tests.contar('select count(*) from public.billing_events') = 0,
+  'nem os avisos da Asaas');
+
+reset role;
+select tests.login('cb-membro@teste.local');
+set role authenticated;
+
+select tests.ok('cobrança',
+  tests.contar('select count(*) from public.invoices') = 0,
+  'o membro não vê as faturas (valor e link de pagamento)');
+
+reset role;
+select tests.login('cb-suporte@teste.local');
+set role authenticated;
+
+select tests.ok('cobrança',
+  tests.contar('select count(*) from public.invoices') >= 1
+    and tests.contar('select count(*) from public.billing_events') >= 1,
+  'a equipe vê faturas e avisos, para atender o cliente');
+
+reset role;
+
 \echo ''
 \echo 'Falhas:'
 select grupo, descricao from tests.resultados where not passou order by id;

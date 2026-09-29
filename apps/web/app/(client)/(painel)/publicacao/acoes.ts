@@ -15,6 +15,7 @@
  */
 import { revalidatePath } from 'next/cache';
 import { exigirContextoCliente } from '@/lib/contexto';
+import { mensagemDaFalha } from '@/lib/erros';
 import { criarClientServiceRole } from '@/lib/supabase/admin';
 import { criarClientServidor } from '@/lib/supabase/server';
 import { dadosDaPublicacao } from '@/lib/publicacao-servidor';
@@ -125,9 +126,16 @@ export async function publicarApp(plataforma: 'ios' | 'android'): Promise<Estado
     .single();
 
   // `.single()` já garante a linha quando não há erro: o supabase-js estreita
-  // `build` para não-nulo depois desta checagem.
+  // `build` para não-nulo depois desta checagem. A recusa do banco que fala
+  // com o lojista (a assinatura fora de dia, por exemplo) atravessa inteira.
   if (error != null) {
-    return { mensagem: 'Não conseguimos registrar a publicação. Tente de novo.' };
+    return {
+      mensagem: mensagemDaFalha(
+        'publicacao',
+        error,
+        'Não conseguimos registrar a publicação. Tente de novo.',
+      ),
+    };
   }
 
   const disparo = await dispararBuild({

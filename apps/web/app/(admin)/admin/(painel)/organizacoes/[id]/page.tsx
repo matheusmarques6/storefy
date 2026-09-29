@@ -21,13 +21,14 @@ import {
   ROTULO_STATUS_LOJA,
   ROTULO_STATUS_ORG,
 } from '@storefy/db';
-import { exigirPlatformAdmin } from '@/lib/contexto';
+import { exigirPlatformAdminComPapel } from '@/lib/contexto';
 import { criarClientServidor } from '@/lib/supabase/server';
 import { lerNotas } from '@/lib/notas-internas';
 import { FUSO_PADRAO, formatarDataHora } from '@/lib/fuso';
 import { Notas } from './notas';
 import { VerComoCliente } from './ver-como-cliente';
 import { AppsDaOrganizacao } from './apps-da-organizacao';
+import { CobrancaDaOrganizacao } from './cobranca-da-organizacao';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { PrazoDoConvite } from '@/components/prazo-do-convite';
@@ -48,7 +49,7 @@ function dataHora(valor: string | null): string {
 }
 
 export default async function PaginaOrganizacao({ params }: { params: Promise<{ id: string }> }) {
-  await exigirPlatformAdmin();
+  const { papel } = await exigirPlatformAdminComPapel();
   const { id } = await params;
   const supabase = await criarClientServidor();
 
@@ -140,10 +141,6 @@ export default async function PaginaOrganizacao({ params }: { params: Promise<{ 
         <CardContent>
           <dl className="grid gap-4 text-sm sm:grid-cols-4">
             <div>
-              <dt className="text-muted-foreground">Plano</dt>
-              <dd className="mt-1 font-medium">{org.plan}</dd>
-            </div>
-            <div>
               <dt className="text-muted-foreground">Lojas</dt>
               <dd className="mt-1 font-medium">{listaLojas.length}</dd>
             </div>
@@ -159,13 +156,11 @@ export default async function PaginaOrganizacao({ params }: { params: Promise<{ 
               <dt className="text-muted-foreground">Atualizada em</dt>
               <dd className="mt-1 font-medium">{dataHora(org.updated_at)}</dd>
             </div>
-            <div>
-              <dt className="text-muted-foreground">Teste até</dt>
-              <dd className="mt-1 font-medium">{dataHora(org.trial_ends_at)}</dd>
-            </div>
           </dl>
         </CardContent>
       </Card>
+
+      <CobrancaDaOrganizacao orgId={org.id} papel={papel} />
 
       <Card>
         <CardHeader>

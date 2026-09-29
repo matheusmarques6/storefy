@@ -62,8 +62,10 @@ test('platform admin enxerga organizações e lojas de todos os clientes', async
   await paginaAdmin.goto('/admin');
   await expect(paginaAdmin.getByRole('heading', { name: 'Visão geral' })).toBeVisible();
   await expect(paginaAdmin.getByRole('heading', { name: 'A plataforma hoje' })).toBeVisible();
-  // Faturamento não é inventado: a tela diz que ele chega na Fase 7.
-  await expect(paginaAdmin.getByText(/Faturamento e MRR ainda não aparecem/)).toBeVisible();
+  // Faturamento não é inventado: o MRR sai das assinaturas em dia, em reais.
+  await expect(
+    paginaAdmin.getByRole('link', { name: /^Receita recorrente \(MRR\): R\$\s[\d.]+,\d{2}$/ }),
+  ).toBeVisible();
 
   // E daqui se chega à lista pelo menu.
   await paginaAdmin.getByRole('link', { name: 'Organizações' }).first().click();
@@ -72,6 +74,10 @@ test('platform admin enxerga organizações e lojas de todos os clientes', async
   await paginaAdmin.getByRole('searchbox').fill(empresa);
   await paginaAdmin.getByRole('button', { name: 'Buscar' }).click();
   await expect(paginaAdmin.getByRole('cell', { name: empresa })).toBeVisible();
+  // Sem assinatura, a coluna do plano diz até quando vai o teste.
+  await expect(
+    paginaAdmin.getByRole('row', { name: new RegExp(empresa) }).getByText(/^Teste até \d/),
+  ).toBeVisible();
 
   // Detalhe mostra loja e membro.
   await paginaAdmin.getByRole('link', { name: 'Detalhes' }).first().click();

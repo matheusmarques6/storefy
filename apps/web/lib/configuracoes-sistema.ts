@@ -108,6 +108,22 @@ export const INTEGRACOES: Integracao[] = [
     nivel: 'recurso',
   },
   {
+    chave: 'cobranca',
+    nome: 'Cobrança (Asaas)',
+    variaveis: ['ASAAS_API_KEY', 'ASAAS_WEBHOOK_TOKEN'],
+    oQueQuebra:
+      'Sem a chave, o lojista vê os planos mas não assina pelo painel. Sem o token, os pagamentos não chegam e a assinatura não fica em dia sozinha.',
+    nivel: 'recurso',
+  },
+  {
+    chave: 'asaas_sandbox',
+    nome: 'Endereço da Asaas',
+    variaveis: ['ASAAS_API_URL'],
+    oQueQuebra:
+      'Nada quebra: sem ele, a cobrança fala com a Asaas de produção. O endereço do sandbox é só para testar.',
+    nivel: 'opcional',
+  },
+  {
     chave: 'suporte',
     nome: 'Caixa do suporte',
     variaveis: ['EMAIL_SUPORTE'],

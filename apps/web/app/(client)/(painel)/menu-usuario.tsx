@@ -18,6 +18,7 @@
 import { useTransition } from 'react';
 import Link from 'next/link';
 import {
+  CreditCard,
   LifeBuoy,
   Loader2,
   LogOut,
@@ -76,6 +77,12 @@ export function MenuUsuario({
           <Link href="/configuracoes">
             <Settings className="size-4" aria-hidden />
             Configurações da empresa
+          </Link>
+        </DropdownMenuItem>
+        <DropdownMenuItem asChild>
+          <Link href="/configuracoes/plano">
+            <CreditCard className="size-4" aria-hidden />
+            Plano e cobrança
           </Link>
         </DropdownMenuItem>
         <DropdownMenuItem asChild>

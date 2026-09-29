@@ -10,14 +10,13 @@
  * uma vez. A decisão do que é pendência mora em `lib/resumo-admin`, testada
  * sem montar página nenhuma.
  *
- * FATURAMENTO NÃO APARECE AQUI, e a tela diz isso em voz alta em vez de
- * omitir: não existe tabela de cobrança ainda (Fase 7). Um MRR inventado numa
- * tela de dinheiro seria o pior tipo de dado falso — ninguém confere o que já
- * parece plausível.
+ * O MRR vem das assinaturas em dia, pelo valor CONTRATADO de cada uma — e não
+ * do preço de tabela, que pode ter mudado depois. Sem assinatura, o número é
+ * zero de verdade, e não um valor de exemplo.
  */
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import { Building2, CheckCircle2, CreditCard, TriangleAlert } from 'lucide-react';
+import { Building2, CheckCircle2, TriangleAlert } from 'lucide-react';
 import { exigirPlatformAdmin } from '@/lib/contexto';
 import { criarClientServidor } from '@/lib/supabase/server';
 import { pendencias, panorama, plataformaVazia, type NumeroDoResumo } from '@/lib/resumo-admin';
@@ -92,26 +91,6 @@ export default async function PaginaVisaoGeral() {
           </section>
         </>
       )}
-
-      {/*
-       * O estado de "não configurado" que a regra de zero mock exige: a tela
-       * diz o que falta e por quê, em vez de mostrar um MRR de mentira ou de
-       * simplesmente não falar no assunto — o que faria o admin procurar o
-       * número achando que ele existe em algum lugar.
-       */}
-      <Card>
-        <CardContent className="text-muted-foreground flex items-start gap-2 py-4 text-sm">
-          <CreditCard className="mt-0.5 size-4 shrink-0" aria-hidden />
-          <span>
-            Faturamento e MRR ainda não aparecem aqui: a cobrança entra na Fase 7. Até lá o plano de
-            cada cliente está na ficha dele, em{' '}
-            <Link href="/admin/organizacoes" className="text-foreground underline">
-              Organizações
-            </Link>
-            .
-          </span>
-        </CardContent>
-      </Card>
     </div>
   );
 }
@@ -134,7 +113,7 @@ function Numero({ item, atencao }: { item: NumeroDoResumo; atencao: boolean }) {
         ) : null}
       </CardHeader>
       <CardContent className="pt-0">
-        <p className="text-3xl font-semibold tabular-nums">{item.valor}</p>
+        <p className="text-3xl font-semibold tabular-nums">{item.formatado ?? item.valor}</p>
         <p className="text-muted-foreground mt-1 text-xs">{item.ajuda}</p>
       </CardContent>
     </>
@@ -144,7 +123,11 @@ function Numero({ item, atencao }: { item: NumeroDoResumo; atencao: boolean }) {
 
   return (
     <Card className="hover:border-foreground/20 transition-colors">
-      <Link href={item.href} className="block" aria-label={`${item.rotulo}: ${item.valor}`}>
+      <Link
+        href={item.href}
+        className="block"
+        aria-label={`${item.rotulo}: ${item.formatado ?? String(item.valor)}`}
+      >
         {conteudo}
       </Link>
     </Card>

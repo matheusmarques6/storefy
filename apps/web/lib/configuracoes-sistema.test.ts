@@ -143,6 +143,8 @@ const FORA_DA_TELA = new Set([
   'E2E_SEM_SERVIDOR',
   // O Chromium do e2e, quando o ambiente já tem um e não pode baixar outro.
   'PLAYWRIGHT_CHROMIUM_EXECUTABLE',
+  // A porta do servidor que faz o papel da Asaas no e2e (`e2e/asaas-de-teste.ts`).
+  'PORTA_DA_ASAAS_DE_TESTE',
 ]);
 
 /**

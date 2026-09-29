@@ -116,6 +116,20 @@ export async function limparUsuariosDeTeste(): Promise<void> {
         .eq('user_id', usuario.id);
       for (const vinculo of vinculos ?? []) orgsDeTeste.add(vinculo.org_id);
 
+      /*
+       * Empresa com assinatura viva não se exclui (o banco protege a cobrança
+       * de quem já foi embora). A assinatura de teste mora no servidor Asaas
+       * do próprio teste, que já saiu do ar: basta marcá-la como encerrada.
+       */
+      const orgs = (vinculos ?? []).map((vinculo) => vinculo.org_id);
+      if (orgs.length > 0) {
+        await cliente
+          .from('subscriptions')
+          .update({ cancelada_em: new Date().toISOString() })
+          .in('org_id', orgs)
+          .is('cancelada_em', null);
+      }
+
       await cliente.auth.admin.deleteUser(usuario.id);
     }
 

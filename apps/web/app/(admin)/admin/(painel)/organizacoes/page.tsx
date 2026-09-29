@@ -41,7 +41,7 @@ export default async function PaginaOrganizacoes({
 
   let consulta = supabase
     .from('organizations')
-    .select('id, name, slug, status, plan, created_at', { count: 'exact' })
+    .select('id, name, slug, status, trial_ends_at, created_at', { count: 'exact' })
     .order('created_at', { ascending: false })
     .range(de, ate);
 
@@ -59,6 +59,29 @@ export default async function PaginaOrganizacoes({
   if (error != null) throw new Error(`Não foi possível carregar as organizações: ${error.message}`);
 
   const lista = organizacoes;
+
+  // O plano de cada uma, da assinatura (a da página, numa consulta só).
+  const { data: assinaturas, error: erroAssinaturas } =
+    lista.length === 0
+      ? { data: [], error: null }
+      : await supabase
+          .from('subscriptions')
+          .select('org_id, cancelada_em, plans(nome)')
+          .in(
+            'org_id',
+            lista.map((org) => org.id),
+          );
+  if (erroAssinaturas != null) {
+    throw new Error(`Não foi possível carregar os planos: ${erroAssinaturas.message}`);
+  }
+  const planoDe = new Map(
+    assinaturas.map((assinatura) => [
+      assinatura.org_id,
+      assinatura.cancelada_em === null
+        ? assinatura.plans.nome
+        : `${assinatura.plans.nome} (cancelada)`,
+    ]),
+  );
 
   return (
     <div className="space-y-6">
@@ -126,7 +149,13 @@ export default async function PaginaOrganizacoes({
                     <TableCell className="text-muted-foreground font-mono text-xs">
                       {org.slug}
                     </TableCell>
-                    <TableCell>{org.plan}</TableCell>
+                    <TableCell>
+                      {planoDe.get(org.id) ?? (
+                        <span className="text-muted-foreground">
+                          Teste até {formatarData(org.trial_ends_at, FUSO_PADRAO)}
+                        </span>
+                      )}
+                    </TableCell>
                     <TableCell>
                       <Badge variant="secondary">{ROTULO_STATUS_ORG[org.status]}</Badge>
                     </TableCell>

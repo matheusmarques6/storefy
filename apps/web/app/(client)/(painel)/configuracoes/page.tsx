@@ -103,12 +103,15 @@ export default async function PaginaConfiguracoes() {
               <dt className="text-muted-foreground">Criada em</dt>
               <dd className="mt-1">{formatarData(organizacao.created_at, FUSO_PADRAO)}</dd>
             </div>
-            {organizacao.trial_ends_at == null ? null : (
-              <div>
-                <dt className="text-muted-foreground">Teste até</dt>
-                <dd className="mt-1">{formatarData(organizacao.trial_ends_at, FUSO_PADRAO)}</dd>
-              </div>
-            )}
+            <div>
+              <dt className="text-muted-foreground">Teste até</dt>
+              <dd className="mt-1">
+                {formatarData(organizacao.trial_ends_at, FUSO_PADRAO)} ·{' '}
+                <Link href="/configuracoes/plano" className="underline underline-offset-4">
+                  Plano e cobrança
+                </Link>
+              </dd>
+            </div>
           </dl>
         </CardContent>
       </Card>

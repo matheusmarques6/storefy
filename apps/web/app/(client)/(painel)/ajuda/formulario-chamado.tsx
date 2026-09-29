@@ -7,6 +7,7 @@
 import { useActionState } from 'react';
 import { useRouter } from 'next/navigation';
 import { AlertCircle } from 'lucide-react';
+import type { TicketTopic } from '@storefy/db';
 import { ASSUNTOS, ROTULO_DO_ASSUNTO, TAMANHO_MAXIMO_DA_MENSAGEM } from '@/lib/chamados';
 import { abrirChamado, type EstadoDoChamado } from './acoes';
 import { Alert, AlertDescription } from '@/components/ui/alert';
@@ -19,9 +20,12 @@ import { Textarea } from '@/components/ui/textarea';
 export function FormularioDeChamado({
   lojas,
   lojaAtiva,
+  assuntoInicial = null,
 }: {
   lojas: { id: string; name: string }[];
   lojaAtiva: string | null;
+  /** O assunto já escolhido, quando a pessoa chega de outra tela. */
+  assuntoInicial?: TicketTopic | null;
 }) {
   const router = useRouter();
   const [estado, acao] = useActionState<EstadoDoChamado, FormData>(async (anterior, dados) => {
@@ -30,7 +34,7 @@ export function FormularioDeChamado({
     return resultado;
   }, {});
 
-  const assunto = estado.valores?.assunto ?? '';
+  const assunto = estado.valores?.assunto ?? assuntoInicial ?? '';
   const loja = estado.valores?.loja ?? lojaAtiva ?? '';
 
   return (
@@ -48,7 +52,7 @@ export function FormularioDeChamado({
           <Select
             key={`assunto-${assunto}`}
             {...propsDoCampo('assunto', estado.erros?.assunto)}
-            defaultValue={estado.valores?.assunto ?? ''}
+            defaultValue={estado.valores?.assunto ?? assuntoInicial ?? ''}
           >
             <option value="" disabled>
               Escolha…

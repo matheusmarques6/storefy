@@ -21,6 +21,10 @@ const ZERADO: ResumoBruto = {
   builds_rejeitados_7d: 0,
   contas_dev_com_erro: 0,
   chamados_esperando: 0,
+  testes_encerrados_7d: 0,
+  acima_do_limite: 0,
+  mrr_centavos: 0,
+  assinaturas_ativas: 0,
 };
 
 describe('pendencias', () => {
@@ -108,7 +112,7 @@ describe('panorama', () => {
   it('aparece inteiro mesmo zerado, porque zero aqui é informação', () => {
     const lista = panorama(ZERADO);
 
-    expect(lista).toHaveLength(5);
+    expect(lista).toHaveLength(6);
     expect(lista.every((item) => item.valor === 0)).toBe(true);
   });
 
@@ -137,5 +141,22 @@ describe('plataformaVazia', () => {
 
   it('uma loja no ar já não é plataforma vazia', () => {
     expect(plataformaVazia({ ...ZERADO, lojas_live: 1 })).toBe(false);
+  });
+});
+
+describe('cobrança na visão geral', () => {
+  it('testes que acabaram sem assinar e quem passou do limite viram pendência', () => {
+    const chaves = pendencias({ ...ZERADO, testes_encerrados_7d: 2, acima_do_limite: 1 }).map(
+      (item) => item.chave,
+    );
+    expect(chaves).toEqual(['testes_encerrados', 'acima_do_limite']);
+  });
+
+  it('o MRR aparece em reais, sempre, e diz de quantas assinaturas vem', () => {
+    const mrr = panorama({ ...ZERADO, mrr_centavos: 29800, assinaturas_ativas: 2 })[0];
+    expect(mrr?.chave).toBe('mrr');
+    expect(mrr?.formatado?.replace(/\s/g, ' ')).toBe('R$ 298,00');
+    expect(mrr?.ajuda).toBe('2 assinaturas em dia, pelo valor contratado.');
+    expect(panorama(ZERADO)[0]?.formatado?.replace(/\s/g, ' ')).toBe('R$ 0,00');
   });
 });

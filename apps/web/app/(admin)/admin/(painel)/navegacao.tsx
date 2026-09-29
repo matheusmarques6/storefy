@@ -53,6 +53,7 @@ const GRUPOS = [
   {
     titulo: 'Plataforma',
     itens: [
+      { href: '/admin/planos', rotulo: 'Planos e preços' },
       { href: '/admin/equipe', rotulo: 'Equipe' },
       { href: '/admin/logs', rotulo: 'Auditoria' },
       { href: '/admin/ota', rotulo: 'Correção OTA' },

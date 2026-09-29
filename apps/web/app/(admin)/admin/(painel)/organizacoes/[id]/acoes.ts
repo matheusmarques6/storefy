@@ -13,7 +13,10 @@
  * rastro por si mesmo.
  */
 import { revalidatePath } from 'next/cache';
-import { exigirPlatformAdmin } from '@/lib/contexto';
+import { exigirPlatformAdmin, exigirPlatformAdminComPapel } from '@/lib/contexto';
+import { criarClientServidor } from '@/lib/supabase/server';
+import { formatarDia } from '@/lib/cobranca';
+import { mensagemDaFalha } from '@/lib/erros';
 import { criarClientServiceRole } from '@/lib/supabase/admin';
 import { conferirNota } from '@/lib/notas-internas';
 import { DURACAO_DA_VISITA_MS, conferirMotivo, criarToken } from '@/lib/visita';
@@ -175,4 +178,48 @@ export async function iniciarVisita(
 /** O campo como texto: `FormData.get` devolve string OU File. */
 function texto(valor: FormDataEntryValue | null): string {
   return typeof valor === 'string' ? valor : '';
+}
+
+export interface EstadoDoTeste {
+  ok?: boolean;
+  mensagem?: string;
+  valores?: ValoresDigitados;
+}
+
+/**
+ * Estende o teste de um cliente (piloto, negociação, ajuda num build travado).
+ *
+ * Com a sessão de QUEM PEDE, e não com a service role: `estender_teste`
+ * confere no banco que é superadmin, e o gatilho de auditoria de
+ * `organizations` grava essa pessoa como autora, com o antes e o depois.
+ */
+export async function estenderTeste(
+  _anterior: EstadoDoTeste,
+  dados: FormData,
+): Promise<EstadoDoTeste> {
+  const { papel } = await exigirPlatformAdminComPapel();
+  const valores = { ate: texto(dados.get('ate')) };
+  if (papel !== 'superadmin')
+    return { mensagem: 'Só superadmin estende o teste de um cliente.', valores };
+
+  const orgId = texto(dados.get('orgId'));
+  const ate = valores.ate;
+  if (orgId === '') return { mensagem: 'Organização não informada.', valores };
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(ate)) return { mensagem: 'Escolha a data.', valores };
+
+  const supabase = await criarClientServidor();
+  const { error } = await supabase.rpc('estender_teste', { p_org_id: orgId, p_ate: ate });
+  if (error != null) {
+    return {
+      mensagem: mensagemDaFalha(
+        'estender-teste',
+        error,
+        'Não conseguimos estender. Tente de novo.',
+      ),
+      valores,
+    };
+  }
+
+  revalidatePath(`/admin/organizacoes/${orgId}`);
+  return { ok: true, mensagem: `Teste estendido até ${formatarDia(ate)}.`, valores: {} };
 }

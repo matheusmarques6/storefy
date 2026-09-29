@@ -57,6 +57,13 @@ export NEXT_PUBLIC_SITE_URL="http://app.localhost:${PORTA}"
 export E2E_BASE_URL="http://app.localhost:${PORTA}"
 export ENCRYPTION_KEY="${ENCRYPTION_KEY:-$(openssl rand -base64 32)}"
 export CRON_SECRET="${CRON_SECRET:-cron-do-e2e-local}"
+# A Asaas do e2e é um servidor na própria máquina, que o `cobranca.spec.ts`
+# sobe na porta abaixo: a cobrança de verdade passa pelo sandbox da Asaas, com
+# uma conta que é da Storefy (ver PLANO, Fase 7).
+export PORTA_DA_ASAAS_DE_TESTE="${PORTA_DA_ASAAS_DE_TESTE:-4010}"
+export ASAAS_API_URL="http://127.0.0.1:${PORTA_DA_ASAAS_DE_TESTE}/v3"
+export ASAAS_API_KEY='$aact_hmlg_chave_do_e2e_local'
+export ASAAS_WEBHOOK_TOKEN="${ASAAS_WEBHOOK_TOKEN:-token-do-aviso-do-e2e-local}"
 # Vazias DE PROPÓSITO, e não ausentes: ausente, o Next buscaria o valor no
 # `.env.local` do desenvolvedor, que aponta para outro projeto.
 export NEXT_PUBLIC_GOOGLE_OAUTH_ENABLED=""

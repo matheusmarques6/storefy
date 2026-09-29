@@ -1059,9 +1059,9 @@ uma segunda empresa ao mesmo tempo). A suíte e2e está em 35 testes.
 | Item | Situação |
 |---|---|
 | A01 — Login do admin | ✅ `exigirPlatformAdmin()` a cada request; quem não está em `platform_admins` vai para /admin/sem-acesso |
-| **A02 — Visão geral** | ✅ onze números numa chamada só (`resumo_do_admin`), com os chamados esperando resposta (A14), separados em "precisa de você" (só o que é > 0) e "a plataforma hoje" (aparece zerado, porque ali zero é informação). `/admin` passou a ser esta tela |
+| **A02 — Visão geral** | ✅ os números numa chamada só (`resumo_do_admin`), com os chamados esperando resposta (A14) e a cobrança (Fase 7: MRR, testes que acabaram sem assinar, acima do limite de aparelhos), separados em "precisa de você" (só o que é > 0) e "a plataforma hoje" (aparece zerado, porque ali zero é informação). `/admin` passou a ser esta tela |
 | A03 — Organizações (lista) | ✅ saiu de `/admin` para `/admin/organizacoes`, com busca e paginação. **Convidar lojista**: o convite que deixa o lojista piloto criar a conta com o cadastro fechado, com os convites em aberto (reenviar e cancelar) |
-| A04 — Cliente (detalhe) | ⚠️ lojas, membros, últimos builds, **notas internas**, **"Ver como cliente"** (somente leitura, auditado — ver abaixo) e **App e push** por loja: config no ar e desde quando, rascunho parado, atualização obrigatória, versão aprovada em cada loja de aplicativos, projeto Expo, identificadores, notificações, push de 30 dias e automações ligadas. Falta a aba de cobrança (Fase 7) |
+| A04 — Cliente (detalhe) | ✅ lojas, membros, últimos builds, **notas internas**, **"Ver como cliente"** (somente leitura, auditado — ver abaixo), **App e push** por loja (config no ar e desde quando, rascunho parado, atualização obrigatória, versão aprovada em cada loja de aplicativos, projeto Expo, identificadores, notificações, push de 30 dias e automações ligadas) e **Cobrança** (Fase 7): liberado ou travado e até quando, plano, faturas, quem paga, os últimos avisos da Asaas e "estender teste" |
 | **A05 — Fila de builds** | ✅ recortes por situação na URL, abrindo no que quebrou; erro da EAS na própria linha; link dos logs; reexecutar com confirmação, travado para build que ainda roda ou que está com a loja |
 | **A06 — Revisões das lojas** | ✅ ordenada do mais ANTIGO para o mais novo (aqui o interessante é o que está parado), com alerta a partir de 7 dias e o motivo da recusa na linha |
 | **A07 — Contas de desenvolvedor** | ✅ estado e identificadores públicos (Team ID, Key ID) de cada cliente. Nenhuma coluna `_enc` é lida: o segredo não passa pela tela |
@@ -1070,7 +1070,7 @@ uma segunda empresa ao mesmo tempo). A suíte e2e está em 35 testes.
 | A12 — Logs de auditoria | ✅ |
 | **A13 — Configurações do sistema** | ✅ as 19 variáveis que a aplicação lê, em três níveis (essencial, por recurso, opcional) pelo que quebra sem cada uma, com um teste que varre o código e falha quando alguém soma uma variável sem descrevê-la; opcional desligada aparece como "Não usado". **Chaves de funcionamento**: cadastro aberto/fechado e um aviso no topo do painel de todos os lojistas, com prévia, só superadmin muda (o servidor confere de novo) e cada chave mudada vai para a auditoria com o antes e o depois. **Versão mínima**: a lista dos apps que estão exigindo atualização, com link para o cliente. O cadastro fechado vale **no banco**, para toda porta de entrada (ver "C16 — Equipe e convites") |
 | **A10 — Presets por tema** | ✅ os dois lados: a equipe cria o preset COPIANDO de uma loja publicada, e o lojista aplica no editor com a troca descrita antes de confirmar |
-| A09 | ⬜ ainda não (depende da cobrança, Fase 7) |
+| **A09 — Planos e preços** | ✅ Fase 7 (ver lá) |
 
 > **"Entrar como cliente" virou "Ver como cliente": somente leitura.** Entrar COMO o cliente
 > exigiria uma sessão com a identidade dele, e tudo que a equipe fizesse iria para a trilha como
@@ -1228,6 +1228,46 @@ uma segunda empresa ao mesmo tempo). A suíte e2e está em 35 testes.
 - Asaas/Stripe (ou Shopify Billing, se a distribuição for pela App Store da Shopify), webhooks de assinatura, trial de 14 dias e bloqueio suave (o app continua funcionando e o push/editor ficam limitados).
 - Medição de MAU por app (custo OneSignal) e exibição de uso no C15.
 
+**Entregue (29/09/2026)**
+
+| Entrega | Situação |
+|---|---|
+| **Trava de colunas da empresa** (antes de tudo) | ✅ FALHA CORRIGIDA: a policy de edição da empresa liberava a linha inteira, e um administrador podia esticar o próprio teste ou se declarar "active" pela API. Agora a pessoa só escreve o `name` (grant por coluna); o resto é do banco e da equipe. A coluna solta `plan` saiu: o plano é o da assinatura |
+| **O que libera é uma data** | ✅ `cobranca_da_org`: liberado até o maior entre o fim do teste e o fim do período pago, mais 7 dias de tolerância enquanto houver assinatura viva (boleto demora a compensar). Calculado das faturas, então não depende da ordem dos avisos da Asaas, e aviso repetido não muda nada. Datas no horário de Brasília, a mesma régua que o lojista lê |
+| **Bloqueio suave, no banco** | ✅ gatilhos nas quatro coisas que custam: loja nova, campanha que entra na fila, publicar mudança no app e versão nova para as lojas (vale também para a reexecução do admin). O app no ar, as automações e os rascunhos continuam. A frase diz o motivo e o caminho ("O período de teste acabou. Assine um plano em Configurações › Plano e cobrança para enviar campanhas."). Campanha agendada que vence com a empresa travada não sai, e diz por quê |
+| **Limites do plano** | ✅ lojas, aparelhos ativos (o MAU, pela OneSignal) e campanhas por mês (no mês de Brasília; automação não conta). Nulo é sem limite. Lojas e campanhas travam no banco, com a frase do limite; aparelhos acima do limite avisam (o app nunca sai do ar por isso). Durante o teste valem os limites do plano que a equipe marcar "vale no teste" |
+| **C15 — Plano e cobrança** (`/configuracoes/plano`) | ✅ situação com as datas (teste, aguardando o primeiro pagamento, em dia e pago até, fatura em atraso e até quando pagar, cancelada e até quando vale), uso contra os limites com os aparelhos loja por loja, os planos, as faturas com o link de pagar e quem paga. Assinar pede nome, CPF ou CNPJ (com o CNPJ alfanumérico da Receita, em vigor desde julho de 2026) e o e-mail da fatura; a primeira cobrança vence no fim do teste. Trocar de plano (o valor novo vale a partir da fatura em aberto) e cancelar (com confirmação dizendo até quando vale). Só o proprietário mexe; administrador vê tudo; membro vê a situação e o uso |
+| **Faixa da cobrança** no topo do painel | ✅ teste acabando (7 dias), fatura em atraso com a data-limite, e travado — sempre dizendo que o app continua funcionando para os clientes da loja |
+| **A09 — Planos e preços** | ✅ criar, editar, tirar da vitrine e excluir (só plano nunca assinado), com o número de assinantes; só superadmin escreve, e a trilha grava quem mudou o quê. Mostra se a chave e o token da Asaas estão configurados, o endereço do webhook para copiar e o último aviso recebido |
+| **A02** | ✅ MRR (assinaturas em dia, pelo valor contratado), testes que acabaram sem assinar nesta semana e empresas acima do limite de aparelhos |
+| **A03 e A04** | ✅ A03 mostra o plano de cada cliente (ou "Teste até"); A04 ganhou a cobrança do cliente e o "estender teste" (superadmin, até 90 dias, na trilha com quem fez) |
+| **Asaas** | ✅ cliente, assinatura mensal com "pergunte ao cliente" (Pix, boleto e cartão na fatura), troca de valor e cancelamento — rotas e cabeçalhos conferidos na integração oficial da Asaas (`@asaasbr/n8n-nodes-asaas`). Sempre a Asaas primeiro e o banco depois; se o banco falhar, desfaz lá. Webhook `/api/webhooks/asaas` com o token em tempo constante, idempotente pelo id do aviso, 500 só para erro nosso (a Asaas reenvia) |
+| **Excluir conta com assinatura** | ✅ a empresa que vai junto com a conta tem a assinatura cancelada na Asaas antes; o banco recusa excluir empresa com assinatura viva |
+| **Sem chave da Asaas** | ✅ a C15 mostra os planos e diz que a assinatura pelo painel ainda não está ligada, com o caminho para falar com a equipe (a Ajuda já abre com o assunto "Cobrança") |
+
+> **Decisão: Asaas, e só ela.** O plano deixava "Asaas ou Stripe". A Asaas cobre o que o lojista
+> brasileiro usa numa assinatura (Pix, boleto e cartão, escolhidos na fatura), e o enum do provedor
+> nasceu só com ela: um provedor novo entra junto com o código que o atende. O `STRIPE_SECRET_KEY`
+> saiu do `.env.example`. Se a distribuição for pela App Store da Shopify, a Shopify exige a Billing
+> API dela — seria um segundo provedor, decidido antes de listar.
+
+Travas novas: 88 asserções no grupo "cobrança" do `rls.test.sql` (com mutações conferidas: o grant
+da empresa de volta, sem a tolerância, "paga" deixando de ser final, sem cada uma das quatro travas,
+sem a trava de exclusão e a campanha vencida saindo de empresa travada), `lib/cobranca.test.ts`
+(CPF e CNPJ, inclusive o exemplo alfanumérico da Receita, preço, leitura dos avisos, a faixa),
+`lib/asaas.test.ts` (o que vai para a Asaas, recusas, HTTPS) e `e2e/cobranca.spec.ts` (2 cenários,
+com um servidor no lugar da Asaas falando HTTP de verdade com o painel). A suíte e2e está em 37 testes.
+
+**Depende de ação humana**
+
+| Item | O que falta |
+|---|---|
+| Conta da Asaas | Uma conta da Storefy na Asaas, a chave em `ASAAS_API_KEY` e o webhook cadastrado lá (Integrações › Webhooks) com o endereço que a A09 mostra, o token de `ASAAS_WEBHOOK_TOKEN` e os eventos de cobranças e assinaturas |
+| Conferir no sandbox | Antes de ligar em produção: `ASAAS_API_URL=https://api-sandbox.asaas.com/v3` com uma chave de sandbox, assinar um plano, pagar a fatura no sandbox e ver a C15 ficar "Em dia" |
+| Preços | Criar os planos na A09 (preço e limites são decisão de negócio; nenhum nasce sozinho) e escolher qual vale no teste |
+| Clientes piloto | O teste de quem já estava usando acaba na data de sempre (14 dias do cadastro). Para os pilotos, estender o teste na A04 |
+| Shopify App Store | Se o Storefy for listado lá, a cobrança precisa passar pela Billing API da Shopify |
+
 ### Fase 8 — Polimento, QA e lançamento (5+ dias)
 - Trocar os layouts provisórios pelos do Claude Design (tela por tela, usando os IDs C/A/M).
 - Testes E2E com Playwright (onboarding → editor → publicar config → campanha).
@@ -1308,7 +1348,7 @@ GITHUB_DISPATCH_TOKEN=               GITHUB_REPO=
 EXPO_TOKEN=                          EAS_WEBHOOK_SECRET=
 CRON_SECRET=                         APP_HMAC_SECRET=
 SHOPIFY_API_KEY=                     SHOPIFY_API_SECRET=      SHOPIFY_SCOPES=
-ASAAS_API_KEY= / STRIPE_SECRET_KEY=  RESEND_API_KEY=          EMAIL_REMETENTE=
+ASAAS_API_KEY=  ASAAS_WEBHOOK_TOKEN=  RESEND_API_KEY=          EMAIL_REMETENTE=
 SENTRY_DSN=                          BUILD_API_SECRET=
 
 # Precisa de https:// na frente. A Vercel mostra o domínio sem o esquema, e

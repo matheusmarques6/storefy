@@ -13,6 +13,8 @@
  * sem montar uma página.
  */
 
+import { formatarPreco } from '@/lib/cobranca';
+
 /** O que a RPC `resumo_do_admin` devolve, com os nulos que o tipo permite. */
 export interface ResumoBruto {
   orgs_ativas: number | null;
@@ -26,12 +28,18 @@ export interface ResumoBruto {
   builds_rejeitados_7d: number | null;
   contas_dev_com_erro: number | null;
   chamados_esperando: number | null;
+  testes_encerrados_7d: number | null;
+  acima_do_limite: number | null;
+  mrr_centavos: number | null;
+  assinaturas_ativas: number | null;
 }
 
 export interface NumeroDoResumo {
   chave: string;
   rotulo: string;
   valor: number;
+  /** Como o número aparece, quando não é uma contagem (dinheiro). */
+  formatado?: string;
   /** Uma linha dizendo o que o número significa, em pt-BR e sem jargão. */
   ajuda: string;
   /** Para onde a pessoa vai atrás do detalhe. Ausente quando a tela não existe. */
@@ -74,6 +82,20 @@ export function pendencias(bruto: ResumoBruto): NumeroDoResumo[] {
       href: '/admin/organizacoes',
     },
     {
+      chave: 'testes_encerrados',
+      rotulo: 'Testes que acabaram sem assinar',
+      valor: numero(bruto.testes_encerrados_7d),
+      ajuda: 'Nos últimos 7 dias: é a hora de conversar com eles.',
+      href: '/admin/organizacoes',
+    },
+    {
+      chave: 'acima_do_limite',
+      rotulo: 'Acima do limite de aparelhos',
+      valor: numero(bruto.acima_do_limite),
+      ajuda: 'Usam mais aparelhos do que o plano permite: a OneSignal cobra por eles.',
+      href: '/admin/push',
+    },
+    {
       chave: 'builds_com_erro',
       rotulo: 'Builds com erro',
       valor: numero(bruto.builds_com_erro_7d),
@@ -108,7 +130,19 @@ export function pendencias(bruto: ResumoBruto): NumeroDoResumo[] {
 
 /** Como a plataforma está. Aparece sempre, inclusive zerado. */
 export function panorama(bruto: ResumoBruto): NumeroDoResumo[] {
+  const assinaturas = numero(bruto.assinaturas_ativas);
   return [
+    {
+      chave: 'mrr',
+      rotulo: 'Receita recorrente (MRR)',
+      valor: numero(bruto.mrr_centavos),
+      formatado: formatarPreco(numero(bruto.mrr_centavos)),
+      ajuda:
+        assinaturas === 1
+          ? '1 assinatura em dia, pelo valor contratado.'
+          : `${String(assinaturas)} assinaturas em dia, pelo valor contratado.`,
+      href: '/admin/planos',
+    },
     {
       chave: 'orgs_ativas',
       rotulo: 'Clientes ativos',

@@ -292,6 +292,17 @@ async function main(): Promise<void> {
     'abrir_chamado',
     'mensagens_do_chamado',
     'email_do_autor_do_chamado',
+    // Fase 7 — cobrança: a situação e o uso (C15, A04) e o que o servidor
+    // grava depois de a Asaas responder.
+    'situacao_da_cobranca',
+    'uso_da_org',
+    'aparelhos_por_loja',
+    'estender_teste',
+    'salvar_quem_paga',
+    'registrar_assinatura',
+    'trocar_plano_da_assinatura',
+    'registrar_fatura',
+    'encerrar_assinatura',
   ];
 
   const { rows: funcoes } = await client.query<FuncaoSql>(

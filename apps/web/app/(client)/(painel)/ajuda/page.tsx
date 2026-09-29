@@ -12,6 +12,7 @@ import { exigirContextoCliente } from '@/lib/contexto';
 import { criarClientServidor } from '@/lib/supabase/server';
 import { ARTIGOS } from '@/lib/ajuda';
 import {
+  ASSUNTOS,
   DATA_DA_SITUACAO_PARA_LOJISTA,
   ROTULO_DA_SITUACAO_PARA_LOJISTA,
   ROTULO_DO_ASSUNTO,
@@ -29,10 +30,13 @@ export const metadata: Metadata = { title: 'Ajuda' };
 export default async function PaginaAjuda({
   searchParams,
 }: {
-  searchParams: Promise<{ pagina?: string }>;
+  searchParams: Promise<{ pagina?: string; assunto?: string }>;
 }) {
   const { organizacao, lojas, lojaAtiva, visita } = await exigirContextoCliente();
-  const { pagina, de, ate } = lerParams({ pagina: (await searchParams).pagina });
+  const brutos = await searchParams;
+  const { pagina, de, ate } = lerParams({ pagina: brutos.pagina });
+  // Quem chega de outra tela (a cobrança, por exemplo) já vem com o assunto.
+  const assuntoInicial = ASSUNTOS.find((assunto) => assunto === brutos.assunto) ?? null;
   const supabase = await criarClientServidor();
 
   const {
@@ -95,6 +99,7 @@ export default async function PaginaAjuda({
             <FormularioDeChamado
               lojas={lojas.map((loja) => ({ id: loja.id, name: loja.name }))}
               lojaAtiva={lojaAtiva?.id ?? null}
+              assuntoInicial={assuntoInicial}
             />
           </CardContent>
         </Card>

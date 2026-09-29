@@ -36,6 +36,11 @@ export type DeveloperAccount = Row<'developer_accounts'>;
 export type Invitation = Row<'invitations'>;
 export type SupportTicket = Row<'support_tickets'>;
 export type SupportMessage = Row<'support_messages'>;
+export type Plan = Row<'plans'>;
+export type Subscription = Row<'subscriptions'>;
+export type Invoice = Row<'invoices'>;
+export type BillingCustomer = Row<'billing_customers'>;
+export type BillingEvent = Row<'billing_events'>;
 
 /**
  * Colunas de segredo, que o navegador nunca vê.
@@ -87,6 +92,9 @@ export type DeveloperAccountStatus = Enum<'developer_account_status'>;
 export type InvitationKind = Enum<'invitation_kind'>;
 export type TicketStatus = Enum<'ticket_status'>;
 export type TicketTopic = Enum<'ticket_topic'>;
+export type BillingProvider = Enum<'billing_provider'>;
+export type SubscriptionStatus = Enum<'subscription_status'>;
+export type InvoiceStatus = Enum<'invoice_status'>;
 
 /**
  * Papéis autorizados a criar e editar lojas e dados da organização.
@@ -125,6 +133,22 @@ export const ROTULO_STATUS_ORG: Record<OrgStatus, string> = {
   trialing: 'Em teste',
   active: 'Ativa',
   past_due: 'Pagamento pendente',
+  canceled: 'Cancelada',
+};
+
+/** A assinatura, como o lojista lê na C15. */
+export const ROTULO_STATUS_ASSINATURA: Record<SubscriptionStatus, string> = {
+  pending: 'Aguardando o primeiro pagamento',
+  active: 'Em dia',
+  past_due: 'Fatura em atraso',
+  canceled: 'Cancelada',
+};
+
+export const ROTULO_STATUS_FATURA: Record<InvoiceStatus, string> = {
+  pending: 'Aguardando pagamento',
+  paid: 'Paga',
+  overdue: 'Vencida',
+  refunded: 'Estornada',
   canceled: 'Cancelada',
 };
 

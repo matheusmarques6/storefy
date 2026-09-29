@@ -111,6 +111,21 @@ exception
 end;
 $$;
 
+-- True quando o comando lança erro E a mensagem traz o trecho. Para as travas
+-- que falam com o lojista: não basta barrar, a frase precisa dizer o porquê.
+create or replace function tests.erro_com(p_sql text, p_trecho text)
+returns boolean
+language plpgsql
+as $$
+begin
+  execute p_sql;
+  return false;
+exception
+  when others then
+    return position(p_trecho in sqlerrm) > 0;
+end;
+$$;
+
 -- Quantas linhas o usuário atual enxerga na consulta.
 create or replace function tests.contar(p_sql text)
 returns integer

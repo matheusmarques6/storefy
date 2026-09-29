@@ -21,6 +21,7 @@ import type { Json } from '@storefy/db';
 import { COOKIE_LOJA, COOKIE_ORG } from '@/lib/contexto';
 import { criarClientServidor } from '@/lib/supabase/server';
 import { criarClientServiceRole } from '@/lib/supabase/admin';
+import { cancelarAssinaturaDaEmpresa } from '@/lib/cobranca-servidor';
 import { visitaDoPedido } from '@/lib/visita';
 import { COOKIE_LOJA_DA_VISITA, COOKIE_VISITA } from '@/lib/visita-nomes';
 
@@ -103,6 +104,23 @@ export async function excluirMinhaConta(
   if (erroEfeitos != null) {
     console.error('[conta] efeitos da exclusão não lidos:', erroEfeitos.message);
     return { mensagem: 'Não conseguimos conferir suas empresas. Tente de novo.', valores };
+  }
+
+  /*
+   * A empresa que vai junto com a conta não pode levar a assinatura acesa: a
+   * Asaas continuaria cobrando o cartão de quem já foi embora. Cancela lá
+   * ANTES — e, se a Asaas não responder, nada é excluído (o banco também
+   * recusa excluir empresa com assinatura viva).
+   */
+  for (const efeito of efeitos) {
+    if (efeito.efeito !== 'excluida' || efeito.org_id == null) continue;
+    const cancelada = await cancelarAssinaturaDaEmpresa(efeito.org_id, user.id);
+    if (!cancelada.ok) {
+      return {
+        mensagem: `Não conseguimos cancelar a assinatura de ${efeito.empresa ?? 'uma empresa'}: ${cancelada.motivo} Nada foi excluído.`,
+        valores,
+      };
+    }
   }
 
   const { error: erroExclusao } = await servico.auth.admin.deleteUser(user.id);

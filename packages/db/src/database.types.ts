@@ -298,6 +298,83 @@ export type Database = {
           },
         ];
       };
+      billing_customers: {
+        Row: {
+          org_id: string;
+          provider: Database["public"]["Enums"]["billing_provider"];
+          external_id: string;
+          nome: string;
+          documento_tipo: string;
+          documento_final: string;
+          email: string;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          org_id: string;
+          provider: Database["public"]["Enums"]["billing_provider"];
+          external_id: string;
+          nome: string;
+          documento_tipo: string;
+          documento_final: string;
+          email: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          org_id?: string;
+          provider?: Database["public"]["Enums"]["billing_provider"];
+          external_id?: string;
+          nome?: string;
+          documento_tipo?: string;
+          documento_final?: string;
+          email?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "billing_customers_org_id_fkey";
+            columns: ["org_id"];
+            referencedRelation: "organizations";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      billing_events: {
+        Row: {
+          provider: Database["public"]["Enums"]["billing_provider"];
+          external_id: string;
+          tipo: string;
+          org_id: string | null;
+          resultado: string;
+          recebido_em: string;
+        };
+        Insert: {
+          provider: Database["public"]["Enums"]["billing_provider"];
+          external_id: string;
+          tipo: string;
+          org_id?: string | null;
+          resultado: string;
+          recebido_em?: string;
+        };
+        Update: {
+          provider?: Database["public"]["Enums"]["billing_provider"];
+          external_id?: string;
+          tipo?: string;
+          org_id?: string | null;
+          resultado?: string;
+          recebido_em?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "billing_events_org_id_fkey";
+            columns: ["org_id"];
+            referencedRelation: "organizations";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       builds: {
         Row: {
           id: string;
@@ -695,6 +772,58 @@ export type Database = {
           },
         ];
       };
+      invoices: {
+        Row: {
+          id: string;
+          org_id: string;
+          provider: Database["public"]["Enums"]["billing_provider"];
+          external_id: string;
+          assinatura_externa: string | null;
+          valor_centavos: number;
+          status: Database["public"]["Enums"]["invoice_status"];
+          vencimento: string;
+          paga_em: string | null;
+          link: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          org_id: string;
+          provider: Database["public"]["Enums"]["billing_provider"];
+          external_id: string;
+          assinatura_externa?: string | null;
+          valor_centavos: number;
+          status: Database["public"]["Enums"]["invoice_status"];
+          vencimento: string;
+          paga_em?: string | null;
+          link?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          org_id?: string;
+          provider?: Database["public"]["Enums"]["billing_provider"];
+          external_id?: string;
+          assinatura_externa?: string | null;
+          valor_centavos?: number;
+          status?: Database["public"]["Enums"]["invoice_status"];
+          vencimento?: string;
+          paga_em?: string | null;
+          link?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "invoices_org_id_fkey";
+            columns: ["org_id"];
+            referencedRelation: "organizations";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       memberships: {
         Row: {
           org_id: string;
@@ -762,9 +891,8 @@ export type Database = {
           id: string;
           name: string;
           slug: string;
-          plan: string;
           status: Database["public"]["Enums"]["org_status"];
-          trial_ends_at: string | null;
+          trial_ends_at: string;
           created_at: string;
           updated_at: string;
         };
@@ -772,9 +900,8 @@ export type Database = {
           id?: string;
           name: string;
           slug: string;
-          plan?: string;
           status?: Database["public"]["Enums"]["org_status"];
-          trial_ends_at?: string | null;
+          trial_ends_at: string;
           created_at?: string;
           updated_at?: string;
         };
@@ -782,9 +909,8 @@ export type Database = {
           id?: string;
           name?: string;
           slug?: string;
-          plan?: string;
           status?: Database["public"]["Enums"]["org_status"];
-          trial_ends_at?: string | null;
+          trial_ends_at?: string;
           created_at?: string;
           updated_at?: string;
         };
@@ -833,6 +959,48 @@ export type Database = {
           triggered_by?: string | null;
           started_at?: string | null;
           finished_at?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      plans: {
+        Row: {
+          id: string;
+          nome: string;
+          descricao: string;
+          preco_centavos: number;
+          limite_lojas: number | null;
+          limite_aparelhos: number | null;
+          limite_campanhas_mes: number | null;
+          disponivel: boolean;
+          vale_no_teste: boolean;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          nome: string;
+          descricao?: string;
+          preco_centavos: number;
+          limite_lojas?: number | null;
+          limite_aparelhos?: number | null;
+          limite_campanhas_mes?: number | null;
+          disponivel?: boolean;
+          vale_no_teste?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          nome?: string;
+          descricao?: string;
+          preco_centavos?: number;
+          limite_lojas?: number | null;
+          limite_aparelhos?: number | null;
+          limite_campanhas_mes?: number | null;
+          disponivel?: boolean;
+          vale_no_teste?: boolean;
           created_at?: string;
           updated_at?: string;
         };
@@ -1164,6 +1332,61 @@ export type Database = {
           },
         ];
       };
+      subscriptions: {
+        Row: {
+          org_id: string;
+          provider: Database["public"]["Enums"]["billing_provider"];
+          external_id: string;
+          plan_id: string;
+          valor_centavos: number;
+          status: Database["public"]["Enums"]["subscription_status"];
+          pago_ate: string | null;
+          inadimplente_desde: string | null;
+          cancelada_em: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          org_id: string;
+          provider: Database["public"]["Enums"]["billing_provider"];
+          external_id: string;
+          plan_id: string;
+          valor_centavos: number;
+          status?: Database["public"]["Enums"]["subscription_status"];
+          pago_ate?: string | null;
+          inadimplente_desde?: string | null;
+          cancelada_em?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          org_id?: string;
+          provider?: Database["public"]["Enums"]["billing_provider"];
+          external_id?: string;
+          plan_id?: string;
+          valor_centavos?: number;
+          status?: Database["public"]["Enums"]["subscription_status"];
+          pago_ate?: string | null;
+          inadimplente_desde?: string | null;
+          cancelada_em?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "subscriptions_org_id_fkey";
+            columns: ["org_id"];
+            referencedRelation: "organizations";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "subscriptions_plan_id_fkey";
+            columns: ["plan_id"];
+            referencedRelation: "plans";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       support_messages: {
         Row: {
           id: string;
@@ -1298,6 +1521,10 @@ export type Database = {
         Args: { p_shop_domain: string };
         Returns: number;
       };
+      aparelhos_por_loja: {
+        Args: { p_org_id: string };
+        Returns: { store_id: string | null; nome: string | null; aparelhos_30d: number | null }[];
+      };
       app_da_loja_shopify: {
         Args: { p_shop_domain: string };
         Returns: { app_id: string | null; store_id: string | null; timezone: string | null }[];
@@ -1386,6 +1613,14 @@ export type Database = {
         Args: { p_id: string };
         Returns: { email: string | null; nome_da_loja: string | null }[];
       };
+      encerrar_assinatura: {
+        Args: { p_provider: Database["public"]["Enums"]["billing_provider"]; p_assinatura: string; p_evento?: string; p_tipo?: string; p_ator?: string };
+        Returns: string;
+      };
+      estender_teste: {
+        Args: { p_org_id: string; p_ate: string };
+        Returns: unknown;
+      };
       falhar_campanha: {
         Args: { p_id: string; p_motivo: string };
         Returns: unknown;
@@ -1438,9 +1673,17 @@ export type Database = {
         Args: { p_app_id: string; p_subscription: string; p_platform: Database["public"]["Enums"]["device_platform"]; p_app_version?: string; p_external_id?: string; p_email_hash?: string };
         Returns: { device_id: string | null; limitado: boolean | null; novo: boolean | null; boas_vindas: boolean | null }[];
       };
+      registrar_assinatura: {
+        Args: { p_org_id: string; p_provider: Database["public"]["Enums"]["billing_provider"]; p_assinatura: string; p_plan_id: string; p_valor_centavos: number; p_ator: string };
+        Returns: unknown;
+      };
       registrar_evento_de_carrinho: {
         Args: { p_app_id: string; p_subscription: string; p_event: Database["public"]["Enums"]["cart_event_type"]; p_item_count: number; p_cart_token?: string; p_value_cents?: number; p_currency?: string };
         Returns: { event_id: string | null; limitado: boolean | null; agendou: boolean | null; cancelou: number | null }[];
+      };
+      registrar_fatura: {
+        Args: { p_provider: Database["public"]["Enums"]["billing_provider"]; p_fatura: string; p_assinatura: string; p_valor_centavos: number; p_status: Database["public"]["Enums"]["invoice_status"]; p_vencimento: string; p_evento?: string; p_tipo?: string; p_paga_em?: string; p_link?: string };
+        Returns: string;
       };
       registrar_pedido: {
         Args: { p_app_id: string; p_shopify_order_id: string; p_source: Database["public"]["Enums"]["origem_do_pedido"]; p_total_cents: number; p_ordered_at: string; p_order_number?: string; p_currency?: string; p_cart_token?: string };
@@ -1468,7 +1711,23 @@ export type Database = {
       };
       resumo_do_admin: {
         Args: Record<string, never>;
-        Returns: { orgs_ativas: number | null; orgs_em_trial: number | null; trials_vencendo_7d: number | null; orgs_inadimplentes: number | null; lojas_live: number | null; lojas_em_revisao: number | null; builds_na_fila: number | null; builds_com_erro_7d: number | null; builds_rejeitados_7d: number | null; contas_dev_com_erro: number | null; chamados_esperando: number | null }[];
+        Returns: { orgs_ativas: number | null; orgs_em_trial: number | null; trials_vencendo_7d: number | null; orgs_inadimplentes: number | null; lojas_live: number | null; lojas_em_revisao: number | null; builds_na_fila: number | null; builds_com_erro_7d: number | null; builds_rejeitados_7d: number | null; contas_dev_com_erro: number | null; chamados_esperando: number | null; testes_encerrados_7d: number | null; acima_do_limite: number | null; mrr_centavos: number | null; assinaturas_ativas: number | null }[];
+      };
+      salvar_quem_paga: {
+        Args: { p_org_id: string; p_provider: Database["public"]["Enums"]["billing_provider"]; p_cliente: string; p_nome: string; p_documento_tipo: string; p_documento_final: string; p_email: string; p_ator: string };
+        Returns: unknown;
+      };
+      situacao_da_cobranca: {
+        Args: { p_org_id: string };
+        Returns: { em_dia: boolean | null; liberado_ate: string | null; teste_ate: string | null; assinatura: Database["public"]["Enums"]["subscription_status"] | null; plano_id: string | null; plano_nome: string | null; valor_centavos: number | null; pago_ate: string | null; inadimplente_desde: string | null; cancelada_em: string | null; limites_do_teste: boolean | null; limite_lojas: number | null; limite_aparelhos: number | null; limite_campanhas_mes: number | null; hoje: string | null }[];
+      };
+      trocar_plano_da_assinatura: {
+        Args: { p_org_id: string; p_plan_id: string; p_valor_centavos: number; p_ator: string };
+        Returns: unknown;
+      };
+      uso_da_org: {
+        Args: { p_org_id: string };
+        Returns: { lojas: number | null; aparelhos_30d: number | null; campanhas_no_mes: number | null }[];
       };
       ver_convite: {
         Args: { p_token: string };
@@ -1479,6 +1738,7 @@ export type Database = {
       app_config_status: "draft" | "published" | "archived";
       audit_action: "create" | "update" | "delete" | "view_as_start" | "view_as_end";
       automation_run_status: "scheduled" | "sent" | "canceled" | "failed";
+      billing_provider: "asaas";
       build_profile: "development" | "preview" | "production";
       build_status: "queued" | "building" | "finished" | "errored" | "submitted" | "in_review" | "approved" | "rejected" | "canceled";
       cart_event_type: "add" | "update" | "checkout_started" | "purchased";
@@ -1486,6 +1746,7 @@ export type Database = {
       developer_platform: "apple" | "google";
       device_platform: "ios" | "android";
       invitation_kind: "organizacao" | "conta" | "equipe";
+      invoice_status: "pending" | "paid" | "overdue" | "refunded" | "canceled";
       membership_role: "owner" | "admin" | "member";
       org_status: "trialing" | "active" | "past_due" | "canceled";
       origem_do_pedido: "app" | "site";
@@ -1496,6 +1757,7 @@ export type Database = {
       shopify_conexao: "oauth" | "manual";
       store_platform: "shopify" | "other";
       store_status: "draft" | "building" | "in_review" | "live" | "paused";
+      subscription_status: "pending" | "active" | "past_due" | "canceled";
       ticket_status: "aberto" | "respondido" | "fechado";
       ticket_topic: "publicacao" | "notificacoes" | "shopify" | "app" | "cobranca" | "outro";
     };

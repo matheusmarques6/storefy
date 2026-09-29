@@ -1,7 +1,7 @@
 /**
- * As três partes das configurações (C16): a empresa, a equipe e a conta de
- * quem está usando. Antes eram só um link solto no texto da primeira tela, e
- * a equipe nem existia.
+ * As partes das configurações: a empresa e a equipe (C16), o plano e a
+ * cobrança (C15) e a conta de quem está usando. Antes eram só um link solto no
+ * texto da primeira tela, e a equipe nem existia.
  */
 import Link from 'next/link';
 import { cn } from '@/lib/utils';
@@ -9,6 +9,7 @@ import { cn } from '@/lib/utils';
 const PARTES = [
   { chave: 'empresa', href: '/configuracoes', rotulo: 'Empresa' },
   { chave: 'equipe', href: '/configuracoes/equipe', rotulo: 'Equipe' },
+  { chave: 'plano', href: '/configuracoes/plano', rotulo: 'Plano e cobrança' },
   { chave: 'conta', href: '/configuracoes/conta', rotulo: 'Minha conta' },
 ] as const;
 
