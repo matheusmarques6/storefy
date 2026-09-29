@@ -42,6 +42,8 @@ Filtros úteis:
   emulador do Android.
 - `--exclude-tags push` num build sem notificações (sem OneSignal).
 - `--exclude-tags aviso` se a loja de teste não tiver um aviso no topo publicado.
+- `--exclude-tags atualizacao` sempre, menos quando a loja de teste estiver
+  preparada para a atualização obrigatória (ver `fluxos/atualizacao.yaml`).
 
 ## Os fluxos
 
@@ -55,3 +57,4 @@ Filtros úteis:
 | `fluxos/ajustes.yaml`              | Os ajustes do app (M12): política de privacidade e versão                                   |
 | `fluxos/ajustes-notificacoes.yaml` | Desligar e religar as notificações dentro do app (Apple 4.5.4)                              |
 | `fluxos/aviso.yaml`                | O aviso no topo aparece e, fechado, não volta na próxima abertura                           |
+| `fluxos/atualizacao.yaml`          | Atualização obrigatória (M11): a tela toma o app e o botão leva à loja de aplicativos       |

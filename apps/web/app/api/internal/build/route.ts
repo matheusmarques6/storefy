@@ -110,7 +110,7 @@ async function montar(buildId: string): Promise<DadosParaOBuild | null> {
     await servico
       .from('apps')
       .select(
-        'id, store_id, display_name, bundle_id_ios, package_android, expo_project_id, onesignal_app_id, device_secret_enc, icon_path, splash_path',
+        'id, store_id, display_name, bundle_id_ios, package_android, ios_asc_app_id, expo_project_id, onesignal_app_id, device_secret_enc, icon_path, splash_path',
       )
       .eq('id', build.app_id)
       .maybeSingle(),
@@ -193,6 +193,7 @@ async function montar(buildId: string): Promise<DadosParaOBuild | null> {
     nomeDoApp: app.display_name,
     bundleIdIos: app.bundle_id_ios,
     packageAndroid: app.package_android,
+    iosAscAppId: app.ios_asc_app_id,
     expoProjectId: app.expo_project_id,
     slug: slugDoProjeto(loja.id),
     oneSignalAppId: app.onesignal_app_id,

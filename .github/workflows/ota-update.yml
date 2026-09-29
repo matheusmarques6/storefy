@@ -144,15 +144,37 @@ jobs:
             exit 1
           fi
 
+      # Como no build: a config no ar vai DENTRO do pacote, e é o que o app
+      # usa se abrir sem internet e sem nada guardado. O repositório não tem
+      # a config de loja nenhuma; sem este passo, o app que recebesse a
+      # correção perderia esse último recurso.
+      - name: Embutir a config da loja no pacote
+        env:
+          STORE_ID: ${{ matrix.loja.storeId }}
+        run: |
+          pasta="apps/mobile/brands/$STORE_ID"
+          mkdir -p "$pasta"
+          jq '.config' /tmp/loja.json > "$pasta/config.json"
+
+          # Sem a linha de `import` em `embutida.ts`, o Metro não empacota o
+          # JSON acima.
+          pnpm exec tsx apps/mobile/scripts/registrar-config-embutida.ts "$STORE_ID"
+
       - name: Publicar a correção
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
           EXPO_OWNER: ${{ secrets.EXPO_OWNER }}
+          API: ${{ secrets.STOREFY_API_URL }}
           CANAL: ${{ matrix.loja.canal }}
           MENSAGEM: ${{ github.event.client_payload.mensagem }}
           STORE_ID: ${{ matrix.loja.storeId }}
         working-directory: apps/mobile
         run: |
+          # O `app.config.ts` em modo de pacote: ícone e splash são do binário,
+          # e este runner não os baixa. Número do build e versão também ficam
+          # de fora — o app os lê do próprio binário.
+          export STOREFY_OTA=1
+
           # Pelo ambiente, e não pela linha de comando: `ps` mostra argumento,
           # não mostra ambiente.
           export STOREFY_APP_ID=$(jq -r '.appId' /tmp/loja.json)
@@ -173,6 +195,15 @@ jobs:
           export APP_NAME=$(jq -r '.nomeDoApp' /tmp/loja.json)
           export IOS_BUNDLE_ID=$(jq -r '.bundleIdIos // empty' /tmp/loja.json)
           export ANDROID_PACKAGE=$(jq -r '.packageAndroid // empty' /tmp/loja.json)
+
+          # O manifesto deste pacote passa a ser o de TODO app que o recebe:
+          # o que o app lê dele tem de sair igual ao do build. Sem estas três,
+          # a correção trocava a API da loja pela de desenvolvimento, o
+          # esquema pelo `storefy://` genérico e tirava da atualização
+          # obrigatória (M11) o número do app na App Store.
+          export API_BASE="$API"
+          export APP_SCHEME=$(jq -r '.esquema' /tmp/loja.json)
+          export IOS_APP_STORE_ID=$(jq -r '.iosAscAppId // empty' /tmp/loja.json)
 
           pnpm dlx eas-cli@latest update \
             --channel "$CANAL" \

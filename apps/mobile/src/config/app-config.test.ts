@@ -64,6 +64,12 @@ describe('app.config.ts', () => {
     expect(config.scheme).toBe('storefy-8f2c1a3e');
     expect((config.extra as { apiBase: string }).apiBase).toBe('https://painel.exemplo.com');
   });
+
+  /* Sem ele, a atualização obrigatória (M11) não tem como abrir a App Store. */
+  it('o número do app na App Store vai para o extra', async () => {
+    const config = await avaliar({ IOS_APP_STORE_ID: '6478123456' });
+    expect((config.extra as { appStoreId: string | null }).appStoreId).toBe('6478123456');
+  });
 });
 
 /*
@@ -111,6 +117,25 @@ describe('build de loja', () => {
     const config = await avaliar({ ...LOJA, IOS_BUNDLE_ID: '', ANDROID_PACKAGE: '' });
     expect(config.ios?.bundleIdentifier).toBeUndefined();
     expect(config.android?.package).toBeUndefined();
+  });
+
+  /*
+   * A correção OTA avalia este mesmo arquivo com `STORE_ID` definido, mas o
+   * runner dela não baixa ícone nem splash — são do binário, e o pacote não
+   * os leva. Sem o modo de pacote, toda correção morria aqui, antes de
+   * publicar, em "falta ./brands/<loja>/icon.png".
+   */
+  it('o pacote de correção OTA não precisa da arte da loja', async () => {
+    const semArte = { ...LOJA, STORE_ID: 'loja-sem-arte-no-runner' };
+    await expect(avaliar(semArte)).rejects.toThrow('icon.png');
+
+    const config = await avaliar({ ...semArte, STOREFY_OTA: '1' });
+    expect(config.name).toBe('Loja Aurora');
+    expect(config.icon).toBeUndefined();
+    // O resto da identidade continua obrigatório no pacote.
+    await expect(avaliar({ ...semArte, STOREFY_OTA: '1', APP_SLUG: '' })).rejects.toThrow(
+      'falta a variável APP_SLUG',
+    );
   });
 
   it('sem domínio, não reclama site nenhum', async () => {

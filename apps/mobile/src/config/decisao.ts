@@ -15,10 +15,17 @@ import { safeParseAppConfig, type AppConfig } from '@storefy/config-schema';
 
 export type OrigemDaConfig = 'rede' | 'cache' | 'embutida';
 
+/** As cores da loja que as telas de aviso usam. */
+export type CoresDoAviso = Pick<AppConfig['theme'], 'background' | 'text' | 'primary'>;
+
 export type DecisaoDaConfig =
   | { estado: 'pronta'; config: AppConfig; origem: OrigemDaConfig }
-  /** `minSupportedBuild` da config é maior que o build instalado. */
-  | { estado: 'precisa-atualizar'; minimo: number; atual: number }
+  /**
+   * `minSupportedBuild` da config é maior que o build instalado. Leva as
+   * cores da loja: a tela de atualização (M11) é a única que o cliente vê,
+   * e com as cores da marca ela é da loja, e não um erro genérico.
+   */
+  | { estado: 'precisa-atualizar'; minimo: number; atual: number; cores: CoresDoAviso }
   /** Nenhuma fonte deu uma config válida. */
   | { estado: 'sem-config'; motivo: string };
 
@@ -74,10 +81,12 @@ export function decidirConfig(fontes: FontesDaConfig): DecisaoDaConfig {
    * usuário fora do app por causa de uma falha nossa.
    */
   if (escolhida.config.minSupportedBuild > fontes.buildAtual) {
+    const { background, text, primary } = escolhida.config.theme;
     return {
       estado: 'precisa-atualizar',
       minimo: escolhida.config.minSupportedBuild,
       atual: fontes.buildAtual,
+      cores: { background, text, primary },
     };
   }
 

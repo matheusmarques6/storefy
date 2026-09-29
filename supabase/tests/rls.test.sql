@@ -2942,6 +2942,20 @@ select tests.ok('ota',
   'e a loja com projeto entra');
 
 /*
+ * O pacote da correção leva o número do app na App Store (migration 62): é
+ * por ele que a atualização obrigatória (M11) abre a ficha do app, e os
+ * binários gerados antes de o build gravá-lo só o recebem assim.
+ */
+update public.apps set ios_asc_app_id = '6470000001' where id = (select app_a from tests.lojas);
+
+select tests.ok('ota',
+  (select ios_asc_app_id = '6470000001' and expo_project_id = 'proj-a'
+     from public.dados_da_ota((select loja_a from tests.lojas))),
+  'dados_da_ota leva o número do app na App Store');
+
+update public.apps set ios_asc_app_id = null where id = (select app_a from tests.lojas);
+
+/*
  * Loja pausada não recebe correção. Publicar num canal de loja pausada gasta
  * cota do Expo por um app que ninguém está usando.
  */

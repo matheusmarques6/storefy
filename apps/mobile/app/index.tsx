@@ -11,6 +11,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Platform } from 'react-native';
 import { leuOnboarding, marcarOnboardingVisto } from '../src/config/fontes';
 import { useConfig } from '../src/nucleo/estado';
+import { fichaNaLoja } from '../src/nucleo/loja-de-apps';
 import { estadoDoOnboarding } from '../src/nucleo/onboarding';
 import { TelaDeAtualizacao, TelaDeCarregamento, TelaSemConfig } from '../src/telas/avisos';
 import { Loja } from '../src/telas/loja';
@@ -112,8 +113,17 @@ export default function Inicio(): React.ReactNode {
     case 'carregando':
       return <TelaDeCarregamento />;
 
-    case 'precisa-atualizar':
-      return <TelaDeAtualizacao />;
+    case 'precisa-atualizar': {
+      const plataforma = Platform.OS === 'ios' ? 'ios' : 'android';
+      return (
+        <TelaDeAtualizacao
+          cores={estado.cores}
+          ficha={fichaNaLoja(ambiente, plataforma)}
+          nomeDoApp={ambiente.nomeDoApp}
+          plataforma={plataforma}
+        />
+      );
+    }
 
     case 'sem-config':
       return <TelaSemConfig motivo={estado.motivo} aoTentarDeNovo={recarregar} />;

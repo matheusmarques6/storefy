@@ -323,6 +323,19 @@ describe('POST /api/internal/build — etapa de envio', () => {
   });
 
   /*
+   * O número do app na App Store vai para DENTRO do binário: é por ele que a
+   * atualização obrigatória (M11) abre a ficha do app. A Apple não tem link
+   * pelo bundle ID.
+   */
+  it('a etapa de geração leva o número do app na App Store', async () => {
+    statusDoBuild = 'queued';
+    const resposta = await postarBuild(requisicao('/api/internal/build', { buildId: BUILD }));
+    expect(resposta.status).toBe(200);
+    const dados = (await resposta.json()) as { iosAscAppId: string | null };
+    expect(dados.iosAscAppId).toBe('6478123456');
+  });
+
+  /*
    * O defeito: nada criava o segredo do app. Todo build saía com
    * `deviceSecret` nulo, e o app, sem com que assinar, não registrava o
    * aparelho nem mandava evento — push e automações paravam na origem.

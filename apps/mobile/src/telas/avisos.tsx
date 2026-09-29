@@ -10,8 +10,10 @@
  * nem de "falha na requisição".
  */
 import { Ionicons } from '@expo/vector-icons';
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useCallback, useRef, useState } from 'react';
+import { ActivityIndicator, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 import type { Theme } from '@storefy/config-schema';
+import { abrirFicha, textosDaAtualizacao, type FichaNaLoja } from '../nucleo/loja-de-apps';
 
 /** Cores usadas antes de haver config, para as telas que aparecem sem ela. */
 export const TEMA_NEUTRO = {
@@ -27,12 +29,27 @@ interface AvisoProps {
   titulo: string;
   corpo: string;
   cores?: Cores;
-  acao?: { rotulo: string; aoTocar: () => void };
+  acao?: {
+    rotulo: string;
+    aoTocar: () => void;
+    /** Enquanto a ação anda: o botão fica ocupado, e um segundo toque não repete. */
+    ocupado?: boolean;
+  };
+  /** Uma frase depois do botão — o que deu errado e o que fazer. */
+  observacao?: string;
 }
 
 /** Moldura comum: ícone, título, explicação e, quando faz sentido, um botão. */
-export function Aviso({ icone, titulo, corpo, cores, acao }: AvisoProps): React.ReactNode {
+export function Aviso({
+  icone,
+  titulo,
+  corpo,
+  cores,
+  acao,
+  observacao,
+}: AvisoProps): React.ReactNode {
   const tema = cores ?? TEMA_NEUTRO;
+  const ocupado = acao?.ocupado === true;
 
   return (
     <View style={[estilos.centro, { backgroundColor: tema.background }]}>
@@ -42,14 +59,29 @@ export function Aviso({ icone, titulo, corpo, cores, acao }: AvisoProps): React.
       {acao !== undefined ? (
         <Pressable
           accessibilityRole="button"
+          accessibilityState={{ busy: ocupado, disabled: ocupado }}
+          disabled={ocupado}
           onPress={acao.aoTocar}
           style={({ pressed }) => [
             estilos.botao,
-            { backgroundColor: tema.primary, opacity: pressed ? 0.8 : 1 },
+            { backgroundColor: tema.primary, opacity: pressed || ocupado ? 0.8 : 1 },
           ]}
         >
-          <Text style={[estilos.rotuloDoBotao, { color: tema.background }]}>{acao.rotulo}</Text>
+          {ocupado ? (
+            <ActivityIndicator color={tema.background} />
+          ) : (
+            <Text style={[estilos.rotuloDoBotao, { color: tema.background }]}>{acao.rotulo}</Text>
+          )}
         </Pressable>
+      ) : null}
+      {observacao !== undefined ? (
+        <Text
+          accessibilityLiveRegion="polite"
+          accessibilityRole="alert"
+          style={[estilos.observacao, { color: tema.text }]}
+        >
+          {observacao}
+        </Text>
       ) : null}
     </View>
   );
@@ -112,14 +144,57 @@ export function TelaDeErro({
  *
  * Sem botão de fechar de propósito: a config diz que esta versão não funciona
  * mais, e deixar entrar assim mesmo daria uma tela quebrada em vez de um aviso.
+ *
+ * O botão abre a ficha do app na loja de aplicativos (`loja-de-apps.ts`). Sem
+ * a ficha — um build que não sabe o próprio número na App Store — ou se nada
+ * abrir, a tela diz onde procurar, com o nome do app: nunca um botão que não
+ * leva a lugar nenhum.
  */
-export function TelaDeAtualizacao({ cores }: { cores?: Cores }): React.ReactNode {
+export function TelaDeAtualizacao({
+  cores,
+  ficha,
+  nomeDoApp,
+  plataforma,
+}: {
+  cores?: Cores;
+  ficha: FichaNaLoja | null;
+  nomeDoApp: string;
+  plataforma: 'ios' | 'android';
+}): React.ReactNode {
+  const [abrindo, setAbrindo] = useState(false);
+  const [naoAbriu, setNaoAbriu] = useState(false);
+  const emCurso = useRef(false);
+
+  const textos = textosDaAtualizacao({ plataforma, temFicha: ficha !== null, nomeDoApp });
+
+  const atualizar = useCallback((): void => {
+    if (ficha === null || emCurso.current) return;
+    emCurso.current = true;
+    setAbrindo(true);
+    setNaoAbriu(false);
+    void abrirFicha(ficha, (url) => Linking.openURL(url)).then((abriu) => {
+      emCurso.current = false;
+      setAbrindo(false);
+      setNaoAbriu(!abriu);
+    });
+  }, [ficha]);
+
   return (
     <Aviso
       icone="arrow-up-circle-outline"
       titulo="Atualize o app"
-      corpo="Esta versão ficou para trás. Atualize pela loja de aplicativos para continuar comprando."
+      corpo={textos.corpo}
       cores={cores}
+      acao={
+        ficha === null
+          ? undefined
+          : {
+              rotulo: 'Atualizar agora',
+              aoTocar: atualizar,
+              ocupado: abrindo,
+            }
+      }
+      observacao={naoAbriu ? textos.naoAbriu : undefined}
     />
   );
 }
@@ -166,4 +241,5 @@ const estilos = StyleSheet.create({
     alignItems: 'center',
   },
   rotuloDoBotao: { fontSize: 16, fontWeight: '600' },
+  observacao: { fontSize: 14, lineHeight: 20, marginTop: 16, opacity: 0.8, textAlign: 'center' },
 });

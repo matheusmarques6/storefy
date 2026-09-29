@@ -5,16 +5,10 @@
  * aparelho: o sensor, o cadastro, o pedido ao sistema e o relógio do segundo
  * plano.
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { AppState } from 'react-native';
-import Constants from 'expo-constants';
 import * as LocalAuthentication from 'expo-local-authentication';
-import {
-  binarioComBiometria,
-  depoisDoPedido,
-  deveProtegerConta,
-  trancarAoVoltar,
-} from './biometria';
+import { depoisDoPedido, deveProtegerConta, trancarAoVoltar } from './biometria';
 
 /**
  * - `livre`: a página da conta aparece (sem proteção, ou já desbloqueada);
@@ -46,9 +40,15 @@ interface Aparelho {
   temCadastro: boolean;
 }
 
-export function usarProtecaoDaConta(recursoLigado: boolean): ProtecaoDaConta {
-  // O binário não muda durante a sessão.
-  const binarioPermite = useMemo(() => binarioComBiometria(Constants.expoConfig?.plugins), []);
+/**
+ * @param binarioPermite o binário tem a permissão de Face ID
+ *   (`Ambiente.biometriaNoBinario`, lido do próprio binário: a lista de
+ *   plugins de uma correção OTA é a do código novo, não a dele).
+ */
+export function usarProtecaoDaConta(
+  recursoLigado: boolean,
+  binarioPermite: boolean,
+): ProtecaoDaConta {
   const podeProteger = recursoLigado && binarioPermite;
 
   const [aparelho, setAparelho] = useState<Aparelho | null>(null);

@@ -1,0 +1,34 @@
+# Atualização obrigatória (M11): com uma versão exigida acima do build
+# instalado, a tela de atualizar toma o app inteiro, sem como fechar, e o
+# botão leva à ficha do app na loja de aplicativos.
+#
+# PEDE PREPARO, por isso fica fora da rodada comum (tag `atualizacao`): no
+# editor da loja de teste, em "Atualização obrigatória", exija a última
+# versão aprovada — acima do build de desenvolvimento instalado — e publique.
+# Depois de rodar, volte para "Não exigir".
+appId: ${APP_ID}
+name: Atualização obrigatória
+tags:
+  - atualizacao
+---
+- launchApp:
+    clearState: true
+# A config nova chega da rede e troca a loja pela tela de atualizar.
+- extendedWaitUntil:
+    visible: 'Atualize o app'
+    timeout: 30000
+- assertNotVisible:
+    id: 'aba-pagina-0'
+# O build de desenvolvimento não tem o número do app na App Store: aí a
+# tela diz onde procurar, em vez de mostrar o botão.
+- runFlow:
+    when:
+      visible: 'Atualizar agora'
+    commands:
+      - tapOn: 'Atualizar agora'
+      # A loja de aplicativos (ou o navegador) abre por cima do app.
+      - launchApp
+# De volta, a tela continua: não há como entrar numa versão que não vale mais.
+- extendedWaitUntil:
+    visible: 'Atualize o app'
+    timeout: 15000

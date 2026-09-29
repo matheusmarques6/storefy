@@ -9,6 +9,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest';
 import { NextRequest } from 'next/server';
 import { criptografar, descriptografar } from '@/lib/cripto';
+import { slugDoProjeto } from '@/lib/build-interno';
 
 const CHAVE = Buffer.alloc(32, 31).toString('base64');
 const SEGREDO = 'segredo-do-build';
@@ -29,6 +30,8 @@ let gravado: Record<string, unknown> | null = null;
 let gravadoNoApp: Record<string, unknown> | null = null;
 /** A leitura de progresso que a rota de status faz. */
 let progresso: Record<string, unknown> | null = null;
+/** A config no ar do app da loja. */
+let configPublicada: { config: unknown } | null = null;
 
 vi.mock('@/lib/env', () => ({
   supabaseConfigurado: true,
@@ -73,6 +76,8 @@ vi.mock('@/lib/supabase/admin', () => ({
           return encadeavel;
         },
         maybeSingle: () => {
+          if (tabela === 'app_configs')
+            return Promise.resolve({ data: configPublicada, error: null });
           const linha = progresso ?? rodada;
           const status = (linha as { status?: string } | null)?.status;
           const passa =
@@ -107,6 +112,7 @@ beforeEach(() => {
   gravado = null;
   gravadoNoApp = null;
   progresso = null;
+  configPublicada = { config: { version: 4, store: { name: 'Loja A' } } };
   rodada = { id: OTA, status: 'queued' };
   lojas = [
     { store_id: LOJA_A, app_id: 'app-a', nome: 'Loja A' },
@@ -119,6 +125,7 @@ beforeEach(() => {
       nome_do_app: 'Loja A',
       bundle_id_ios: 'br.com.a',
       package_android: 'br.com.a',
+      ios_asc_app_id: '6478123456',
       expo_project_id: 'proj-a',
       onesignal_app_id: 'os-a',
       device_secret_enc: criptografar('segredo-da-loja-a'),
@@ -190,6 +197,46 @@ describe('POST /api/internal/ota', () => {
       deviceSecret: 'segredo-da-loja-a',
       canal: `production-${LOJA_A}`,
     });
+  });
+
+  /*
+   * O pacote da correção carrega o `app.config.ts` de novo, e o manifesto
+   * dele passa a ser o de TODO app que a recebe. O que ficasse de fora
+   * voltaria ao padrão: o número da App Store sumiria da atualização
+   * obrigatória (M11), e o esquema viraria o `storefy://` de desenvolvimento.
+   */
+  /*
+   * O pacote é montado a partir do repositório, que não tem a config de loja
+   * nenhuma. Sem a config no ar embutida, o app que recebesse a correção
+   * perderia o último recurso de quando abre sem internet e sem cache.
+   */
+  it('a etapa da loja leva a config no ar, para embutir no pacote', async () => {
+    const resposta = await postarOta(
+      requisicao('/api/internal/ota', { etapa: 'loja', otaId: OTA, storeId: LOJA_A }),
+    );
+    expect(((await resposta.json()) as { config: unknown }).config).toEqual({
+      version: 4,
+      store: { name: 'Loja A' },
+    });
+  });
+
+  it('loja sem config no ar: 404, e o job dela falha dizendo o motivo', async () => {
+    configPublicada = null;
+    const resposta = await postarOta(
+      requisicao('/api/internal/ota', { etapa: 'loja', otaId: OTA, storeId: LOJA_A }),
+    );
+    expect(resposta.status).toBe(404);
+    expect(await resposta.json()).toEqual({ erro: 'sem_config_publicada' });
+  });
+
+  it('a etapa da loja leva o número da App Store e o esquema do build', async () => {
+    const resposta = await postarOta(
+      requisicao('/api/internal/ota', { etapa: 'loja', otaId: OTA, storeId: LOJA_A }),
+    );
+    const dados = (await resposta.json()) as Record<string, unknown>;
+    expect(dados.iosAscAppId).toBe('6478123456');
+    expect(dados.esquema).toBe(slugDoProjeto(LOJA_A));
+    expect(dados.esquema).toBe(dados.slug);
   });
 
   it('loja que já tem segredo recebe o mesmo, sem gravar nada', async () => {

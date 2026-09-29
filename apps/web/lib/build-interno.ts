@@ -131,6 +131,12 @@ export interface DadosParaOBuild {
   nomeDoApp: string;
   bundleIdIos: string | null;
   packageAndroid: string | null;
+  /**
+   * O número do app na App Store. Vai para dentro do binário: é por ele que
+   * a atualização obrigatória (M11) abre a ficha do app — a Apple não tem
+   * link pelo bundle ID. O checklist só libera o build de iPhone com ele.
+   */
+  iosAscAppId: string | null;
   expoProjectId: string | null;
   /** Slug do projeto EAS desta loja. Ver `slugDoProjeto`. */
   slug: string;

@@ -72,7 +72,10 @@ export function Loja({
   );
   const primeira = abas[0];
   const conta = useMemo(() => abaDaConta(abas), [abas]);
-  const protecao = usarProtecaoDaConta(config.features.biometricLogin && conta !== null);
+  const protecao = usarProtecaoDaConta(
+    config.features.biometricLogin && conta !== null,
+    ambiente.biometriaNoBinario,
+  );
 
   const [ativa, setAtiva] = useState(primeira?.id ?? '');
   const [itensNoCarrinho, setItensNoCarrinho] = useState(0);

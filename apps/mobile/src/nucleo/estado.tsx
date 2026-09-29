@@ -6,6 +6,7 @@
  * para desenhar a primeira tela transformaria toda abertura em tela branca no
  * tempo do 3G do cliente.
  */
+import { requireOptionalNativeModule } from 'expo';
 import Constants from 'expo-constants';
 import { Platform } from 'react-native';
 import {
@@ -58,15 +59,20 @@ interface ValorDoContexto {
 
 const Contexto = createContext<ValorDoContexto | null>(null);
 
-/** Lê o `extra` deste build a partir do `expo-constants`. */
+/**
+ * Lê o que este build sabe sobre si, a partir do `expo-constants`.
+ *
+ * Duas fontes (ver `ambiente.ts`): o manifesto em uso, que uma correção OTA
+ * troca, e o `app.config` que o build gravou no binário — que o
+ * `ExponentConstants` nativo entrega intacto, qualquer que seja a correção.
+ */
 export function ambienteDoApp(): Ambiente {
-  const config = Constants.expoConfig;
+  const nativo = requireOptionalNativeModule<{ manifest?: unknown }>('ExponentConstants');
   return lerAmbiente({
-    extra: config?.extra ?? null,
+    manifesto: Constants.expoConfig ?? null,
+    binario: nativo?.manifest ?? null,
+    buildNativoIos: Constants.platform?.ios?.buildNumber ?? null,
     plataforma: Platform.OS === 'ios' ? 'ios' : 'android',
-    versao: config?.version ?? null,
-    buildIos: config?.ios?.buildNumber ?? null,
-    buildAndroid: config?.android?.versionCode ?? null,
   });
 }
 

@@ -1723,7 +1723,7 @@ export type Database = {
       };
       dados_da_ota: {
         Args: { p_store_id: string };
-        Returns: { app_id: string | null; store_id: string | null; nome_do_app: string | null; bundle_id_ios: string | null; package_android: string | null; expo_project_id: string | null; onesignal_app_id: string | null; device_secret_enc: string | null }[];
+        Returns: { app_id: string | null; store_id: string | null; nome_do_app: string | null; bundle_id_ios: string | null; package_android: string | null; ios_asc_app_id: string | null; expo_project_id: string | null; onesignal_app_id: string | null; device_secret_enc: string | null }[];
       };
       definir_chave_do_webhook: {
         Args: { p_automacao: string; p_ator: string; p_hash: string; p_dica: string };

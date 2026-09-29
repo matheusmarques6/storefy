@@ -118,6 +118,28 @@ export async function POST(requisicao: NextRequest): Promise<NextResponse> {
       );
     }
 
+    /*
+     * A config no ar vai EMBUTIDA no pacote, como no build: é o que o app usa
+     * se abrir sem internet e sem nada guardado. O pacote é montado a partir
+     * do repositório, que não tem a config de loja nenhuma — sem isto, o app
+     * que recebesse a correção ficaria sem esse último recurso.
+     */
+    const { data: publicada } = lido(
+      await servico
+        .from('app_configs')
+        .select('config')
+        .eq('app_id', loja.app_id)
+        .eq('status', 'published')
+        .maybeSingle(),
+      'a configuração no ar',
+    );
+    if (publicada == null) {
+      return NextResponse.json(
+        { erro: 'sem_config_publicada' },
+        { status: 404, headers: SEM_CACHE },
+      );
+    }
+
     return NextResponse.json(
       {
         storeId: loja.store_id,
@@ -125,8 +147,20 @@ export async function POST(requisicao: NextRequest): Promise<NextResponse> {
         nomeDoApp: loja.nome_do_app,
         bundleIdIos: loja.bundle_id_ios,
         packageAndroid: loja.package_android,
+        /*
+         * A atualização obrigatória (M11) abre a ficha do app na App Store
+         * por este número. Os binários gerados antes de o build gravá-lo só o
+         * recebem por aqui.
+         */
+        iosAscAppId: loja.ios_asc_app_id,
         expoProjectId: loja.expo_project_id,
         slug: slugDoProjeto(loja.store_id),
+        /*
+         * O mesmo esquema de URL do build. O pacote da correção carrega o
+         * `app.config.ts` de novo, e sem ele o manifesto em uso diria
+         * `storefy://` num app que o sistema abre por `storefy-<loja>://`.
+         */
+        esquema: slugDoProjeto(loja.store_id),
         oneSignalAppId: loja.onesignal_app_id,
         /*
          * Criado aqui se a loja ainda não tem: os apps gerados antes de o
@@ -135,6 +169,7 @@ export async function POST(requisicao: NextRequest): Promise<NextResponse> {
          */
         deviceSecret: await garantirSegredoDoApp(servico, loja.app_id, loja.device_secret_enc),
         canal: canalDaOta(loja.store_id),
+        config: publicada.config,
       },
       { headers: SEM_CACHE },
     );

@@ -307,6 +307,9 @@ jobs:
           export STORE_DOMAIN=$(jq -r '.dominioDaLoja // empty' /tmp/build.json)
           export APP_SCHEME=$(jq -r '.esquema' /tmp/build.json)
           export API_BASE="$API"
+          # O número do app na App Store: a atualização obrigatória (M11)
+          # abre a ficha do app por ele. A Apple não tem link pelo bundle ID.
+          export IOS_APP_STORE_ID=$(jq -r '.iosAscAppId // empty' /tmp/build.json)
 
           # O `app.config.ts` é avaliado DE NOVO no servidor da EAS, e lá só
           # existem as variáveis do `env` do perfil (ou as cadastradas na EAS):
@@ -330,6 +333,7 @@ jobs:
             --arg API_BASE "$API_BASE" \
             --arg ONESIGNAL_APP_ID "$ONESIGNAL_APP_ID" \
             --arg STOREFY_DEVICE_SECRET "$STOREFY_DEVICE_SECRET" \
+            --arg IOS_APP_STORE_ID "$IOS_APP_STORE_ID" \
             '.build[$perfil].env = ((.build[$perfil].env // {}) + ($ARGS.named | del(.perfil)))' \
             eas.json > eas.json.novo
           mv eas.json.novo eas.json

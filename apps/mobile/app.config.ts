@@ -67,10 +67,23 @@ const modoPrevia = opcional('PREVIEW_MODE', '') === '1';
  */
 const buildDeLoja = (ambiente['STORE_ID'] ?? '') !== '' && !modoPrevia;
 
+/*
+ * Pacote de correção OTA (`ota-update.yml`). O `eas update` avalia este
+ * arquivo para montar o manifesto do pacote, mas ícone e splash são do
+ * BINÁRIO: o pacote não os leva, e o runner da correção não os baixa. Sem
+ * esta distinção, toda correção morria aqui, em "falta ./brands/<loja>/icon.png",
+ * antes de publicar. O resto da identidade continua obrigatório.
+ *
+ * Versão e número do build também ficam no padrão num pacote: ele serve a
+ * todos os binários da loja de uma vez. O app lê os dois do próprio binário
+ * (`src/nucleo/ambiente.ts`), e não do manifesto em uso.
+ */
+const pacoteOta = opcional('STOREFY_OTA', '') === '1';
+
 function arteDaLoja(arquivo: string): string | undefined {
   const relativo = `./brands/${storeId}/${arquivo}`;
   if (existsSync(join(__dirname, 'brands', storeId, arquivo))) return relativo;
-  if (buildDeLoja) {
+  if (buildDeLoja && !pacoteOta) {
     throw new Error(
       `app.config.ts: falta ${relativo}. ` +
         'O build por loja precisa do ícone e da splash da loja (seção 7 do plano).',
@@ -207,6 +220,13 @@ const config: ExpoConfig = {
      * segredo do produto. Nunca reaproveite o mesmo valor entre lojas.
      */
     deviceSecret: ambiente['STOREFY_DEVICE_SECRET'] ?? null,
+    /*
+     * O número do app na App Store (`apps.ios_asc_app_id`). A atualização
+     * obrigatória (M11) abre a ficha do app por ele — a Apple não tem link
+     * pelo bundle ID. O painel só libera o build de iPhone com o app já
+     * criado lá, então todo build de loja o tem.
+     */
+    appStoreId: ambiente['IOS_APP_STORE_ID'] ?? null,
     eas: { projectId: ambiente['EAS_PROJECT_ID'] ?? null },
   },
 

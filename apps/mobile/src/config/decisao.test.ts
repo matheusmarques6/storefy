@@ -93,7 +93,13 @@ describe('decidirConfig — atualização obrigatória', () => {
       embutida: config(),
       buildAtual: 12,
     });
-    expect(resultado).toEqual({ estado: 'precisa-atualizar', minimo: 20, atual: 12 });
+    expect(resultado).toEqual({
+      estado: 'precisa-atualizar',
+      minimo: 20,
+      atual: 12,
+      // As cores da loja, para a tela de atualização não parecer um erro.
+      cores: { background: '#ffffff', text: '#1a1a1a', primary: '#1a1a1a' },
+    });
   });
 
   it('deixa passar quando o build é exatamente o mínimo', () => {
