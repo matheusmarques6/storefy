@@ -15,6 +15,7 @@ import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'rea
 import { BackHandler, Platform, Share, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { AppConfig } from '@storefy/config-schema';
+import type { NativeToWeb } from '@storefy/bridge';
 import { abaDaConta, abaParaCaminho, abasUsaveis, resolverAbas } from '../config/abas';
 import { BarraDeAbas } from '../navegacao/barra-de-abas';
 import { AbaWebView, type ControleDaAba } from '../webview/aba-webview';
@@ -247,7 +248,11 @@ export function Loja({
   const clienteIdentificado = useRef<string | null>(null);
 
   const aoAgir = useCallback(
-    (acao: AcaoNativa): void => {
+    /*
+     * `responder` só existe quando a ação veio de uma mensagem da página; as
+     * que o app deduz do endereço (`aoVerEndereco`) não têm a quem responder.
+     */
+    (acao: AcaoNativa, responder?: (mensagem: NativeToWeb) => void): void => {
       switch (acao.tipo) {
         case 'carrinho':
           // Item entrou no carrinho: a confirmação que o dedo sente.
@@ -327,8 +332,47 @@ export function Loja({
           push.aoIniciarCheckout(acao.token, itensNoCarrinho);
           return;
 
+        case 'avisar-de-volta': {
+          /*
+           * O botão da página espera a resposta para dizer "pronto" — ou
+           * onde ligar as notificações, ou "tente de novo". Sem ela, ele
+           * mentia "pronto" até quando nada era gravado.
+           */
+          const { variantId } = acao;
+          void push.aoPedirAvisoDeVolta({ variantId, path: acao.path }).then(
+            (resposta) => {
+              responder?.({ type: 'NOTIFY_WHEN_BACK_RESULT', variantId, ...resposta });
+            },
+            () => {
+              responder?.({
+                type: 'NOTIFY_WHEN_BACK_RESULT',
+                variantId,
+                ok: false,
+                reason: 'unavailable',
+              });
+            },
+          );
+          return;
+        }
+
+        case 'recusar-aviso-de-volta':
+          responder?.({
+            type: 'NOTIFY_WHEN_BACK_RESULT',
+            variantId: acao.variantId,
+            ok: false,
+            reason: 'unavailable',
+          });
+          return;
+
         case 'ignorar':
           return;
+
+        default: {
+          // Uma ação nova sem o seu `case` não compila: foi assim que o "me
+          // avise" ficou sem fazer nada — o pedido chegava e morria aqui.
+          const esquecida: never = acao;
+          return esquecida;
+        }
       }
     },
     [itensNoCarrinho, push],

@@ -28,6 +28,7 @@ import type {
   WebViewProgressEvent,
 } from 'react-native-webview/lib/WebViewTypes';
 import type { AppConfig } from '@storefy/config-schema';
+import { injecaoDeMensagem, type NativeToWeb } from '@storefy/bridge';
 import type { AbaResolvida } from '../config/abas';
 import { acaoParaMensagem, type AcaoNativa, type ContextoDasAcoes } from '../bridge/acoes';
 import { TelaDeErro, TelaSemConexao } from '../telas/avisos';
@@ -59,7 +60,11 @@ interface Props {
   visivel: boolean;
   /** `true` quando o aparelho está sem internet, pelo NetInfo. */
   semConexao: boolean;
-  aoAgir: (acao: AcaoNativa) => void;
+  /**
+   * `responder` entrega uma mensagem à página QUE PEDIU — é por ele que o
+   * botão do "me avise" fica sabendo se o pedido foi gravado.
+   */
+  aoAgir: (acao: AcaoNativa, responder: (mensagem: NativeToWeb) => void) => void;
   registrarControle: (id: string, controle: ControleDaAba | null) => void;
   /** Chamado quando a página termina de carregar. Serve para sumir a splash. */
   aoCarregar?: () => void;
@@ -163,11 +168,15 @@ export function AbaWebView({
     };
   }, [aba.id, config.store.url, recarregar, registrarControle]);
 
+  const responder = useCallback((mensagem: NativeToWeb): void => {
+    referencia.current?.injectJavaScript(injecaoDeMensagem(mensagem));
+  }, []);
+
   const aoReceberMensagem = useCallback(
     (evento: WebViewMessageEvent): void => {
-      aoAgir(acaoParaMensagem(evento.nativeEvent.data, contextoDasAcoes));
+      aoAgir(acaoParaMensagem(evento.nativeEvent.data, contextoDasAcoes), responder);
     },
-    [aoAgir, contextoDasAcoes],
+    [aoAgir, contextoDasAcoes, responder],
   );
 
   const aoPedirNavegacao = useCallback(

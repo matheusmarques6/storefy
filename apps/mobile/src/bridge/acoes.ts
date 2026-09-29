@@ -31,6 +31,12 @@ export type AcaoNativa =
   | { tipo: 'pedido-concluido'; orderId: string; totalCents?: number; pedirAvaliacao: boolean }
   /** "Me avise quando voltar": o botão da página do produto foi tocado. */
   | { tipo: 'avisar-de-volta'; variantId: string; path?: string }
+  /**
+   * O mesmo pedido, num app sem push: não há como avisar. Diferente de
+   * `ignorar`, a página PRECISA ouvir a resposta — o botão está esperando
+   * para dizer ao cliente se deu certo.
+   */
+  | { tipo: 'recusar-aviso-de-volta'; variantId: string }
   | { tipo: 'ignorar'; motivo: string };
 
 export interface ContextoDasAcoes {
@@ -119,6 +125,6 @@ export function acaoParaMensagem(bruta: unknown, contexto: ContextoDasAcoes): Ac
        */
       return contexto.push
         ? { tipo: 'avisar-de-volta', variantId: mensagem.variantId, path: mensagem.path }
-        : { tipo: 'ignorar', motivo: 'Push ainda não configurado neste app.' };
+        : { tipo: 'recusar-aviso-de-volta', variantId: mensagem.variantId };
   }
 }

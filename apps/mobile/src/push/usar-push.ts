@@ -28,6 +28,7 @@ import {
   type PermissaoDoSistema,
 } from './permissao.ts';
 import {
+  avisarQuandoVoltar,
   carrinhoMudou,
   checkoutIniciado,
   identificarCliente,
@@ -36,6 +37,7 @@ import {
   pedidoConcluido,
   registrarQuandoAssinar,
   type DependenciasDaSessao,
+  type RespostaDoAvisoDeVolta,
 } from './sessao.ts';
 import type { DestinoDoPush } from './deep-link.ts';
 import type { CarrinhoParaTag } from './tags.ts';
@@ -61,6 +63,11 @@ export interface UsoDoPush {
   aoIniciarCheckout: (token: string, itens: number) => void;
   aoConcluirPedido: (pedido: { totalCents?: number; currency?: string }) => void;
   aoIdentificarCliente: (customerId: string | undefined) => void;
+  /** "Me avise quando voltar", com a resposta que a página vai mostrar. */
+  aoPedirAvisoDeVolta: (pedido: {
+    variantId: string;
+    path?: string;
+  }) => Promise<RespostaDoAvisoDeVolta>;
 }
 
 interface Opcoes {
@@ -191,14 +198,21 @@ export function usarPush({ ambiente, config, ativo, navegar }: Opcoes): UsoDoPus
 
   /* ------------------------------------------------------- a permissão */
 
-  const chamarSistema = useCallback(async (): Promise<void> => {
+  /** O pedido do sistema, dizendo a quem chamou se o cliente aceitou. */
+  const pedirAoSistema = useCallback(async (): Promise<boolean> => {
     try {
       const aceitou = await notificadorReal.pedirPermissao();
       setSistema(aceitou ? 'concedida' : 'negada');
+      return aceitou;
     } catch {
       setSistema('nao-perguntado');
+      return false;
     }
   }, []);
+
+  const chamarSistema = useCallback(async (): Promise<void> => {
+    await pedirAoSistema();
+  }, [pedirAoSistema]);
 
   const perguntarSePuder = useCallback(
     (gatilho: Gatilho): void => {
@@ -313,6 +327,12 @@ export function usarPush({ ambiente, config, ativo, navegar }: Opcoes): UsoDoPus
     identificarCliente(notificadorReal, customerId);
   }, []);
 
+  const aoPedirAvisoDeVolta = useCallback(
+    (pedido: { variantId: string; path?: string }): Promise<RespostaDoAvisoDeVolta> =>
+      avisarQuandoVoltar(dependencias, { inscricao, sistema }, pedido, pedirAoSistema),
+    [dependencias, inscricao, pedirAoSistema, sistema],
+  );
+
   return {
     mostrarPrePrompt,
     aceitarNoPrePrompt,
@@ -328,5 +348,6 @@ export function usarPush({ ambiente, config, ativo, navegar }: Opcoes): UsoDoPus
     aoIniciarCheckout,
     aoConcluirPedido,
     aoIdentificarCliente,
+    aoPedirAvisoDeVolta,
   };
 }

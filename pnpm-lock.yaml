@@ -217,6 +217,9 @@ importers:
       '@playwright/test':
         specifier: ^1.63.0
         version: 1.63.0
+      '@storefy/bridge':
+        specifier: workspace:*
+        version: link:../../packages/bridge
       '@tailwindcss/postcss':
         specifier: ^4.3.3
         version: 4.3.3

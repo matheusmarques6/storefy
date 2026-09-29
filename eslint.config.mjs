@@ -51,6 +51,13 @@ export default tseslint.config(
         'error',
         { allowNumber: true, allowBoolean: true },
       ],
+      // Um `switch` sem `default` sobre uma união precisa tratar cada membro.
+      // Foi um `case` esquecido que deixou o "me avise quando voltar" sem
+      // fazer nada: o pedido chegava ao app e morria no switch, calado.
+      '@typescript-eslint/switch-exhaustiveness-check': [
+        'error',
+        { considerDefaultExhaustiveForUnions: true },
+      ],
     },
   },
   {

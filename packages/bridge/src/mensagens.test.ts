@@ -231,10 +231,12 @@ describe('lerMensagemDaWeb — recusa entrada hostil ou quebrada', () => {
 });
 
 describe('mensagens do app para a página', () => {
-  it('serializa APP_CONTEXT e NAVIGATE', () => {
+  it('serializa APP_CONTEXT, NAVIGATE e a resposta do aviso de volta', () => {
     const mensagens: NativeToWeb[] = [
       { type: 'APP_CONTEXT', platform: 'android', appVersion: '2.1.0', pushEnabled: false },
       { type: 'NAVIGATE', path: '/colecoes/promo' },
+      { type: 'NOTIFY_WHEN_BACK_RESULT', variantId: '4412345', ok: true },
+      { type: 'NOTIFY_WHEN_BACK_RESULT', variantId: '4412345', ok: false, reason: 'permission' },
     ];
     for (const mensagem of mensagens) {
       expect(JSON.parse(escreverMensagemParaWeb(mensagem))).toEqual(mensagem);
@@ -250,6 +252,17 @@ describe('mensagens do app para a página', () => {
     for (const path of ['https://outro-site.com', '//evil.com', '/\\evil.com']) {
       expect(() => escreverMensagemParaWeb({ type: 'NAVIGATE', path } as never)).toThrow();
     }
+  });
+
+  it('a resposta do aviso só leva os motivos que o tema sabe explicar', () => {
+    expect(() =>
+      escreverMensagemParaWeb({
+        type: 'NOTIFY_WHEN_BACK_RESULT',
+        variantId: '1',
+        ok: false,
+        reason: 'qualquer',
+      } as never),
+    ).toThrow();
   });
 
   it('a injeção é JavaScript válido e termina em true;', () => {

@@ -8,6 +8,7 @@
  */
 import { describe, expect, it, vi } from 'vitest';
 import {
+  avisarQuandoVoltar,
   carrinhoMudou,
   checkoutIniciado,
   identificarCliente,
@@ -449,5 +450,214 @@ describe('identificarCliente', () => {
     expect(() => {
       identificarCliente(quebrado, 'x');
     }).not.toThrow();
+  });
+});
+
+describe('avisarQuandoVoltar', () => {
+  const PEDIDO = { variantId: '4412345', path: '/products/jaqueta?variant=4412345' };
+
+  /** Uma rede que responde, em ordem, os status dados; depois, 200. */
+  function redeEmSequencia(...status: number[]): {
+    buscador: typeof fetch;
+    enviados: { url: string; corpo: Record<string, unknown> }[];
+  } {
+    const enviados: { url: string; corpo: Record<string, unknown> }[] = [];
+    const fila = [...status];
+    const buscador = vi.fn((url: string | URL | Request, init?: RequestInit) => {
+      const texto = typeof init?.body === 'string' ? init.body : '{}';
+      enviados.push({
+        url: url instanceof Request ? url.url : url.toString(),
+        corpo: JSON.parse(texto) as Record<string, unknown>,
+      });
+      return Promise.resolve(
+        new Response(JSON.stringify({ novo: true, deviceId: 'd1', boasVindas: false }), {
+          status: fila.shift() ?? 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      );
+    }) as unknown as typeof fetch;
+    return { buscador, enviados };
+  }
+
+  it('com as notificações ligadas, grava o pedido e diz que deu certo', async () => {
+    const { notificador } = fingirNotificador('sub-1');
+    const { buscador, enviados } = redeEmSequencia(200);
+    vi.stubGlobal('fetch', buscador);
+    const pedir = vi.fn(() => Promise.resolve(true));
+
+    const r = await avisarQuandoVoltar(
+      dependencias(notificador),
+      { inscricao: 'sub-1', sistema: 'concedida' },
+      PEDIDO,
+      pedir,
+    );
+
+    expect(r).toEqual({ ok: true });
+    expect(pedir).not.toHaveBeenCalled();
+    expect(enviados).toHaveLength(1);
+    expect(enviados[0]?.url).toContain('/api/public/back-in-stock');
+    expect(enviados[0]?.corpo).toMatchObject({
+      subscriptionId: 'sub-1',
+      variantId: '4412345',
+      path: '/products/jaqueta?variant=4412345',
+    });
+    vi.unstubAllGlobals();
+  });
+
+  /*
+   * Recusado no sistema, gravar o pedido seria prometer um aviso que nunca
+   * chega. A página diz ao cliente onde ligar as notificações.
+   */
+  it('recusado no sistema: não grava, e a página explica a permissão', async () => {
+    const { notificador } = fingirNotificador('sub-1');
+    const { buscador, enviados } = redeEmSequencia();
+    vi.stubGlobal('fetch', buscador);
+
+    const r = await avisarQuandoVoltar(
+      dependencias(notificador),
+      { inscricao: 'sub-1', sistema: 'negada' },
+      PEDIDO,
+      () => Promise.resolve(true),
+    );
+
+    expect(r).toEqual({ ok: false, reason: 'permission' });
+    expect(enviados).toEqual([]);
+    vi.unstubAllGlobals();
+  });
+
+  it('ainda não perguntado: pede a permissão ANTES de gravar', async () => {
+    const { notificador } = fingirNotificador('sub-1');
+    const { buscador, enviados } = redeEmSequencia(200);
+    vi.stubGlobal('fetch', buscador);
+    const ordem: string[] = [];
+    const pedir = vi.fn(() => {
+      ordem.push(`permissão (enviados até aqui: ${String(enviados.length)})`);
+      return Promise.resolve(true);
+    });
+
+    const r = await avisarQuandoVoltar(
+      dependencias(notificador),
+      { inscricao: 'sub-1', sistema: 'nao-perguntado' },
+      PEDIDO,
+      pedir,
+    );
+
+    expect(r).toEqual({ ok: true });
+    expect(ordem).toEqual(['permissão (enviados até aqui: 0)']);
+    expect(enviados).toHaveLength(1);
+    vi.unstubAllGlobals();
+  });
+
+  it('quem diz "não permitir" não fica na lista', async () => {
+    const { notificador } = fingirNotificador('sub-1');
+    const { buscador, enviados } = redeEmSequencia();
+    vi.stubGlobal('fetch', buscador);
+
+    const r = await avisarQuandoVoltar(
+      dependencias(notificador),
+      { inscricao: 'sub-1', sistema: 'nao-perguntado' },
+      PEDIDO,
+      () => Promise.resolve(false),
+    );
+
+    expect(r).toEqual({ ok: false, reason: 'permission' });
+    expect(enviados).toEqual([]);
+    vi.unstubAllGlobals();
+  });
+
+  it('a inscrição que nasce com o "permitir" é lida na hora', async () => {
+    const { notificador } = fingirNotificador('sub-nova');
+    const { buscador, enviados } = redeEmSequencia(200);
+    vi.stubGlobal('fetch', buscador);
+
+    const r = await avisarQuandoVoltar(
+      dependencias(notificador),
+      { inscricao: null, sistema: 'nao-perguntado' },
+      PEDIDO,
+      () => Promise.resolve(true),
+    );
+
+    expect(r).toEqual({ ok: true });
+    expect(enviados[0]?.corpo).toMatchObject({ subscriptionId: 'sub-nova' });
+    vi.unstubAllGlobals();
+  });
+
+  /*
+   * O registro do aparelho recém-inscrito corre em paralelo. Se o pedido
+   * chega antes, o servidor não conhece o aparelho (404): registrar e tentar
+   * de novo é o que separa "deu certo" de um "tente de novo" à toa.
+   */
+  it('aparelho que o servidor ainda não conhece: registra e tenta uma vez mais', async () => {
+    const { notificador } = fingirNotificador('sub-1');
+    const { buscador, enviados } = redeEmSequencia(404, 200, 200);
+    vi.stubGlobal('fetch', buscador);
+
+    const r = await avisarQuandoVoltar(
+      dependencias(notificador),
+      { inscricao: 'sub-1', sistema: 'concedida' },
+      PEDIDO,
+      () => Promise.resolve(true),
+    );
+
+    expect(r).toEqual({ ok: true });
+    expect(enviados.map((e) => new URL(e.url).pathname)).toEqual([
+      '/api/public/back-in-stock',
+      '/api/public/devices',
+      '/api/public/back-in-stock',
+    ]);
+    vi.unstubAllGlobals();
+  });
+
+  it('servidor fora, teto estourado ou sem inscrição: "tente de novo", e não "pronto"', async () => {
+    for (const status of [503, 429]) {
+      const { notificador } = fingirNotificador('sub-1');
+      const { buscador } = redeEmSequencia(status);
+      vi.stubGlobal('fetch', buscador);
+      await expect(
+        avisarQuandoVoltar(
+          dependencias(notificador),
+          { inscricao: 'sub-1', sistema: 'concedida' },
+          PEDIDO,
+          () => Promise.resolve(true),
+        ),
+      ).resolves.toEqual({ ok: false, reason: 'unavailable' });
+      vi.unstubAllGlobals();
+    }
+
+    const { notificador } = fingirNotificador(null);
+    await expect(
+      avisarQuandoVoltar(
+        dependencias(notificador),
+        { inscricao: null, sistema: 'concedida' },
+        PEDIDO,
+        () => Promise.resolve(true),
+      ),
+    ).resolves.toEqual({ ok: false, reason: 'unavailable' });
+  });
+
+  it('build sem push ou sem credencial: não há como avisar', async () => {
+    const { notificador } = fingirNotificador('sub-1');
+    for (const extra of [{ credenciais: null }, { oneSignalAppId: null }]) {
+      await expect(
+        avisarQuandoVoltar(
+          dependencias(notificador, extra),
+          { inscricao: 'sub-1', sistema: 'concedida' },
+          PEDIDO,
+          () => Promise.resolve(true),
+        ),
+      ).resolves.toEqual({ ok: false, reason: 'unavailable' });
+    }
+  });
+
+  it('o pedido de permissão que estoura vale como "não permitiu"', async () => {
+    const { notificador } = fingirNotificador('sub-1');
+    await expect(
+      avisarQuandoVoltar(
+        dependencias(notificador),
+        { inscricao: 'sub-1', sistema: 'nao-perguntado' },
+        PEDIDO,
+        () => Promise.reject(new Error('SDK fora')),
+      ),
+    ).resolves.toEqual({ ok: false, reason: 'permission' });
   });
 });

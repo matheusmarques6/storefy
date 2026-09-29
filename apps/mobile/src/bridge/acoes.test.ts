@@ -110,9 +110,10 @@ describe('acaoParaMensagem — recurso que este build não tem', () => {
       path: '/products/jaqueta?variant=4412345',
     });
 
+    // Sem push, a página ouve um "não deu": o botão está esperando a resposta.
     expect(acaoParaMensagem(mensagem, FASE_1)).toEqual({
-      tipo: 'ignorar',
-      motivo: 'Push ainda não configurado neste app.',
+      tipo: 'recusar-aviso-de-volta',
+      variantId: '4412345',
     });
     expect(acaoParaMensagem(mensagem, COMPLETO)).toEqual({
       tipo: 'avisar-de-volta',

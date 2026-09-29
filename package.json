@@ -10,7 +10,7 @@
   "scripts": {
     "dev": "turbo run dev",
     "build": "turbo run build",
-    "lint": "turbo run lint",
+    "lint": "turbo run lint && eslint extensions scripts",
     "typecheck": "tsc --noEmit && turbo run typecheck",
     "test": "turbo run test",
     "test:rls": "./scripts/test-rls.sh",

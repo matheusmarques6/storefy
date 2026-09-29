@@ -11,7 +11,8 @@
  */
 import type { Notificador } from './onesignal.ts';
 import type { Credenciais, Resultado, RespostaDoAparelho } from './api.ts';
-import { registrarAparelho, enviarEventoDeCarrinho } from './api.ts';
+import { registrarAparelho, enviarEventoDeCarrinho, pedirAvisoDeVolta } from './api.ts';
+import type { PermissaoDoSistema } from './permissao.ts';
 import { tagsDaCompra, tagsDoApp, tagsDoCarrinho, type CarrinhoParaTag } from './tags.ts';
 import { destinoDoPush, linkDaNotificacao, type DestinoDoPush } from './deep-link.ts';
 
@@ -241,4 +242,70 @@ export function identificarCliente(notificador: Notificador, customerId: string 
     /* Identificar é o que permite falar com a PESSOA em vez do aparelho.
        Não conseguir é perda de alcance, não motivo para quebrar a loja. */
   }
+}
+
+/** O que o botão da página do produto ouve de volta (`NOTIFY_WHEN_BACK_RESULT`). */
+export type RespostaDoAvisoDeVolta =
+  { ok: true } | { ok: false; reason: 'permission' | 'unavailable' };
+
+/**
+ * "Me avise quando voltar": grava o pedido, e só diz que deu certo quando o
+ * cliente PODE ser avisado.
+ *
+ * A ordem importa. Primeiro a permissão: um pedido gravado de quem recusou as
+ * notificações é uma promessa que o app não cumpre — e ainda aparece como
+ * "esperando" para o lojista. Depois a inscrição, que pode nascer só agora,
+ * com o "permitir". Por último o pedido. O aparelho recém-inscrito pode ainda
+ * não estar registrado no servidor (o registro corre em paralelo, pelo
+ * `aoMudarInscricao`): o 404 registra e tenta uma vez mais.
+ */
+export async function avisarQuandoVoltar(
+  dependencias: DependenciasDaSessao,
+  estado: { inscricao: string | null; sistema: PermissaoDoSistema },
+  pedido: { variantId: string; path?: string },
+  pedirPermissao: () => Promise<boolean>,
+): Promise<RespostaDoAvisoDeVolta> {
+  const { credenciais, notificador } = dependencias;
+  if (credenciais === null || dependencias.oneSignalAppId === null) {
+    return { ok: false, reason: 'unavailable' };
+  }
+
+  // Recusado no sistema, o pedido do app não mostra nada: só os Ajustes.
+  if (estado.sistema === 'negada') return { ok: false, reason: 'permission' };
+  if (estado.sistema !== 'concedida') {
+    let aceitou = false;
+    try {
+      aceitou = await pedirPermissao();
+    } catch {
+      aceitou = false;
+    }
+    if (!aceitou) return { ok: false, reason: 'permission' };
+  }
+
+  let inscricao = estado.inscricao;
+  if (inscricao === null) {
+    try {
+      inscricao = await notificador.idDaInscricao();
+    } catch {
+      inscricao = null;
+    }
+  }
+  if (inscricao === null) return { ok: false, reason: 'unavailable' };
+
+  const dados = {
+    subscriptionId: inscricao,
+    variantId: pedido.variantId,
+    ...(pedido.path === undefined ? {} : { path: pedido.path }),
+  };
+  let resposta = await pedirAvisoDeVolta(credenciais, dados);
+  if (!resposta.ok && resposta.status === 404) {
+    const registro = await registrarAparelho(credenciais, {
+      subscriptionId: inscricao,
+      platform: dependencias.plataforma,
+      appVersion: dependencias.appVersion,
+    });
+    if (registro.ok) resposta = await pedirAvisoDeVolta(credenciais, dados);
+  }
+
+  return resposta.ok ? { ok: true } : { ok: false, reason: 'unavailable' };
 }

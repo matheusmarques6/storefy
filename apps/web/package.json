@@ -39,6 +39,7 @@
   },
   "devDependencies": {
     "@playwright/test": "^1.63.0",
+    "@storefy/bridge": "workspace:*",
     "@tailwindcss/postcss": "^4.3.3",
     "@types/node": "^24.10.1",
     "@types/qrcode": "^1.5.6",

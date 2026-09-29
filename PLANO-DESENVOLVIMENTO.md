@@ -263,12 +263,15 @@ type WebToNative =
  | { type: 'HAPTIC'; style: 'light' | 'medium' | 'success' }
  | { type: 'SHARE'; url: string; title?: string }
  | { type: 'REQUEST_PUSH_PERMISSION' }
- | { type: 'OPEN_EXTERNAL'; url: string };
+ | { type: 'OPEN_EXTERNAL'; url: string }
+ | { type: 'NOTIFY_WHEN_BACK'; variantId: string; path?: string };          // botão "me avise" do tema
 
 // Nativo → Web (webviewRef.injectJavaScript)
 type NativeToWeb =
  | { type: 'APP_CONTEXT'; platform: 'ios' | 'android'; appVersion: string; pushEnabled: boolean }
- | { type: 'NAVIGATE'; path: string };
+ | { type: 'NAVIGATE'; path: string }
+ | { type: 'NOTIFY_WHEN_BACK_RESULT'; variantId: string; ok: boolean;       // o pedido foi gravado?
+     reason?: 'permission' | 'unavailable' };
 ```
 O site do lojista também pode chamar `window.Storefy.share()` e as demais funções por um snippet opcional, que é instalado pelo app Shopify (Theme App Extension).
 
@@ -882,7 +885,7 @@ a pedido de alguém.
 | Ativos do período (MAU) | ✅ distinto de `device_days`, por `ativos_no_periodo`. Somar `active_users` daria "aparelho-dias" — quem abre todo dia contaria trinta vezes |
 | Seletor de produto/coleção no composer de push | ⚠️ busca produto e coleção na loja e preenche o deep link; conferido no navegador em 1280 e 390 px com a Shopify falsa. Nunca rodou contra uma loja de verdade |
 | Automação "pedido enviado" | ✅ `fulfillments/create` avisa o APARELHO que fez o pedido, achado pelo token do carrinho. Um aviso por pedido, mesmo com o pedido saindo em três caixas, e respeitando o silêncio noturno |
-| Automação "de volta ao estoque" | ⚠️ ponta a ponta: botão no tema › bridge › endpoint assinado › `products/update` › push com link do produto. Nunca rodou contra uma loja de verdade |
+| Automação "de volta ao estoque" | ⚠️ ponta a ponta: botão no tema › bridge › endpoint assinado › `products/update` › push com link do produto. Nunca rodou contra uma loja de verdade. **Até a Fase 8b o elo do app faltava:** o pedido chegava ao app e não ia ao endpoint (ver a Fase 8b) |
 | O botão "me avise" só dentro do app | ✅ a inscrição é por aparelho; fora do app não há para onde mandar a notificação, e o botão não aparece |
 | A inscrição é consumida no aviso | ✅ quem pediu recebe uma vez e sai da lista. Com a automação desligada nada é avisado E nada é apagado: o pedido espera o lojista ligar |
 | Bloco "avise-me quando voltar" no tema | ⚠️ escrito e testado (o script roda num DOM falso); falta o `shopify app deploy` |
@@ -1418,10 +1421,22 @@ com um servidor no lugar da Asaas falando HTTP de verdade com o painel). A suít
   verdade lá, a suíte mandaria erro de mentira para o Sentry da Storefy (e a
   Resend, e-mail de verdade). O `scripts/e2e-local.sh` agora as deixa vazias,
   e reprova também quando o log estruturado registra `requisicao.falhou`.
+- **O "Me avise quando voltar" nunca gravou um pedido.** O botão do tema
+  mandava a mensagem, o app a transformava na ação `avisar-de-volta` — e o
+  `switch` que executa as ações não tinha esse `case`. Nada chamava o
+  endpoint, e o botão dizia "Pronto! Você será avisado." porque confirmava a
+  ENTREGA ao app, e não a gravação. Agora o app pede a permissão de
+  notificação antes (quem recusa não entra numa lista que nunca vai avisá-lo),
+  grava o pedido (registrando o aparelho e tentando de novo se o servidor
+  ainda não o conhece) e RESPONDE à página pelo bridge
+  (`NOTIFY_WHEN_BACK_RESULT`). O botão só diz "pronto" com a resposta; sem
+  ela, diz onde ligar as notificações ou que dá para tentar de novo. O lint
+  agora exige `switch` exaustivo sobre uniões
+  (`switch-exhaustiveness-check`), conferido pondo o defeito de volta.
 - **Endpoints públicos conferidos um a um.** Os que o app escreve
   (`devices`, `events`, `back-in-stock`, `inbox`, `errors`) exigem a
-  assinatura HMAC do app, e todos menos o `back-in-stock` têm teto por app
-  (o dele entra com a correção do "Me avise quando voltar"); os webhooks conferem a
+  assinatura HMAC do app e têm teto por app — o do `back-in-stock` faltava, e
+  entrou junto com um teto por aparelho; os webhooks conferem a
   assinatura (Shopify, EAS) ou o token (Asaas) em tempo constante; os jobs
   exigem o `CRON_SECRET`; os de leitura (`app-config`, `banner`,
   `preview-config`) só devolvem o que é público — a prévia, por um código de
@@ -1458,6 +1473,8 @@ está em 40 testes.
 | Configurar um alerta no Sentry (e-mail ou Slack) para erro novo | time | sentry.io › Alerts |
 | Enviar os source maps do app ao Sentry, para a pilha do app sair legível | time | EAS (build) e sentry.io |
 | Divulgar o endereço `/status` aos lojistas (Ajuda, e-mail de boas-vindas) | time | — |
+| Publicar a extensão de tema com o botão novo do "Me avise" (`shopify app deploy`) | time | Shopify CLI, com o app no Partner Dashboard |
+| Mandar a correção do app para as lojas por OTA | time | admin › "enviar correção OTA para todas as lojas" |
 
 **Estimativa total:** cerca de 7 a 9 semanas para uma pessoa com Claude Code em ritmo forte. O MVP vendável (Fases 0–4) leva cerca de 4 a 5 semanas.
 

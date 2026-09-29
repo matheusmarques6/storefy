@@ -175,7 +175,29 @@ export const NavigateSchema = z.object({
   path: caminhoInterno,
 });
 
-export const NativeToWebSchema = z.discriminatedUnion('type', [AppContextSchema, NavigateSchema]);
+/**
+ * A resposta ao `NOTIFY_WHEN_BACK`: o pedido de aviso ficou GRAVADO?
+ *
+ * Sem ela, o botão do tema só sabia que a mensagem tinha chegado ao app — e
+ * dizia "pronto!" mesmo quando o servidor não gravou nada, ou quando o
+ * cliente tinha as notificações desligadas e nunca seria avisado.
+ *
+ * `reason` diz o que o cliente pode fazer: `permission` é ligar as
+ * notificações do app nos ajustes do celular; `unavailable` é tentar de novo
+ * daqui a pouco.
+ */
+export const NotifyWhenBackResultSchema = z.object({
+  type: z.literal('NOTIFY_WHEN_BACK_RESULT'),
+  variantId: z.string().min(1).max(64),
+  ok: z.boolean(),
+  reason: z.enum(['permission', 'unavailable']).optional(),
+});
+
+export const NativeToWebSchema = z.discriminatedUnion('type', [
+  AppContextSchema,
+  NavigateSchema,
+  NotifyWhenBackResultSchema,
+]);
 
 export type NativeToWeb = z.infer<typeof NativeToWebSchema>;
 export type NativeToWebType = NativeToWeb['type'];

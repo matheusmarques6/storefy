@@ -22,6 +22,8 @@
     data-caminho="{{ product.url }}?variant={{ variante.id }}"
     data-rotulo="{{ block.settings.rotulo | escape }}"
     data-confirmacao="{{ block.settings.confirmacao | escape }}"
+    data-erro="{{ block.settings.erro | escape }}"
+    data-sem-permissao="{{ block.settings.sem_permissao | escape }}"
     hidden
   ></div>
   <script src="{{ 'storefy-avise-me.js' | asset_url }}" defer></script>
@@ -34,7 +36,7 @@
   "settings": [
     {
       "type": "paragraph",
-      "content": "O botão aparece só para quem está no aplicativo e só quando a variante escolhida está esgotada. O aviso é enviado pela automação “De volta ao estoque”, no painel da Storefy."
+      "content": "O botão aparece só para quem está no aplicativo (com as notificações configuradas) e só quando a variante escolhida está esgotada. O aviso é enviado pela automação “De volta ao estoque”, no painel da Storefy."
     },
     {
       "type": "text",
@@ -45,8 +47,20 @@
     {
       "type": "text",
       "id": "confirmacao",
-      "label": "Texto depois de tocar",
+      "label": "Texto quando o pedido foi salvo",
       "default": "Pronto! Você será avisado."
+    },
+    {
+      "type": "text",
+      "id": "sem_permissao",
+      "label": "Texto quando as notificações estão desligadas",
+      "default": "Para receber o aviso, ative as notificações deste app nos ajustes do celular."
+    },
+    {
+      "type": "text",
+      "id": "erro",
+      "label": "Texto quando não deu certo",
+      "default": "Não deu certo agora. Toque para tentar de novo."
     }
   ]
 }

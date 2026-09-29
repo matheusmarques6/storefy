@@ -10,6 +10,11 @@
  * resolvido pela inscrição do OneSignal, e o banco confere de novo que ele é
  * deste app: o id do aparelho não viaja no corpo justamente para não haver o
  * que forjar.
+ *
+ * Dois tetos, como nos outros endpoints do app: por app (a mesma régua dos
+ * aparelhos e da caixa de avisos) e por aparelho. O segredo do app viaja
+ * dentro do binário; sem teto, quem o extraísse encheria a tabela de pedidos
+ * de uma loja com variantes inventadas.
  */
 import { NextResponse, type NextRequest } from 'next/server';
 import { criarClientServiceRole } from '@/lib/supabase/admin';
@@ -25,6 +30,11 @@ import {
 import { log } from '@/lib/log';
 
 export const dynamic = 'force-dynamic';
+
+/** Por app, por minuto: a mesma régua de `aparelhos:` e `avisos:`. */
+const POR_APP_POR_MINUTO = 600;
+/** Ninguém pede aviso de mais de 30 variantes numa hora. */
+const POR_APARELHO_POR_HORA = 30;
 
 export async function POST(requisicao: NextRequest): Promise<NextResponse> {
   const resposta = await decidir(requisicao);
@@ -61,6 +71,15 @@ async function decidir(requisicao: NextRequest): Promise<Resposta> {
   try {
     const supabase = criarClientServiceRole();
 
+    const doApp = await supabase.rpc('consumir_limite', {
+      p_chave: `de-volta:${appId}`,
+      p_maximo: POR_APP_POR_MINUTO,
+    });
+    if (doApp.error != null) {
+      return { status: 503, corpo: { erro: 'indisponivel' }, motivo: doApp.error.message };
+    }
+    if (!doApp.data) return { status: 429, corpo: { erro: 'limite' }, motivo: 'teto por app' };
+
     /*
      * O aparelho é achado pela inscrição, e não recebido pronto. Assim o único
      * jeito de inscrever alguém é ter a assinatura do app E a inscrição que o
@@ -84,6 +103,18 @@ async function decidir(requisicao: NextRequest): Promise<Resposta> {
         corpo: { erro: 'aparelho_desconhecido' },
         motivo: 'inscrição não encontrada neste app',
       };
+    }
+
+    const doAparelho = await supabase.rpc('consumir_limite', {
+      p_chave: `de-volta-aparelho:${aparelho.id}`,
+      p_maximo: POR_APARELHO_POR_HORA,
+      p_janela_segundos: 3600,
+    });
+    if (doAparelho.error != null) {
+      return { status: 503, corpo: { erro: 'indisponivel' }, motivo: doAparelho.error.message };
+    }
+    if (!doAparelho.data) {
+      return { status: 429, corpo: { erro: 'limite' }, motivo: 'teto por aparelho' };
     }
 
     const { data: novo, error } = await supabase.rpc('inscrever_de_volta', {
