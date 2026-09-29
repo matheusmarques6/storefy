@@ -28,6 +28,7 @@ import {
   type MarcaDetectada,
 } from '@/lib/deteccao-da-loja';
 import { ehHostPublico } from '@/lib/preview-proxy';
+import { dominioAoEditar } from '@/lib/dominio-da-loja';
 import { mensagemDaFalha } from '@/lib/erros';
 
 export interface EstadoLoja {
@@ -245,12 +246,24 @@ export async function editarLoja(
   if (!analise.success) return { erros: extrairErros(analise.error), valores };
 
   const supabase = await criarClientServidor();
+
+  // O domínio da Shopify fica como está: é por ele que os webhooks acham a loja.
+  const { data: atual, error: erroDaLeitura } = await supabase
+    .from('stores')
+    .select('shop_domain')
+    .eq('id', lojaId)
+    .maybeSingle();
+  if (erroDaLeitura != null) {
+    return { mensagem: traduzirErroBanco(erroDaLeitura.code, erroDaLeitura.message), valores };
+  }
+  const dominio = dominioAoEditar(atual?.shop_domain ?? null, analise.data.url);
+
   const { data: atualizada, error } = await supabase
     .from('stores')
     .update({
       name: analise.data.nome,
       primary_url: analise.data.url,
-      shop_domain: new URL(analise.data.url).hostname,
+      ...(dominio === undefined ? {} : { shop_domain: dominio }),
       support_email: analise.data.emailDeAtendimento,
       ...(analise.data.fuso === undefined ? {} : { timezone: analise.data.fuso }),
     })

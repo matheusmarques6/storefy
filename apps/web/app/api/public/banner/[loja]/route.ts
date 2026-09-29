@@ -82,8 +82,18 @@ async function buscar(dominio: string): Promise<DadosDoBanner | null> {
 
   // Cada leitura passa por `lido`: um erro vira a exceção que o GET registra
   // e responde "desligado" — e não um "loja sem app" calado.
+  /*
+   * Só a loja CONECTADA responde pelo domínio (e ela é uma só, pelo índice da
+   * migration 30). Outra organização pode pôr este domínio no cadastro dela;
+   * sem o filtro, as duas linhas derrubavam o banner da loja de verdade.
+   */
   const { data: loja } = lido(
-    await servico.from('stores').select('id').eq('shop_domain', dominio).maybeSingle(),
+    await servico
+      .from('stores')
+      .select('id')
+      .eq('shop_domain', dominio)
+      .not('shopify_access_token_enc', 'is', null)
+      .maybeSingle(),
     'a loja do banner',
   );
   if (loja == null) return null;

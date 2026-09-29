@@ -53,6 +53,20 @@ export async function POST(requisicao: NextRequest): Promise<NextResponse> {
   if (shop === null) return voltar('dominio_invalido');
 
   /*
+   * Loja conectada só troca de loja da Shopify depois de desconectar. O banco
+   * recusa a troca do domínio de uma loja conectada (migration 58) — é por ele
+   * que os webhooks a encontram —, e conferir aqui é para a resposta ser uma
+   * frase, e não um erro genérico. Reconectar a MESMA loja continua valendo.
+   */
+  if (
+    lojaAtiva.shopify_scopes != null &&
+    lojaAtiva.shop_domain != null &&
+    lojaAtiva.shop_domain !== shop
+  ) {
+    return voltar('outra_loja_conectada');
+  }
+
+  /*
    * A loja fica guardada com o `state`, e não só na sessão: o retorno do OAuth
    * chega numa navegação de cima, e depender do seletor de loja ativa faria a
    * conexão cair na loja errada se o lojista trocasse de aba no meio.

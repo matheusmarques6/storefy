@@ -154,6 +154,12 @@ export const AVISOS_DA_SHOPIFY: Record<string, AvisoDoRetorno> = {
     titulo: 'Esse endereço não parece ser de uma loja Shopify',
     texto: 'Use o endereço que termina em .myshopify.com, como minha-loja.myshopify.com.',
   },
+  outra_loja_conectada: {
+    tom: 'erro',
+    titulo: 'Esta loja já está conectada a outra loja da Shopify',
+    texto:
+      'Para conectar outra, desconecte a atual primeiro. Os números que já estão no painel continuam aqui.',
+  },
   retorno_invalido: {
     tom: 'erro',
     titulo: 'A autorização não pôde ser confirmada',

@@ -114,6 +114,7 @@ describe('avisoDaShopify', () => {
       'sem_permissao',
       'nao_configurado',
       'dominio_invalido',
+      'outra_loja_conectada',
       'retorno_invalido',
       'token',
       'erro',

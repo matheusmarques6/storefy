@@ -26,6 +26,8 @@ let explodir = false;
 
 /** As tabelas consultadas, para provar o que a rota NÃO leu. */
 let tabelas: string[] = [];
+/** Os filtros pedidos em cada consulta, na ordem. */
+let filtros: { tabela: string; filtro: unknown[] }[] = [];
 
 vi.mock('@/lib/env', () => ({
   supabaseConfigurado: true,
@@ -50,8 +52,13 @@ vi.mock('@/lib/supabase/admin', () => ({
         const encadeavel: Record<string, unknown> = {
           maybeSingle: () => Promise.resolve(resultado),
         };
-        for (const metodo of ['select', 'eq', 'order', 'limit']) {
-          encadeavel[metodo] = () => encadeavel;
+        for (const metodo of ['select', 'eq', 'not', 'order', 'limit']) {
+          encadeavel[metodo] = (...argumentos: unknown[]) => {
+            if (metodo === 'eq' || metodo === 'not') {
+              filtros.push({ tabela, filtro: [metodo, ...argumentos] });
+            }
+            return encadeavel;
+          };
         }
         return encadeavel;
       },
@@ -93,6 +100,7 @@ beforeEach(() => {
   configPublicada = CONFIG;
   explodir = false;
   tabelas = [];
+  filtros = [];
   erros = vi.spyOn(console, 'error').mockImplementation(() => undefined);
 });
 
@@ -147,6 +155,21 @@ describe('GET /api/public/banner/[loja]', () => {
       expect((await corpo(resposta)).ativo, dominio).toBe(false);
       expect(tabelas, dominio).toEqual([]);
     }
+  });
+
+  /*
+   * Outra organização pode pôr no cadastro dela o domínio desta loja. Com a
+   * busca olhando todas as linhas, o `maybeSingle` via duas, falhava, e o
+   * banner da loja de verdade saía desligado (migration 58). Só a loja
+   * CONECTADA responde pelo domínio — e ela é uma só.
+   */
+  it('procura só a loja conectada ao domínio', async () => {
+    await chamar('oak-vintage.myshopify.com');
+
+    expect(filtros.filter((f) => f.tabela === 'stores').map((f) => f.filtro)).toEqual([
+      ['eq', 'shop_domain', 'oak-vintage.myshopify.com'],
+      ['not', 'shopify_access_token_enc', 'is', null],
+    ]);
   });
 
   it('loja que não é nossa devolve desligado, e não 404', async () => {

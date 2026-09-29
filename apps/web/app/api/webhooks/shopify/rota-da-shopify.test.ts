@@ -46,7 +46,10 @@ vi.mock('@/lib/supabase/admin', () => ({
     from: () => ({
       select: () => ({
         eq: () => ({
-          maybeSingle: () => Promise.resolve({ data: linhaDaLoja, error: null }),
+          // Só a loja conectada responde pelo domínio (migration 58).
+          not: () => ({
+            maybeSingle: () => Promise.resolve({ data: linhaDaLoja, error: null }),
+          }),
         }),
       }),
     }),

@@ -22,7 +22,10 @@ const ID_DA_LOJA = '11111111-1111-4111-8111-111111111111';
 const ID_DA_ORG = '22222222-2222-4222-8222-222222222222';
 
 /** O que o contexto do painel devolve neste teste. */
-let contexto: { lojaAtiva: { id: string } | null; papel: string } = {
+let contexto: {
+  lojaAtiva: { id: string; shop_domain?: string | null; shopify_scopes?: string[] | null } | null;
+  papel: string;
+} = {
   lojaAtiva: { id: ID_DA_LOJA },
   papel: 'owner',
 };
@@ -235,6 +238,31 @@ describe('POST /api/shopify/install', () => {
    * `shop=evil.com` faria o servidor mandar o segredo do app para onde quem
    * pediu escolheu — é o caminho inteiro de um SSRF.
    */
+  /*
+   * O domínio é por onde os webhooks acham a loja. Trocar de loja da Shopify
+   * com a atual conectada deixaria os pedidos dela sem dono; o banco recusa
+   * (migration 58), e a rota diz em frase o que fazer.
+   */
+  it('loja conectada não troca de loja da Shopify sem desconectar', async () => {
+    contexto = {
+      lojaAtiva: { id: ID_DA_LOJA, shop_domain: 'outra-loja.myshopify.com', shopify_scopes: [] },
+      papel: 'owner',
+    };
+
+    expect(codigo(await instalar(pedidoDeInstalacao(LOJA)))).toBe('outra_loja_conectada');
+    expect(gravouSessao).toBeNull();
+  });
+
+  it('reconectar a MESMA loja continua valendo', async () => {
+    contexto = {
+      lojaAtiva: { id: ID_DA_LOJA, shop_domain: LOJA, shopify_scopes: ['read_orders'] },
+      papel: 'owner',
+    };
+
+    const resposta = await instalar(pedidoDeInstalacao(LOJA));
+    expect(new URL(resposta.headers.get('location') ?? '').host).toBe(LOJA);
+  });
+
   it('domínio que não é da Shopify não passa', async () => {
     for (const shop of ['evil.com', 'loja.myshopify.com.evil.com', '', 'https://']) {
       const resposta = await instalar(pedidoDeInstalacao(shop));

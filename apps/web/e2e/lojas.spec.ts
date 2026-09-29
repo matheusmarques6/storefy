@@ -10,6 +10,7 @@ import {
   entrar,
   limparUsuariosDeTeste,
 } from './apoio';
+import { conectarShopify, webhookDoPedido } from './shopify-de-teste';
 
 test.skip(!SUPABASE_DISPONIVEL, MOTIVO_PULO);
 test.afterAll(limparUsuariosDeTeste);
@@ -166,4 +167,60 @@ test('e-mail de atendimento recusado não apaga o que foi digitado', async ({ pa
   await page.getByRole('button', { name: 'Salvar alterações' }).click();
   await expect(page.getByText('Alterações salvas')).toBeVisible();
   await expect(page.getByLabel('Fuso horário')).toHaveValue('America/Rio_Branco');
+});
+
+/*
+ * O domínio `.myshopify.com` é por onde os webhooks acham a loja. Editar a
+ * loja regravava o domínio com o host do site, e os pedidos de uma loja
+ * conectada sumiam do painel depois de uma troca de e-mail. E outra
+ * organização que pusesse o mesmo domínio no cadastro dela derrubava o
+ * webhook da loja de verdade (migration 58).
+ */
+test('editar a loja conectada não desliga os pedidos, e outra empresa não os derruba', async ({
+  page,
+}) => {
+  const email = emailDeTeste('loja-conectada');
+  await criarUsuarioConfirmado(email, 'Empresa Conectada');
+  await entrar(page, email);
+  const lojaId = await criarLojaPelaTela(page, 'Loja Conectada', 'loja-conectada.com.br');
+
+  const dominio = `conectada-${String(Date.now())}.myshopify.com`;
+  await conectarShopify(lojaId, dominio);
+
+  // Troca o nome e o e-mail pela tela, como o lojista faria.
+  await page.goto(`/lojas/${lojaId}`);
+  await page.getByLabel('Nome da loja').fill('Loja Conectada Nova');
+  await page.getByLabel('E-mail de atendimento').fill('oi@loja-conectada.com.br');
+  await page.getByRole('button', { name: 'Salvar alterações' }).click();
+  await expect(page.getByText('Alterações salvas.')).toBeVisible();
+
+  const banco = bancoDeTeste();
+  const { data: depois } = await banco
+    .from('stores')
+    .select('name, shop_domain')
+    .eq('id', lojaId)
+    .single();
+  expect(depois).toEqual({ name: 'Loja Conectada Nova', shop_domain: dominio });
+
+  const primeiro = await webhookDoPedido(page, dominio, { id: 7001, total: '50.00' });
+  expect(primeiro).toEqual({ status: 200, corpo: { ok: true, feito: 'pedido', novo: true } });
+
+  // Outra empresa põe o mesmo domínio no cadastro dela — o painel deixa, e
+  // antes isso fazia todo webhook da loja de verdade levar 503.
+  await page.context().clearCookies();
+  const intruso = emailDeTeste('loja-intrusa');
+  await criarUsuarioConfirmado(intruso, 'Empresa Intrusa');
+  await entrar(page, intruso);
+  const intrusaId = await criarLojaPelaTela(page, 'Loja Intrusa', 'loja-intrusa.com.br');
+  const { error } = await banco.from('stores').update({ shop_domain: dominio }).eq('id', intrusaId);
+  expect(error).toBeNull();
+
+  const segundo = await webhookDoPedido(page, dominio, { id: 7002, total: '80.00' });
+  expect(segundo).toEqual({ status: 200, corpo: { ok: true, feito: 'pedido', novo: true } });
+
+  const { data: pedidos } = await banco
+    .from('shop_orders')
+    .select('shopify_order_id, apps!inner(store_id)')
+    .in('shopify_order_id', ['7001', '7002']);
+  expect(pedidos?.map((pedido) => pedido.apps.store_id)).toEqual([lojaId, lojaId]);
 });

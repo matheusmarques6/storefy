@@ -7913,6 +7913,137 @@ select tests.ok('receita do push',
 reset role;
 select tests.logout();
 
+-- ============================== grupo: domínio da Shopify protegido (migration 58)
+--
+-- O `.myshopify.com` é a identidade da loja nos webhooks. O painel não troca o
+-- de uma loja conectada, e o `shop/redact` apaga os dados de TODO cadastro
+-- com aquele domínio — inclusive quando outra organização pôs o mesmo
+-- domínio no dela.
+
+reset role;
+select tests.logout();
+
+insert into auth.users (email, raw_user_meta_data, email_confirmed_at) values
+  ('dom-dono@teste.local',   '{"company_name":"Dom Dono"}'::jsonb,   now()),
+  ('dom-intruso@teste.local', '{"company_name":"Dom Intruso"}'::jsonb, now());
+
+drop table if exists tests.dom;
+create table tests.dom as
+select
+  (select m.org_id from public.memberships m
+     join auth.users u on u.id = m.user_id where u.email = 'dom-dono@teste.local')    as org_dono,
+  (select m.org_id from public.memberships m
+     join auth.users u on u.id = m.user_id where u.email = 'dom-intruso@teste.local') as org_intruso;
+
+insert into public.stores (org_id, name, primary_url, shop_domain)
+select org_dono, 'Loja Dom', 'https://loja-dom.com.br', 'loja-dom.myshopify.com' from tests.dom;
+insert into public.stores (org_id, name, primary_url, shop_domain)
+select org_intruso, 'Loja do Intruso', 'https://intruso.com.br', 'intruso.com.br' from tests.dom;
+
+-- A loja do dono está conectada: o token existe (gravado pela service role na vida real).
+update public.stores
+   set shopify_access_token_enc = 'v1.token.cifrado.aqui', shopify_scopes = array['read_orders']
+ where name = 'Loja Dom';
+
+alter table tests.dom add column loja uuid, add column intrusa uuid,
+  add column app uuid, add column app_intruso uuid;
+update tests.dom set
+  loja = (select id from public.stores where name = 'Loja Dom'),
+  intrusa = (select id from public.stores where name = 'Loja do Intruso');
+update tests.dom set
+  app = (select id from public.apps where store_id = tests.dom.loja),
+  app_intruso = (select id from public.apps where store_id = tests.dom.intrusa);
+grant select on tests.dom to anon, authenticated, service_role;
+
+select tests.login('dom-dono@teste.local');
+set role authenticated;
+
+select tests.ok('domínio da shopify',
+  tests.erro_com($q$update public.stores set shop_domain = 'outra.myshopify.com'
+    where id = (select loja from tests.dom)$q$, 'dominio_da_loja_conectada'),
+  'o painel não troca o domínio de uma loja conectada — é por ele que os webhooks a acham');
+
+select tests.ok('domínio da shopify',
+  tests.contar($q$with feito as (
+      update public.stores set name = 'Loja Dom Nova', support_email = 'oi@loja-dom.com.br'
+       where id = (select loja from tests.dom) returning 1)
+    select count(*) from feito$q$) = 1
+  and (select shop_domain = 'loja-dom.myshopify.com' from public.stores
+        where id = (select loja from tests.dom)),
+  'e editar o resto da loja conectada continua livre, com o domínio intacto');
+
+select tests.ok('domínio da shopify',
+  tests.contar($q$with feito as (
+      update public.stores set shop_domain = 'loja-dom.myshopify.com'
+       where id = (select loja from tests.dom) returning 1)
+    select count(*) from feito$q$) = 1,
+  'regravar o MESMO domínio (a reconexão) passa');
+
+reset role;
+select tests.logout();
+set role service_role;
+
+select tests.ok('domínio da shopify',
+  tests.contar($q$with feito as (
+      update public.stores set shop_domain = 'loja-dom-2.myshopify.com'
+       where id = (select loja from tests.dom) returning 1)
+    select count(*) from feito$q$) = 1,
+  'a conexão (service role) troca o domínio junto com o token');
+
+update public.stores set shop_domain = 'loja-dom.myshopify.com'
+ where id = (select loja from tests.dom);
+
+reset role;
+
+-- O intruso põe no cadastro dele o domínio da loja do dono (pelo painel, que deixa).
+select tests.login('dom-intruso@teste.local');
+set role authenticated;
+
+select tests.ok('domínio da shopify',
+  tests.contar($q$with feito as (
+      update public.stores set shop_domain = 'intruso-novo.com.br'
+       where id = (select intrusa from tests.dom) returning 1)
+    select count(*) from feito$q$) = 1,
+  'numa loja que não está conectada, o domínio provisório acompanha o endereço');
+
+select tests.ok('domínio da shopify',
+  tests.contar($q$with feito as (
+      update public.stores set shop_domain = 'loja-dom.myshopify.com'
+       where id = (select intrusa from tests.dom) returning 1)
+    select count(*) from feito$q$) = 1,
+  'outra organização consegue pôr o mesmo domínio num cadastro desconectado...');
+
+reset role;
+select tests.logout();
+
+select tests.ok('domínio da shopify',
+  (select count(*) = 1 from public.app_da_loja_shopify('loja-dom.myshopify.com'))
+  and (select app_id = (select app from tests.dom)
+         from public.app_da_loja_shopify('loja-dom.myshopify.com')),
+  '...mas o webhook continua achando só a loja conectada');
+
+insert into public.shop_orders (app_id, shopify_order_id, source, ordered_at)
+select app, 'dom-1', 'app'::public.origem_do_pedido, now() from tests.dom
+union all
+select app_intruso, 'dom-2', 'site'::public.origem_do_pedido, now() from tests.dom;
+
+set role service_role;
+select public.apagar_dados_da_shopify('loja-dom.myshopify.com');
+reset role;
+
+select tests.ok('domínio da shopify',
+  not exists (select 1 from public.shop_orders
+               where app_id in ((select app from tests.dom), (select app_intruso from tests.dom))),
+  'o shop/redact apaga os dados de TODO cadastro com o domínio: o intruso não protege os da loja certa');
+
+select tests.ok('domínio da shopify',
+  (select shopify_access_token_enc is null from public.stores
+    where id = (select loja from tests.dom)),
+  'e desconecta a loja');
+
+reset role;
+select tests.logout();
+
 -- ============================== grupo: varredura de segurança (Fase 8)
 --
 -- Duas travas que valem para o schema inteiro, e não para uma tabela: uma

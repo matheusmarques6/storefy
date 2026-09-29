@@ -37,13 +37,23 @@ type Linha = Record<string, unknown> | null;
 
 function bancoFalso(linha: Linha) {
   const gravado: Record<string, unknown>[] = [];
+  /** Os filtros da última leitura, na ordem em que foram pedidos. */
+  const filtros: unknown[][] = [];
+  const resposta = () => Promise.resolve({ data: linha, error: null });
 
   const servico = {
     from: () => ({
       select: () => ({
-        eq: () => ({
-          maybeSingle: () => Promise.resolve({ data: linha, error: null }),
-        }),
+        eq: (...eq: unknown[]) => {
+          filtros.push(['eq', ...eq]);
+          return {
+            maybeSingle: resposta,
+            not: (...not: unknown[]) => {
+              filtros.push(['not', ...not]);
+              return { maybeSingle: resposta };
+            },
+          };
+        },
       }),
       update: (valores: Record<string, unknown>) => {
         gravado.push(valores);
@@ -52,7 +62,7 @@ function bancoFalso(linha: Linha) {
     }),
   } as never;
 
-  return { servico, gravado };
+  return { servico, gravado, filtros };
 }
 
 /** O alvo como texto, seja qual for a forma que o fetch aceita. */
@@ -266,6 +276,24 @@ describe('segredoDoWebhook', () => {
 
       expect(await segredoDoWebhook(servico, LOJA), String(enc)).toBeNull();
     }
+  });
+
+  /*
+   * Outra organização pode pôr no cadastro dela o domínio desta loja. Se a
+   * busca olhasse todas as linhas, o `maybeSingle` veria duas, falharia, e
+   * todo webhook da loja de verdade levaria 503 — até a Shopify desativá-los.
+   */
+  it('só a loja conectada responde pelo domínio', async () => {
+    const { servico, filtros } = bancoFalso({
+      shopify_conexao: 'oauth',
+      shopify_client_secret_enc: null,
+    });
+
+    await segredoDoWebhook(servico, LOJA);
+    expect(filtros).toEqual([
+      ['eq', 'shop_domain', LOJA],
+      ['not', 'shopify_access_token_enc', 'is', null],
+    ]);
   });
 
   it('sem SHOPIFY_API_SECRET, a loja por OAuth não tem segredo nenhum', async () => {

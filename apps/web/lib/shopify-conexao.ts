@@ -162,10 +162,19 @@ async function renovar(
  * rota num jeito de descobrir quais lojas são clientes da Storefy.
  */
 export async function segredoDoWebhook(servico: Client, shop: string): Promise<string | null> {
+  /*
+   * Só a loja CONECTADA responde pelo domínio — e ela é uma só, pelo índice
+   * único da migration 30. Sem o filtro, qualquer cadastro com o mesmo
+   * domínio (desconectado, ou posto ali por outra organização) fazia o
+   * `maybeSingle` ver duas linhas e falhar: a rota respondia 503 a todo
+   * webhook da loja de verdade, e a Shopify acabava desativando os webhooks
+   * dela (migration 58).
+   */
   const { data: loja, error } = await servico
     .from('stores')
     .select('shopify_conexao, shopify_client_secret_enc')
     .eq('shop_domain', shop)
+    .not('shopify_access_token_enc', 'is', null)
     .maybeSingle();
 
   /*
