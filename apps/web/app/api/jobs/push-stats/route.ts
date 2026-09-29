@@ -13,8 +13,9 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { criarClientServiceRole } from '@/lib/supabase/admin';
 import { criptografiaConfigurada, descriptografar } from '@/lib/cripto';
 import { serviceRoleConfigurada, supabaseConfigurado } from '@/lib/env';
-import { CABECALHO_DO_CRON, autorizarJob } from '@/lib/jobs';
+import { CABECALHO_DO_CRON, autorizarJob, registrarBatimento } from '@/lib/jobs';
 import { buscarEstatisticas } from '@/lib/onesignal';
+import { log } from '@/lib/log';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -25,7 +26,7 @@ export async function GET(requisicao: NextRequest): Promise<NextResponse> {
     process.env.CRON_SECRET,
   );
   if (!autorizacao.ok) {
-    console.warn('[push-stats] recusado:', autorizacao.motivo);
+    log.aviso('job-estatisticas.recusado', { motivo: autorizacao.motivo });
     return NextResponse.json(
       { erro: 'nao_autorizado' },
       { status: autorizacao.status, headers: { 'Cache-Control': 'no-store' } },
@@ -41,6 +42,7 @@ export async function GET(requisicao: NextRequest): Promise<NextResponse> {
 
   let consultadas = 0;
   let atualizadas = 0;
+  const inicio = Date.now();
 
   try {
     const supabase = criarClientServiceRole();
@@ -82,14 +84,16 @@ export async function GET(requisicao: NextRequest): Promise<NextResponse> {
       atualizadas += 1;
     }
   } catch (erro) {
-    console.error('[push-stats] falhou:', erro instanceof Error ? erro.message : erro);
+    log.erro('job-estatisticas.falhou', { erro });
+    await registrarBatimento('push-stats', inicio, erro);
     return NextResponse.json(
       { erro: 'falhou', consultadas, atualizadas },
       { status: 500, headers: { 'Cache-Control': 'no-store' } },
     );
   }
 
-  console.info('[push-stats]', { consultadas, atualizadas });
+  log.info('job-estatisticas.concluido', { consultadas, atualizadas });
+  await registrarBatimento('push-stats', inicio);
   return NextResponse.json(
     { consultadas, atualizadas },
     { headers: { 'Cache-Control': 'no-store' } },

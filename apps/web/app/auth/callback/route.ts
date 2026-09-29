@@ -11,6 +11,7 @@ import type { NextRequest } from 'next/server';
 import { criarClientServidor } from '@/lib/supabase/server';
 import { configuracoesDaPlataforma } from '@/lib/configuracoes-da-plataforma-servidor';
 import { redirecionarPara } from '@/lib/redirecionar';
+import { log } from '@/lib/log';
 
 /** Só caminho deste site: uma URL absoluta vinda da query seria open redirect. */
 function destinoSeguro(bruto: string | null): string {
@@ -40,7 +41,7 @@ export async function GET(request: NextRequest) {
       erro != null &&
       (codigo === 'unexpected_failure' || /database error|unexpected failure/i.test(descricao))
     ) {
-      console.warn('[auth] conta nova recusada:', codigo, descricao);
+      log.aviso('auth.conta-nova-recusada', { codigo, descricao });
       const { cadastroAberto } = await configuracoesDaPlataforma();
       return redirecionarPara(
         `/entrar?erro=${cadastroAberto ? 'conta-nao-criada' : 'cadastro-fechado'}`,

@@ -61,7 +61,12 @@ describe('mensagemDaFalha', () => {
     );
 
     expect(mensagem).toBe(FALHA_GENERICA);
-    expect(log).toHaveBeenCalledWith('[lojas]', '42P01', 'relation "public.stores" does not exist');
+    const linha = JSON.parse(String(log.mock.calls[0]?.[0])) as Record<string, string>;
+    expect(linha).toMatchObject({
+      evento: 'lojas.falha-do-banco',
+      codigo: '42P01',
+      texto: 'relation "public.stores" does not exist',
+    });
   });
 
   it('a frase nossa vai para a tela, e não enche o log', () => {

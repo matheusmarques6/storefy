@@ -28,6 +28,11 @@ describe('traduzirErroAuth', () => {
     const log = vi.spyOn(console, 'error').mockImplementation(() => undefined);
 
     expect(traduzirErroAuth('unexpected_failure', 'fetch failed')).toBe(FALHA_GENERICA);
-    expect(log).toHaveBeenCalledWith('[auth]', 'unexpected_failure', 'fetch failed');
+    const linha = JSON.parse(String(log.mock.calls[0]?.[0])) as Record<string, string>;
+    expect(linha).toMatchObject({
+      evento: 'auth.falha-do-banco',
+      codigo: 'unexpected_failure',
+      texto: 'fetch failed',
+    });
   });
 });

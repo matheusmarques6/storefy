@@ -26,6 +26,7 @@ import {
   traduzirStatus,
 } from '@/lib/eas-webhook';
 import { dispararSubmissao } from '@/lib/submissao';
+import { log } from '@/lib/log';
 
 export const dynamic = 'force-dynamic';
 
@@ -45,7 +46,7 @@ export async function POST(requisicao: NextRequest): Promise<NextResponse> {
     texto,
   );
   if (!conferencia.ok) {
-    console.warn('[webhook-eas] recusado:', conferencia.motivo);
+    log.aviso('webhook-eas.recusado', { motivo: conferencia.motivo });
     return NextResponse.json(
       { erro: 'nao_autorizado' },
       { status: conferencia.status, headers: SEM_CACHE },
@@ -88,7 +89,7 @@ export async function POST(requisicao: NextRequest): Promise<NextResponse> {
       .select('id');
 
     if (error != null) {
-      console.error('[webhook-eas] falhou:', error.message);
+      log.erro('webhook-eas.falhou', { falha: error });
       return NextResponse.json({ erro: 'indisponivel' }, { status: 503, headers: SEM_CACHE });
     }
 
@@ -110,7 +111,7 @@ export async function POST(requisicao: NextRequest): Promise<NextResponse> {
         return NextResponse.json({ ok: true, ignorado: 'ja_concluido' }, { headers: SEM_CACHE });
       }
 
-      console.warn('[webhook-eas] build desconhecido no EAS:', corpo.id);
+      log.aviso('webhook-eas.build-desconhecido', { build: corpo.id });
       return NextResponse.json(
         { erro: 'build_nao_encontrado' },
         { status: 404, headers: SEM_CACHE },
@@ -129,10 +130,7 @@ export async function POST(requisicao: NextRequest): Promise<NextResponse> {
       if (buildId != null) await comecarEnvio(servico, buildId);
     }
   } catch (erroDoBanco) {
-    console.error(
-      '[webhook-eas] falhou:',
-      erroDoBanco instanceof Error ? erroDoBanco.message : 'desconhecido',
-    );
+    log.erro('webhook-eas.falhou', { erro: erroDoBanco });
     return NextResponse.json({ erro: 'indisponivel' }, { status: 503, headers: SEM_CACHE });
   }
 
@@ -155,7 +153,7 @@ async function comecarEnvio(
   const disparo = await dispararSubmissao(buildId);
   if (disparo.ok) return;
 
-  console.warn('[webhook-eas] envio não disparado:', disparo.motivo);
+  log.aviso('webhook-eas.envio-nao-disparado', { motivo: disparo.motivo });
 
   await servico
     .from('builds')

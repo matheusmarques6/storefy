@@ -171,7 +171,9 @@ export const config = {
      *  - `auth/`, que precisa rodar sem interferência para trocar o código
      *    pela sessão;
      *  - `api/`, que NÃO deve passar por este middleware;
-     *  - `privacy/`, a política de privacidade pública de cada loja.
+     *  - `privacy/`, a política de privacidade pública de cada loja;
+     *  - `status`, a página pública de status, que precisa responder mesmo
+     *    quando a sessão ou o banco estão com problema.
      *
      * A exclusão de `api/` é deliberada. Este middleware redireciona para
      * `/entrar` quem não tem sessão, o que faz sentido para tela, não para
@@ -184,7 +186,7 @@ export const config = {
      * esse endereço para conferir a política antes de aprovar o app. Um 307
      * para a tela de login ali vira recusa — e a recusa chega dias depois.
      */
-    '/((?!_next/static|_next/image|favicon.ico|auth/|api/|privacy/|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)',
+    '/((?!_next/static|_next/image|favicon.ico|auth/|api/|privacy/|status(?:/|$)|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)',
   ],
 };
 

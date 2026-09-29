@@ -1274,9 +1274,9 @@ com um servidor no lugar da Asaas falando HTTP de verdade com o painel). A suít
 - Trocar os layouts provisórios pelos do Claude Design (tela por tela, usando os IDs C/A/M).
 - Testes E2E com Playwright (onboarding → editor → publicar config → campanha).
 - Maestro para fluxos do app (abrir, trocar aba, carrinho, offline).
-- Sentry (web + mobile), logs estruturados, status page.
-- Revisão de segurança: RLS, segredos, rate limit, HMAC.
-- **Checklist App Store** (seção 5.7) + notas de revisão padrão explicando os recursos nativos.
+- Sentry (web + mobile), logs estruturados, status page. ✅ Fase 8b
+- Revisão de segurança: RLS, segredos, rate limit, HMAC. ✅ Fase 8b
+- **Checklist App Store** (seção 5.7) + notas de revisão padrão explicando os recursos nativos. ✅ Fase 8a
 - Três lojas piloto (clientes Convertfy) até ficarem live nas duas lojas.
 
 #### Fase 8a — Entregue (29/09/2026): o app nativo contra o checklist 5.7
@@ -1378,6 +1378,86 @@ com um servidor no lugar da Asaas falando HTTP de verdade com o painel). A suít
 | Colar as notas na App Store Connect a cada envio | lojista | C12 › Notas para a revisão da Apple |
 | Pedir à Shopify a permissão `write_mobile_platform_applications` para o app da Storefy e, liberada, somá-la a `SHOPIFY_SCOPES` | time | suporte da Shopify (Partner Dashboard) e Vercel |
 | Colar a impressão digital SHA-256 do Play Console | lojista | C12 › Links da loja abrindo no app |
+
+#### Fase 8b — Entregue (29/09/2026): observabilidade, status e revisão de segurança
+
+| Item | Estado |
+|---|---|
+| Logs estruturados (`lib/log.ts`) | ✅ uma linha de JSON por acontecimento, com um `evento` estável para filtrar (`webhook-shopify.assinatura-invalida`, `job-despacho.falhou`). O que tem cara de segredo (token, senha, chave, cookie, DSN, coluna `_enc`) vira `[oculto]` em qualquer profundidade. Os cerca de 70 `console.*` soltos do servidor foram trocados |
+| Erros do servidor para o Sentry | ✅ `instrumentation.ts` (`onRequestError`): página, rota de API, Server Action e proxy. Vai só o caminho, sem a query — um convite leva o token na URL |
+| Erros do navegador | ✅ `instrumentation-client.ts`, a tela de erro e o `global-error`, por `sendBeacon` para `/api/erros`: corpo pequeno e conferido, teto por pessoa (o IP vira um resumo, e não é guardado) e no total, no máximo 5 por página; ruído de extensão e de rede fica de fora |
+| Erros do app | ✅ o manipulador global do React Native relata e devolve o erro ao de antes; 5 por abertura, sem repetir o mesmo. `/api/public/errors` é assinado como os outros endpoints do app, com teto de 100 por app por hora. A pilha do Hermes é lida sem o `address at` |
+| Sem `SENTRY_DSN` | ✅ nada sai e nada gasta banco; a A13 mostra "Alerta de erros (Sentry)" como opcional não configurado. O log estruturado registra tudo do mesmo jeito: o Sentry é o alarme, o log é o registro |
+| Batimento das rotinas (`job_heartbeats`) | ✅ os quatro jobs do cron anotam sucesso, falha, desde quando falham sem parar e quanto levaram. Só o servidor grava; a equipe lê tudo; o público, só as datas |
+| Página pública de status (`/status`) | ✅ sem login, com dados reais: o banco (e se está lento) e cada rotina pelo intervalo dela — "Funcionando", "Instável", "Parado" ou "Aguardando". Uma falha só é "Instável" (a próxima tenta de novo); "Parado" conta de quando começou a falhar. O texto do erro nunca sai para o público. Atualiza sozinha a cada minuto |
+| A13 — Rotinas automáticas | ✅ a equipe vê a situação, a última execução, a duração e o último erro de cada rotina, com o link para a página de status |
+| Revisão de segurança | ✅ ver abaixo |
+
+**O que a revisão achou**
+
+- **A política de privacidade pública lia o segredo cifrado do app.** A página
+  `/privacy/<loja>` selecionava `device_secret_enc` só para saber se o app tinha
+  push. O valor não chegava à tela, mas passava pela página pública. Virou uma
+  contagem que não lê a coluna, e o teste falha se um `_enc` voltar a ser
+  selecionado ali.
+- **A A13 dizia "faltando" para variáveis configuradas.** A presença de cada
+  variável vinha de uma lista escrita à mão, que tinha ficado sem
+  `EMAIL_SUPORTE`, `ASAAS_API_KEY`, `ASAAS_WEBHOOK_TOKEN` e `ASAAS_API_URL`:
+  configurar a Asaas não mudava nada na tela. Um teste novo confere que toda
+  variável descrita é lida pelo nome.
+- **O anônimo enxergava a tabela dos batimentos** — vazia pela RLS, mas
+  enxergava. O `select` foi revogado; a página pública usa uma função que
+  devolve só as datas.
+- **Varredura de RLS.** Toda tabela do schema `public` tem RLS ligada, e
+  nenhuma policy vale para `anon` ou `public`. Uma tabela nova que esquecer
+  entra reprovando no `rls.test.sql`.
+- **O teto do relatório de erros confundia "acima do limite" com "banco
+  fora".** Agora banco fora é erro no log, e nada vai para o Sentry sem o teto
+  — um erro em laço num aparelho esgotaria a cota do Sentry da Storefy.
+- **O e2e usaria as integrações do `.env.local`.** Com o `SENTRY_DSN` de
+  verdade lá, a suíte mandaria erro de mentira para o Sentry da Storefy (e a
+  Resend, e-mail de verdade). O `scripts/e2e-local.sh` agora as deixa vazias,
+  e reprova também quando o log estruturado registra `requisicao.falhou`.
+- **Endpoints públicos conferidos um a um.** Os que o app escreve
+  (`devices`, `events`, `back-in-stock`, `inbox`, `errors`) exigem a
+  assinatura HMAC do app, e todos menos o `back-in-stock` têm teto por app
+  (o dele entra com a correção do "Me avise quando voltar"); os webhooks conferem a
+  assinatura (Shopify, EAS) ou o token (Asaas) em tempo constante; os jobs
+  exigem o `CRON_SECRET`; os de leitura (`app-config`, `banner`,
+  `preview-config`) só devolvem o que é público — a prévia, por um código de
+  minutos guardado como hash.
+
+**Decisões**
+
+- **Sentry sem o SDK.** O `@sentry/nextjs` embrulha o build, o servidor e o
+  navegador, e cada versão do Next muda o jeito de fazer isso — o painel roda
+  num Next que o SDK ainda não acompanha. O que precisamos é pouco e estável:
+  mandar o erro para a API de envelopes, o mesmo formato que o SDK usa por
+  baixo. Sem dependência nova no build nem no app.
+- **O relatório de erro nunca vira outro erro.** Sentry fora do ar, cota
+  estourada ou DSN errado: o envio desiste em 3 segundos (5 no app) e deixa o
+  motivo no log.
+- **O critério de "parado" é o intervalo de cada rotina.** Cinco minutos sem o
+  despacho de notificações é problema; cinco minutos sem o acompanhamento da
+  revisão é o normal. Os intervalos da página são conferidos contra o
+  `vercel.json` por teste.
+
+Travas novas: grupos "batimento" e "varredura" no `rls.test.sql` (682
+asserções no total), `lib/log.test.ts`, `lib/sentry.test.ts`,
+`lib/erros-do-navegador.test.ts`, `lib/status.test.ts`, as rotas `/api/erros`
+e `/api/public/errors` exercitadas de ponta a ponta, `nucleo/erros.test.ts` e
+o contrato do relatório em `push/api.test.ts` no app, e `e2e/status.spec.ts`
+(a página pública, o batimento e o erro visível só para a equipe). A suíte e2e
+está em 40 testes.
+
+**Depende de ação humana**
+
+| O quê | Quem | Onde |
+|---|---|---|
+| Criar o projeto no Sentry e pôr o DSN em `SENTRY_DSN` | time | sentry.io e Vercel |
+| Configurar um alerta no Sentry (e-mail ou Slack) para erro novo | time | sentry.io › Alerts |
+| Enviar os source maps do app ao Sentry, para a pilha do app sair legível | time | EAS (build) e sentry.io |
+| Divulgar o endereço `/status` aos lojistas (Ajuda, e-mail de boas-vindas) | time | — |
 
 **Estimativa total:** cerca de 7 a 9 semanas para uma pessoa com Claude Code em ritmo forte. O MVP vendável (Fases 0–4) leva cerca de 4 a 5 semanas.
 

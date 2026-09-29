@@ -16,6 +16,7 @@ import { exigirPlatformAdminComPapel } from '@/lib/contexto';
 import { criarClientServiceRole } from '@/lib/supabase/admin';
 import { conferirAviso, lerConfiguracoes } from '@/lib/configuracoes-da-plataforma';
 import { valoresDigitados, type ValoresDigitados } from '@/lib/validacao';
+import { log } from '@/lib/log';
 
 export interface EstadoDasChaves {
   ok?: boolean;
@@ -87,7 +88,7 @@ export async function salvarChavesDaPlataforma(
     })),
   );
   if (erroDaTrilha != null) {
-    console.error('[plataforma] mudança gravada sem auditoria:', erroDaTrilha.message);
+    log.erro('plataforma.mudanca-sem-auditoria', { falha: erroDaTrilha });
   }
 
   // O aviso aparece em toda tela do painel, e o cadastro na tela dele.

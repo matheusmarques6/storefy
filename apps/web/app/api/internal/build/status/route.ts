@@ -13,6 +13,7 @@ import { criarClientServiceRole } from '@/lib/supabase/admin';
 import { serviceRoleConfigurada, supabaseConfigurado } from '@/lib/env';
 import { CABECALHO_DO_SEGREDO, autorizarWorkflow, origensPermitidas } from '@/lib/build-interno';
 import { interpretarFalhaDoEnvio } from '@/lib/submissao';
+import { log } from '@/lib/log';
 
 export const dynamic = 'force-dynamic';
 
@@ -78,7 +79,7 @@ export async function POST(requisicao: NextRequest): Promise<NextResponse> {
     process.env.BUILD_API_SECRET,
   );
   if (!autorizacao.ok) {
-    console.warn('[build-status] recusado:', autorizacao.motivo);
+    log.aviso('build-status.recusado', { motivo: autorizacao.motivo });
     return NextResponse.json(
       { erro: 'nao_autorizado' },
       { status: autorizacao.status, headers: SEM_CACHE },
@@ -153,7 +154,7 @@ export async function POST(requisicao: NextRequest): Promise<NextResponse> {
       .select('app_id');
 
     if (error != null) {
-      console.error('[build-status] falhou:', error.message);
+      log.erro('build-status.falhou', { falha: error });
       return NextResponse.json({ erro: 'indisponivel' }, { status: 503, headers: SEM_CACHE });
     }
 
@@ -173,10 +174,7 @@ export async function POST(requisicao: NextRequest): Promise<NextResponse> {
         .is('expo_project_id', null);
     }
   } catch (erroDoBanco) {
-    console.error(
-      '[build-status] falhou:',
-      erroDoBanco instanceof Error ? erroDoBanco.message : 'desconhecido',
-    );
+    log.erro('build-status.falhou', { erro: erroDoBanco });
     return NextResponse.json({ erro: 'indisponivel' }, { status: 503, headers: SEM_CACHE });
   }
 

@@ -18,10 +18,12 @@ import {
   RESUMO_VAZIO,
   autorizarJob,
   destinoDaFalha,
+  registrarBatimento,
   faltaConfiguracao,
   type ResumoDoJob,
 } from '@/lib/jobs';
 import { enviarNotificacao } from '@/lib/onesignal';
+import { log } from '@/lib/log';
 
 export const dynamic = 'force-dynamic';
 /** Uma leva de campanhas com muitas lojas pode passar de 10 segundos. */
@@ -42,7 +44,7 @@ async function responder(requisicao: NextRequest): Promise<NextResponse> {
     process.env.CRON_SECRET,
   );
   if (!autorizacao.ok) {
-    console.warn('[dispatch-push] recusado:', autorizacao.motivo);
+    log.aviso('job-despacho.recusado', { motivo: autorizacao.motivo });
     return NextResponse.json(
       { erro: 'nao_autorizado' },
       { status: autorizacao.status, headers: { 'Cache-Control': 'no-store' } },
@@ -50,7 +52,7 @@ async function responder(requisicao: NextRequest): Promise<NextResponse> {
   }
 
   if (!supabaseConfigurado || !serviceRoleConfigurada || !criptografiaConfigurada()) {
-    console.error('[dispatch-push] servidor sem configuração para enviar push');
+    log.erro('job-despacho.sem-configuracao');
     return NextResponse.json(
       { erro: 'servidor_nao_configurado' },
       { status: 503, headers: { 'Cache-Control': 'no-store' } },
@@ -58,6 +60,7 @@ async function responder(requisicao: NextRequest): Promise<NextResponse> {
   }
 
   const resumo = { ...RESUMO_VAZIO };
+  const inicio = Date.now();
 
   try {
     const supabase = criarClientServiceRole();
@@ -76,14 +79,16 @@ async function responder(requisicao: NextRequest): Promise<NextResponse> {
     await despacharCampanhas(supabase, resumo);
     await despacharAutomacoes(supabase, resumo);
   } catch (erro) {
-    console.error('[dispatch-push] falhou:', erro instanceof Error ? erro.message : erro);
+    log.erro('job-despacho.falhou', { erro });
+    await registrarBatimento('dispatch-push', inicio, erro);
     return NextResponse.json(
       { erro: 'falhou', ...resumo },
       { status: 500, headers: { 'Cache-Control': 'no-store' } },
     );
   }
 
-  console.info('[dispatch-push]', resumo);
+  log.info('job-despacho.concluido', { ...resumo });
+  await registrarBatimento('dispatch-push', inicio);
   return NextResponse.json(resumo, { headers: { 'Cache-Control': 'no-store' } });
 }
 

@@ -6402,6 +6402,106 @@ select tests.ok('links do app',
      from public.apps where id = (select app_a from tests.lojas)),
   'e a data de vínculo sai junto, sem o dono poder gravar a coluna');
 
+-- ============================== grupo: batimento dos jobs (Fase 8)
+--
+-- Só o servidor anota; a equipe lê tudo; o público lê só as datas.
+
+reset role;
+set role service_role;
+select public.registrar_batimento('dispatch-push', false, 1200, 'OneSignal fora do ar');
+select public.registrar_batimento('dispatch-push', true, 800);
+reset role;
+
+select tests.ok('batimento',
+  (select last_success_at is not null and last_failure_at is not null
+          and last_error = 'OneSignal fora do ar' and last_duration_ms = 800
+     from public.job_heartbeats where job = 'dispatch-push'),
+  'a execução certa e a errada ficam anotadas, com o erro da última falha');
+
+select tests.ok('batimento',
+  (select failing_since is null from public.job_heartbeats where job = 'dispatch-push'),
+  'depois de um sucesso, não está falhando desde nada');
+
+set role service_role;
+select public.registrar_batimento('push-stats', false, null, 'primeira falha');
+reset role;
+update public.job_heartbeats set failing_since = now() - interval '3 hours'
+ where job = 'push-stats';
+set role service_role;
+select public.registrar_batimento('push-stats', false, null, 'segunda falha');
+reset role;
+
+select tests.ok('batimento',
+  (select failing_since < now() - interval '2 hours' and last_error = 'segunda falha'
+     from public.job_heartbeats where job = 'push-stats'),
+  'falhas seguidas guardam desde quando falha, e o erro da mais recente');
+
+select tests.ok('batimento',
+  tests.erro($q$select public.registrar_batimento('job-que-nao-existe', true)$q$),
+  'job desconhecido é recusado');
+
+select tests.login('a-owner@teste.local');
+set role authenticated;
+
+select tests.ok('batimento',
+  tests.contar('select count(*) from public.job_heartbeats') = 0,
+  'o lojista não lê os batimentos (nem o erro)');
+
+select tests.ok('batimento',
+  tests.erro($q$select public.registrar_batimento('dispatch-push', true)$q$),
+  'nem anota um batimento por conta própria');
+
+select tests.ok('batimento',
+  tests.bloqueado($q$update public.job_heartbeats set last_success_at = now()$q$),
+  'nem mexe nas datas');
+
+reset role;
+select tests.login('equipe@teste.local');
+set role authenticated;
+
+select tests.ok('batimento',
+  tests.contar($q$select count(*) from public.job_heartbeats
+                where job = 'dispatch-push' and last_error is not null$q$) = 1,
+  'a equipe da plataforma lê tudo, inclusive o erro');
+
+reset role;
+set role anon;
+
+select tests.ok('batimento',
+  tests.contar($q$select count(*) from public.batimentos_publicos()
+                where job = 'dispatch-push' and ultimo_sucesso is not null$q$) = 1,
+  'o público lê as datas pela página de status');
+
+select tests.ok('batimento',
+  tests.erro('select * from public.job_heartbeats'),
+  'mas não a tabela, que tem o texto do erro');
+
+reset role;
+
+-- ============================== grupo: varredura de segurança (Fase 8)
+--
+-- Duas travas que valem para o schema inteiro, e não para uma tabela: uma
+-- tabela nova sem RLS, ou uma política escrita sem `to authenticated`, abre os
+-- dados de todos os clientes para quem tiver a chave anônima — que está no
+-- navegador de todo mundo.
+
+reset role;
+
+select tests.ok('varredura',
+  not exists (
+    select 1 from pg_class c join pg_namespace n on n.oid = c.relnamespace
+     where n.nspname = 'public' and c.relkind in ('r', 'p') and not c.relrowsecurity
+  ),
+  'TODA tabela do schema public tem RLS ligada');
+
+select tests.ok('varredura',
+  not exists (
+    select 1 from pg_policies
+     where schemaname = 'public'
+       and (roles @> array['public']::name[] or roles @> array['anon']::name[])
+  ),
+  'nenhuma política vale para o anônimo: toda regra de leitura e escrita exige sessão');
+
 \echo ''
 \echo 'Falhas:'
 select grupo, descricao from tests.resultados where not passou order by id;

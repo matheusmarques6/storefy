@@ -20,6 +20,7 @@ import { interpretarAviso } from '@/lib/cobranca';
 import { iguaisEmTempoConstante } from '@/lib/cripto';
 import { serviceRoleConfigurada, supabaseConfigurado } from '@/lib/env';
 import { criarClientServiceRole } from '@/lib/supabase/admin';
+import { log } from '@/lib/log';
 
 export const dynamic = 'force-dynamic';
 
@@ -28,7 +29,7 @@ const SEM_CACHE = { 'Cache-Control': 'no-store' } as const;
 export async function POST(requisicao: NextRequest): Promise<NextResponse> {
   const token = tokenDoWebhook();
   if (token === null) {
-    console.error('[webhook-asaas] ASAAS_WEBHOOK_TOKEN não configurado; aviso recusado');
+    log.erro('webhook-asaas.sem-token-configurado');
     // 503 e não 200: a Asaas guarda e reenvia quando o token existir.
     return NextResponse.json(
       { erro: 'webhook_nao_configurado' },
@@ -38,7 +39,7 @@ export async function POST(requisicao: NextRequest): Promise<NextResponse> {
 
   const recebido = requisicao.headers.get('asaas-access-token') ?? '';
   if (!iguaisEmTempoConstante(recebido, token)) {
-    console.warn('[webhook-asaas] token recusado');
+    log.aviso('webhook-asaas.token-recusado');
     return NextResponse.json({ erro: 'nao_autorizado' }, { status: 401, headers: SEM_CACHE });
   }
 
@@ -84,7 +85,7 @@ export async function POST(requisicao: NextRequest): Promise<NextResponse> {
         });
 
   if (error != null) {
-    console.error('[webhook-asaas] falhou:', aviso.nome, error.code, error.message);
+    log.erro('webhook-asaas.falhou', { aviso: aviso.nome, falha: error });
     return NextResponse.json({ erro: 'falhou' }, { status: 500, headers: SEM_CACHE });
   }
 

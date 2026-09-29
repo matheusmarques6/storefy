@@ -139,6 +139,10 @@ const FORA_DA_TELA = new Set([
   'NODE_ENV',
   'CI',
   'VERCEL_URL',
+  // A Vercel preenche sozinha em todo deploy; o Sentry as usa para dizer em
+  // qual versão e em qual ambiente o erro aconteceu.
+  'VERCEL_GIT_COMMIT_SHA',
+  'VERCEL_ENV',
   'E2E_BASE_URL',
   'E2E_SEM_SERVIDOR',
   // O Chromium do e2e, quando o ambiente já tem um e não pode baixar outro.
@@ -202,6 +206,26 @@ describe('a lista não envelhece', () => {
     const descobertas = [...lidas].filter((nome) => !cobertas.has(nome)).sort();
 
     expect(descobertas, `variáveis lidas pelo código e não descritas na A13`).toEqual([]);
+  });
+
+  /*
+   * A tela lê cada variável por NOME LITERAL (o Next troca `process.env.X` no
+   * build; acesso por índice viria vazio). Uma integração nova na lista e
+   * esquecida na tela aparece como "faltando" para sempre, mesmo configurada —
+   * foi o que aconteceu com a cobrança e a caixa do suporte.
+   */
+  it('a A13 lê, pelo nome, toda variável que a lista descreve', () => {
+    const pagina = readFileSync(
+      resolve(import.meta.dirname, '..', 'app/(admin)/admin/(painel)/sistema/page.tsx'),
+      'utf8',
+    );
+    const lidas = new Map<string, string>();
+    for (const casou of pagina.matchAll(/(\w+): temValor\(process\.env\.(\w+)\)/g)) {
+      const [, chave, variavel] = casou;
+      if (chave !== undefined && variavel !== undefined) lidas.set(chave, variavel);
+    }
+    const esquecidas = variaveisCobertas().filter((nome) => lidas.get(nome) !== nome);
+    expect(esquecidas, 'variáveis da lista que a A13 não lê').toEqual([]);
   });
 
   /* E o contrário: descrever uma variável que ninguém lê engana quem configura. */

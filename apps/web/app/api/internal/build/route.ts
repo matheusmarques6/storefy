@@ -30,6 +30,7 @@ import {
   type DadosParaOBuild,
   type DadosParaOEnvio,
 } from '@/lib/build-interno';
+import { log } from '@/lib/log';
 
 export const dynamic = 'force-dynamic';
 
@@ -45,7 +46,7 @@ export async function POST(requisicao: NextRequest): Promise<NextResponse> {
   );
   if (!autorizacao.ok) {
     // Só o motivo, nunca o segredo recebido nem o corpo da requisição.
-    console.warn('[build-interno] recusado:', autorizacao.motivo);
+    log.aviso('build.recusado', { motivo: autorizacao.motivo });
     return NextResponse.json(
       { erro: 'nao_autorizado' },
       { status: autorizacao.status, headers: SEM_CACHE },
@@ -82,7 +83,7 @@ export async function POST(requisicao: NextRequest): Promise<NextResponse> {
      * Postgres pode carregar o valor de uma coluna, e esta rota lida com
      * colunas que guardam chave privada.
      */
-    console.error('[build-interno] falhou:', erro instanceof Error ? erro.message : 'desconhecido');
+    log.erro('build.falhou', { erro });
     return NextResponse.json({ erro: 'indisponivel' }, { status: 503, headers: SEM_CACHE });
   }
 }

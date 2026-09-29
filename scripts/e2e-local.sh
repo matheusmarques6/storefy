@@ -70,6 +70,17 @@ export NEXT_PUBLIC_GOOGLE_OAUTH_ENABLED=""
 export NEXT_PUBLIC_CLIENT_HOST=""
 export NEXT_PUBLIC_ADMIN_HOST=""
 export NEXT_TELEMETRY_DISABLED=1
+# As integrações de verdade ficam DESLIGADAS pelo mesmo motivo: valendo as do
+# `.env.local`, a suíte mandaria o erro de teste para o Sentry da Storefy,
+# e-mail de verdade pela Resend, chamado para o suporte e build para o GitHub.
+# Quem quiser uma delas no e2e passa o valor no shell.
+export SENTRY_DSN="${E2E_SENTRY_DSN:-}"
+export RESEND_API_KEY=""
+export EMAIL_SUPORTE=""
+export ONESIGNAL_ORG_API_KEY=""
+export GITHUB_DISPATCH_TOKEN=""
+export SHOPIFY_API_KEY=""
+export SHOPIFY_API_SECRET=""
 
 # ------------------------------------------------------------- 3. Build
 cd "${WEB}"
@@ -129,11 +140,15 @@ set -e
 # (medido: 1 em 4 rodadas do teste do "sem acesso", cuja página tem um link
 # para "/"). O servidor está certo em registrar, e não há o que consertar do
 # lado dele. Qualquer outro erro continua reprovando.
-ERROS="$(grep -E '⨯ Error' "${LOG}" | grep -v 'The destination stream closed early' || true)"
+#
+# `requisicao.falhou` é a mesma coisa pelo log estruturado (`instrumentation.ts`):
+# o que vai para o Sentry em produção reprova aqui.
+FALHAS='⨯ Error|"evento":"requisicao\.falhou"'
+ERROS="$(grep -E "${FALHAS}" "${LOG}" | grep -v 'The destination stream closed early' || true)"
 if [[ -n "${ERROS}" ]]; then
   echo ""
   echo "==> O servidor registrou erros durante a suíte:"
-  grep -E '⨯ Error' -A 2 "${LOG}" | grep -v 'The destination stream closed early' | head -30
+  grep -E "${FALHAS}" -A 2 "${LOG}" | grep -v 'The destination stream closed early' | head -30
   [[ ${RESULTADO} -eq 0 ]] && RESULTADO=1
 fi
 

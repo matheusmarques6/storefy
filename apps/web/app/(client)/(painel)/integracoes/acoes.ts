@@ -21,6 +21,7 @@ import { ehDominioDeLoja } from '@/lib/shopify';
 import { apagarWebhooks } from '@/lib/shopify-servidor';
 import { tokenDaLoja } from '@/lib/shopify-conexao';
 import { conectarPeloAppDoLojista } from '@/lib/conectar-manual';
+import { log } from '@/lib/log';
 
 export interface EstadoDaIntegracao {
   ok?: boolean;
@@ -115,7 +116,7 @@ export async function desconectarShopify(): Promise<EstadoDaIntegracao> {
        * pé. Parar aqui deixaria o lojista preso a uma conexão que ele pediu
        * para encerrar.
        */
-      console.warn('[shopify] não foi possível apagar os webhooks de', conexao.dominio);
+      log.aviso('shopify.webhooks-nao-apagados', { loja: conexao.dominio });
     }
   }
 

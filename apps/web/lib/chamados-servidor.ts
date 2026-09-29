@@ -12,6 +12,7 @@ import { emailConfigurado, enviarEmail } from '@/lib/email';
 import { urlDoSite } from '@/lib/env';
 import { criarClientServiceRole } from '@/lib/supabase/admin';
 import { avisoDeResposta, avisoParaOSuporte } from '@/lib/chamados';
+import { log } from '@/lib/log';
 
 /** A caixa da equipe que recebe os chamados, ou `null` sem configuração. */
 export function emailDoSuporte(): string | null {
@@ -38,7 +39,7 @@ export async function avisarOSuporte(dados: {
       link: `${urlDoSite()}/admin/chamados/${dados.ticketId}`,
     }),
   });
-  if (!envio.ok) console.warn('[chamados] aviso ao suporte não saiu:', envio.motivo);
+  if (!envio.ok) log.aviso('chamados.aviso-ao-suporte-nao-saiu', { motivo: envio.motivo });
 }
 
 /**
@@ -56,7 +57,7 @@ export async function avisarQuemAbriu(dados: {
     p_ticket_id: dados.ticketId,
   });
   if (error != null) {
-    console.error('[chamados] quem abriu não foi lido:', error.code, error.message);
+    log.erro('chamados.autor-nao-lido', { falha: error });
     return;
   }
   // Vazio é decisão, e não falha: a pessoa saiu da empresa, não confirmou o
@@ -71,5 +72,5 @@ export async function avisarQuemAbriu(dados: {
       link: `${urlDoSite()}/ajuda/chamados/${dados.ticketId}`,
     }),
   });
-  if (!envio.ok) console.warn('[chamados] aviso de resposta não saiu:', envio.motivo);
+  if (!envio.ok) log.aviso('chamados.aviso-de-resposta-nao-saiu', { motivo: envio.motivo });
 }

@@ -17,8 +17,9 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { criarClientServiceRole } from '@/lib/supabase/admin';
 import { serviceRoleConfigurada, supabaseConfigurado } from '@/lib/env';
-import { CABECALHO_DO_CRON, autorizarJob } from '@/lib/jobs';
+import { CABECALHO_DO_CRON, autorizarJob, registrarBatimento } from '@/lib/jobs';
 import { janelaDaConsolidacao } from '@/lib/analytics';
+import { log } from '@/lib/log';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -31,7 +32,7 @@ export async function GET(requisicao: NextRequest): Promise<NextResponse> {
     process.env.CRON_SECRET,
   );
   if (!autorizacao.ok) {
-    console.warn('[analytics] recusado:', autorizacao.motivo);
+    log.aviso('job-numeros.recusado', { motivo: autorizacao.motivo });
     return NextResponse.json(
       { erro: 'nao_autorizado' },
       { status: autorizacao.status, headers: SEM_CACHE },
@@ -46,19 +47,23 @@ export async function GET(requisicao: NextRequest): Promise<NextResponse> {
   }
 
   const dias = janelaDaConsolidacao(requisicao.nextUrl.searchParams.get('dias'));
+  const inicio = Date.now();
 
   try {
     const supabase = criarClientServiceRole();
     const { data, error } = await supabase.rpc('consolidar_analytics', { p_dias: dias });
 
     if (error != null) {
-      console.error('[analytics] consolidação falhou:', error.message);
+      log.erro('job-numeros.consolidacao-falhou', { falha: error });
+      await registrarBatimento('analytics', inicio, error.message);
       return NextResponse.json({ erro: 'indisponivel' }, { status: 500, headers: SEM_CACHE });
     }
 
+    await registrarBatimento('analytics', inicio);
     return NextResponse.json({ ok: true, dias, escritas: data }, { headers: SEM_CACHE });
   } catch (erro) {
-    console.error('[analytics] falhou:', erro instanceof Error ? erro.message : 'desconhecido');
+    log.erro('job-numeros.falhou', { erro });
+    await registrarBatimento('analytics', inicio, erro);
     return NextResponse.json({ erro: 'indisponivel' }, { status: 500, headers: SEM_CACHE });
   }
 }

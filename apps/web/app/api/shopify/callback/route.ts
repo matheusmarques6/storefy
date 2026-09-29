@@ -29,6 +29,7 @@ import {
 } from '@/lib/shopify-servidor';
 import { COOKIE_DO_STATE } from '@/app/api/shopify/install/route';
 import { COOKIE_LOJA, COOKIE_ORG } from '@/lib/contexto';
+import { log } from '@/lib/log';
 
 export const dynamic = 'force-dynamic';
 
@@ -52,7 +53,7 @@ export async function GET(requisicao: NextRequest): Promise<NextResponse> {
 
   if (!ehDominioDeLoja(shop) || code === '') return voltar('retorno_invalido');
   if (!conferirHmacDaQuery(parametros, process.env.SHOPIFY_API_SECRET ?? '')) {
-    console.warn('[shopify-callback] assinatura da query não confere');
+    log.aviso('shopify-oauth.assinatura-invalida');
     return voltar('retorno_invalido');
   }
 
@@ -72,13 +73,13 @@ export async function GET(requisicao: NextRequest): Promise<NextResponse> {
     storeId === '' ||
     !iguaisEmTempoConstante(stateGuardado, stateRecebido)
   ) {
-    console.warn('[shopify-callback] state não confere');
+    log.aviso('shopify-oauth.state-invalido');
     return voltar('retorno_invalido');
   }
 
   const troca = await trocarCodePorToken(shop, code);
   if (!troca.ok) {
-    console.warn('[shopify-callback] troca falhou:', troca.motivo);
+    log.aviso('shopify-oauth.troca-falhou', { motivo: troca.motivo });
     return voltar('token');
   }
 
@@ -104,7 +105,7 @@ export async function GET(requisicao: NextRequest): Promise<NextResponse> {
       .maybeSingle();
 
     if (error != null || loja == null) {
-      console.error('[shopify-callback] não gravou:', error?.message ?? 'loja não encontrada');
+      log.erro('shopify-oauth.nao-gravou', { falha: error ?? 'loja não encontrada' });
       return voltar('erro');
     }
 
@@ -120,7 +121,7 @@ export async function GET(requisicao: NextRequest): Promise<NextResponse> {
     );
 
     if (webhooks.falharam.length > 0) {
-      console.warn('[shopify-callback] webhooks não registrados:', webhooks.falharam.join(', '));
+      log.aviso('shopify-oauth.webhooks-nao-registrados', { topicos: webhooks.falharam });
     }
 
     const aviso =
@@ -150,10 +151,7 @@ export async function GET(requisicao: NextRequest): Promise<NextResponse> {
 
     return resposta;
   } catch (erro) {
-    console.error(
-      '[shopify-callback] falhou:',
-      erro instanceof Error ? erro.message : 'desconhecido',
-    );
+    log.erro('shopify-oauth.falhou', { erro });
     return voltar('erro');
   }
 }

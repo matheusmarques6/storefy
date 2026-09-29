@@ -22,6 +22,7 @@ import { criarClientServiceRole } from '@/lib/supabase/admin';
 import { serviceRoleConfigurada, supabaseConfigurado } from '@/lib/env';
 import { montarBanner, type DadosDoBanner, type RespostaDoBanner } from '@/lib/banner-do-app';
 import { ehDominioDeLoja } from '@/lib/shopify';
+import { log } from '@/lib/log';
 
 export const dynamic = 'force-dynamic';
 
@@ -69,7 +70,7 @@ export async function GET(
     const dados = await buscar(dominio);
     return NextResponse.json(montarBanner(dados), { headers: CABECALHOS });
   } catch (erro) {
-    console.error('[banner] falhou:', erro instanceof Error ? erro.message : 'desconhecido');
+    log.erro('banner.falhou', { erro });
     // Desligado, e não 500: uma falha nossa não pode quebrar o site da loja.
     return NextResponse.json(DESLIGADO, { headers: CABECALHOS });
   }

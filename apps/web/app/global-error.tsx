@@ -8,6 +8,9 @@
  * renderizar `<html>` e `<body>` por conta própria e não pode depender de
  * nenhum componente que use contexto.
  */
+import { useEffect } from 'react';
+import { relatarNoNavegador } from '@/lib/erros-do-navegador';
+
 export default function ErroGlobal({
   error,
   reset,
@@ -15,6 +18,10 @@ export default function ErroGlobal({
   error: Error & { digest?: string };
   reset: () => void;
 }) {
+  useEffect(() => {
+    relatarNoNavegador(error, 'tela', window.location.pathname);
+  }, [error]);
+
   return (
     <html lang="pt-BR">
       <body

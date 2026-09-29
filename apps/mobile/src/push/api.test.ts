@@ -16,6 +16,7 @@ import {
   credenciaisDe,
   enviarEventoDeCarrinho,
   registrarAparelho,
+  relatarErroDoApp,
   type Credenciais,
 } from './api.ts';
 
@@ -261,6 +262,47 @@ describe('enviarEventoDeCarrinho', () => {
     );
     const corpo = JSON.parse(chamadas[0]?.corpo ?? '') as { itemCount: number };
     expect(corpo.itemCount).toBe(0);
+  });
+});
+
+describe('relatarErroDoApp', () => {
+  it('manda o erro assinado, no formato que o servidor confere', async () => {
+    const { buscador, chamadas } = fingirFetch({ status: 202, corpo: { recebido: true } });
+
+    const r = await relatarErroDoApp(
+      CREDENCIAIS,
+      {
+        tipo: 'TypeError',
+        mensagem: 'undefined is not an object',
+        pilha: 'TypeError: undefined is not an object\n    at abrir (address at main.jsbundle:1:2)',
+        fatal: true,
+        platform: 'ios',
+        appVersion: '1.2.0',
+      },
+      { buscador, agoraMs: AGORA },
+    );
+
+    expect(r).toEqual({ ok: true, dados: { recebido: true } });
+    const chamada = chamadas[0];
+    expect(chamada?.url).toBe('https://storefy.convertfy.me/api/public/errors');
+    const corpo = chamada?.corpo ?? '';
+    // Os mesmos nomes de `CorpoDoErroDoApp` (apps/web/lib/endpoint-do-app.ts).
+    expect(Object.keys(JSON.parse(corpo) as object).sort()).toEqual(
+      ['appId', 'appVersion', 'fatal', 'mensagem', 'pilha', 'platform', 'tipo'].sort(),
+    );
+    expect(chamada?.cabecalhos[CABECALHO_DA_ASSINATURA]).toBe(
+      comoOServidorCalcula(CREDENCIAIS.segredo, AGORA, corpo),
+    );
+  });
+
+  it('sem pilha, o campo nem vai', async () => {
+    const { buscador, chamadas } = fingirFetch({ status: 202, corpo: { recebido: false } });
+    await relatarErroDoApp(
+      CREDENCIAIS,
+      { tipo: 'Error', mensagem: 'x', fatal: false, platform: 'android' },
+      { buscador, agoraMs: AGORA },
+    );
+    expect(JSON.parse(chamadas[0]?.corpo ?? '{}')).not.toHaveProperty('pilha');
   });
 });
 

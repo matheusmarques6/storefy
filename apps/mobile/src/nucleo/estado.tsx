@@ -35,6 +35,8 @@ import {
   lerTokenGuardado,
 } from '../config/fontes';
 import { lerAmbiente, recursosDoBuild, type Ambiente } from './ambiente';
+import { criarRelatorDoApp, instalarRelatorDeErros } from './erros';
+import { credenciaisDe, relatarErroDoApp } from '../push/api';
 
 export type EstadoDaConfig =
   | DecisaoDaConfig
@@ -71,6 +73,24 @@ export function ambienteDoApp(): Ambiente {
 export function ProvedorDaConfig({ children }: { children: ReactNode }): ReactNode {
   const ambiente = useMemo(() => ambienteDoApp(), []);
   const recursos = useMemo(() => recursosDoBuild(ambiente), [ambiente]);
+
+  /*
+   * Erro de JavaScript do app vai para o alerta da Storefy, assinado como tudo
+   * que o app manda. Sem credenciais (app de prévia, build sem segredo), fica
+   * só no manipulador de sempre.
+   */
+  useEffect(() => {
+    const credenciais = credenciaisDe(ambiente);
+    if (credenciais === null) return;
+    const relatar = criarRelatorDoApp((erro) => {
+      void relatarErroDoApp(credenciais, {
+        ...erro,
+        platform: Platform.OS === 'ios' ? 'ios' : 'android',
+        appVersion: ambiente.appVersion,
+      });
+    });
+    return instalarRelatorDeErros(relatar, ErrorUtils);
+  }, [ambiente]);
   const [estado, setEstado] = useState<EstadoDaConfig>({ estado: 'carregando' });
   const [tentativa, setTentativa] = useState(0);
 

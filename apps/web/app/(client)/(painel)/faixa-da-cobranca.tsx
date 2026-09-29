@@ -12,6 +12,7 @@ import { criarClientServidor } from '@/lib/supabase/server';
 import { avisoDaCobranca, type SituacaoDaCobranca } from '@/lib/cobranca';
 import { lerSituacaoDaCobranca } from '@/lib/cobranca-servidor';
 import { cn } from '@/lib/utils';
+import { log } from '@/lib/log';
 
 export async function FaixaDaCobranca({ orgId }: { orgId: string }) {
   const supabase = await criarClientServidor();
@@ -21,7 +22,7 @@ export async function FaixaDaCobranca({ orgId }: { orgId: string }) {
   } catch (erro) {
     // A faixa é um lembrete: sem ela o painel segue, e as travas do banco
     // continuam valendo. O erro vai para o log, onde alguém vê.
-    console.error('[cobranca] faixa sem a situação:', erro instanceof Error ? erro.message : erro);
+    log.erro('cobranca.faixa-sem-situacao', { erro });
     return null;
   }
 

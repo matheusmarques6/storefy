@@ -24,6 +24,7 @@ import { criarClientServiceRole } from '@/lib/supabase/admin';
 import { cancelarAssinaturaDaEmpresa } from '@/lib/cobranca-servidor';
 import { visitaDoPedido } from '@/lib/visita';
 import { COOKIE_LOJA_DA_VISITA, COOKIE_VISITA } from '@/lib/visita-nomes';
+import { log } from '@/lib/log';
 
 export interface EstadoDaExclusao {
   ok?: boolean;
@@ -102,7 +103,7 @@ export async function excluirMinhaConta(
     'consequencias_de_excluir_minha_conta',
   );
   if (erroEfeitos != null) {
-    console.error('[conta] efeitos da exclusão não lidos:', erroEfeitos.message);
+    log.erro('conta.efeitos-da-exclusao-nao-lidos', { falha: erroEfeitos });
     return { mensagem: 'Não conseguimos conferir suas empresas. Tente de novo.', valores };
   }
 
@@ -125,7 +126,7 @@ export async function excluirMinhaConta(
 
   const { error: erroExclusao } = await servico.auth.admin.deleteUser(user.id);
   if (erroExclusao != null) {
-    console.error('[conta] exclusão recusada:', erroExclusao.message);
+    log.erro('conta.exclusao-recusada', { falha: erroExclusao });
     return { mensagem: 'Não conseguimos excluir a conta agora. Tente de novo.', valores };
   }
 
@@ -150,7 +151,7 @@ export async function excluirMinhaConta(
       } satisfies Json,
     })),
   );
-  if (erroTrilha != null) console.error('[conta] exclusão sem trilha:', erroTrilha.message);
+  if (erroTrilha != null) log.erro('conta.exclusao-sem-trilha', { falha: erroTrilha });
 
   await supabase.auth.signOut();
   const armazem = await cookies();

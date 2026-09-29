@@ -24,6 +24,9 @@ import { configuracoesDaPlataforma } from '@/lib/configuracoes-da-plataforma-ser
 import { versaoDoNumero } from '@/lib/atualizacao-obrigatoria';
 import { ChavesDaPlataforma } from './chaves-da-plataforma';
 import { conferir, resumo, variaveisCobertas } from '@/lib/configuracoes-sistema';
+import { rotinasParaAEquipe } from '@/lib/status-servidor';
+import { ROTULO_DO_ESTADO } from '@/lib/status';
+import { formatarDataHora } from '@/lib/fuso';
 import type { IntegracaoConferida } from '@/lib/configuracoes-sistema';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -60,13 +63,18 @@ export default async function PaginaSistema() {
     CRON_SECRET: temValor(process.env.CRON_SECRET),
     RESEND_API_KEY: temValor(process.env.RESEND_API_KEY),
     EMAIL_REMETENTE: temValor(process.env.EMAIL_REMETENTE),
+    EMAIL_SUPORTE: temValor(process.env.EMAIL_SUPORTE),
+    ASAAS_API_KEY: temValor(process.env.ASAAS_API_KEY),
+    ASAAS_WEBHOOK_TOKEN: temValor(process.env.ASAAS_WEBHOOK_TOKEN),
+    ASAAS_API_URL: temValor(process.env.ASAAS_API_URL),
+    SENTRY_DSN: temValor(process.env.SENTRY_DSN),
     NEXT_PUBLIC_GOOGLE_OAUTH_ENABLED: temValor(process.env.NEXT_PUBLIC_GOOGLE_OAUTH_ENABLED),
     NEXT_PUBLIC_CLIENT_HOST: temValor(process.env.NEXT_PUBLIC_CLIENT_HOST),
     NEXT_PUBLIC_ADMIN_HOST: temValor(process.env.NEXT_PUBLIC_ADMIN_HOST),
   };
 
   const supabase = await criarClientServidor();
-  const [chaves, { data: publicadas, error: erroDasPublicadas }] = await Promise.all([
+  const [chaves, { data: publicadas, error: erroDasPublicadas }, rotinas] = await Promise.all([
     configuracoesDaPlataforma(),
     /*
      * As configs no ar, para achar os apps que exigem atualização. O filtro
@@ -77,6 +85,7 @@ export default async function PaginaSistema() {
       .from('app_configs')
       .select('app_id, minimo:config->minSupportedBuild, apps(display_name, stores(name, org_id))')
       .eq('status', 'published'),
+    rotinasParaAEquipe(supabase),
   ]);
   if (erroDasPublicadas != null) {
     throw new Error(
@@ -180,6 +189,73 @@ export default async function PaginaSistema() {
                     </span>
                   </Link>
                   <Badge variant="outline">Exige {versaoDoNumero(linha.minimo)}</Badge>
+                </li>
+              ))}
+            </ul>
+          )}
+        </CardContent>
+      </Card>
+
+      {/*
+       * As rotinas do cron falham em silêncio: nenhuma tela quebra, a campanha
+       * só não sai. Aqui a equipe vê o batimento de cada uma, com o erro da
+       * última falha — a página pública de status mostra o mesmo sem o erro.
+       */}
+      <Card role="region" aria-labelledby="rotinas-automaticas">
+        <CardHeader>
+          <CardTitle id="rotinas-automaticas" className="text-base">
+            Rotinas automáticas
+          </CardTitle>
+          <CardDescription>
+            O que o cron roda sozinho. Os clientes veem a mesma situação, sem os erros, na{' '}
+            <Link href="/status" className="text-foreground underline underline-offset-4">
+              página de status
+            </Link>
+            .
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {rotinas === null ? (
+            <p className="text-destructive text-sm" role="alert">
+              Não foi possível ler as rotinas agora. Recarregue a página.
+            </p>
+          ) : (
+            <ul className="divide-y text-sm">
+              {rotinas.map((rotina) => (
+                <li key={rotina.id} className="space-y-1 py-3 first:pt-0 last:pb-0">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="font-medium">{rotina.nome}</span>
+                    <Badge
+                      variant={
+                        rotina.estado === 'operacional'
+                          ? 'success'
+                          : rotina.estado === 'parado'
+                            ? 'destructive'
+                            : rotina.estado === 'instavel'
+                              ? 'warning'
+                              : 'outline'
+                      }
+                    >
+                      {ROTULO_DO_ESTADO[rotina.estado]}
+                    </Badge>
+                  </div>
+                  <p className="text-muted-foreground">{rotina.detalhe}</p>
+                  {rotina.ultimaFalha === null ? null : (
+                    <p className="text-muted-foreground text-xs">
+                      Última falha em {formatarDataHora(rotina.ultimaFalha, 'America/Sao_Paulo')}
+                      {rotina.ultimoErro === null ? '' : `: ${rotina.ultimoErro}`}
+                    </p>
+                  )}
+                  {rotina.duracaoMs === null ? null : (
+                    <p className="text-muted-foreground text-xs">
+                      A última execução levou{' '}
+                      {(rotina.duracaoMs / 1000).toLocaleString('pt-BR', {
+                        minimumFractionDigits: 1,
+                        maximumFractionDigits: 1,
+                      })}{' '}
+                      s.
+                    </p>
+                  )}
                 </li>
               ))}
             </ul>

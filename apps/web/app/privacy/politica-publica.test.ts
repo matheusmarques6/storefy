@@ -25,8 +25,11 @@ vi.mock('@/lib/env', () => ({
   chaveServiceRole: () => 'chave',
 }));
 
-/** Uma consulta encadeada: `.eq()` quantas vezes for, e `.maybeSingle()`. */
-function consulta(tabela: string, colunas: string) {
+/**
+ * Uma consulta encadeada: `.eq()`, `.not()` e `.neq()` quantas vezes for, e
+ * `.maybeSingle()` — ou, na contagem sem linhas (`head`), o próprio `await`.
+ */
+function consulta(tabela: string, colunas: string, opcoes?: { head?: boolean }) {
   const filtros: unknown[] = [];
   const cadeia = {
     eq: (_coluna: string, valor: unknown) => {
@@ -34,11 +37,27 @@ function consulta(tabela: string, colunas: string) {
       filtros.push(valor);
       return cadeia;
     },
+    not: (coluna: string) => {
+      filtros.push(`not:${coluna}`);
+      return cadeia;
+    },
+    neq: (coluna: string) => {
+      filtros.push(`neq:${coluna}`);
+      return cadeia;
+    },
     maybeSingle: () =>
       Promise.resolve({
         data: tabela === 'stores' ? linhaDaLoja : tabela === 'apps' ? linhaDoApp : linhaDaConfig,
         error: null,
       }),
+    // A contagem do segredo: se ele existe, sem o valor vir junto.
+    then: (resolver: (valor: { count: number; error: null }) => unknown) => {
+      const segredo = linhaDoApp?.device_secret_enc;
+      return resolver({
+        count: opcoes?.head === true && typeof segredo === 'string' && segredo !== '' ? 1 : 0,
+        error: null,
+      });
+    },
   };
   return cadeia;
 }
@@ -46,7 +65,7 @@ function consulta(tabela: string, colunas: string) {
 vi.mock('@/lib/supabase/admin', () => ({
   criarClientServiceRole: () => ({
     from: (tabela: string) => ({
-      select: (colunas: string) => consulta(tabela, colunas),
+      select: (colunas: string, opcoes?: { head?: boolean }) => consulta(tabela, colunas, opcoes),
     }),
   }),
 }));
@@ -116,6 +135,8 @@ describe('GET /privacy/[loja]', () => {
 
     const doApp = consultas.find((c) => c.tabela === 'apps');
     expect(doApp?.colunas).not.toContain('*');
+    // Nem o segredo cifrado: a página pergunta SE ele existe, sem trazê-lo.
+    for (const pedida of consultas) expect(pedida.colunas).not.toContain('_enc');
   });
 
   /*

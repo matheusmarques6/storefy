@@ -9,6 +9,7 @@ import 'server-only';
  * importar.
  */
 import { TOPICOS, urlDoAdmin, type Topico } from '@/lib/shopify';
+import { log } from '@/lib/log';
 
 const TIMEOUT_MS = 20_000;
 
@@ -340,7 +341,7 @@ async function consultarAdmin(
     const texto = JSON.stringify(errors);
     // O corpo do erro é da Shopify, em inglês e técnico: vai para o log, e a
     // tela recebe a frase que o lojista entende.
-    console.warn('[shopify-links] a Admin API recusou:', texto.slice(0, 500));
+    log.aviso('shopify-links.admin-recusou', { resposta: texto.slice(0, 500) });
     return {
       ok: false,
       motivo: /access|scope|denied|permission/i.test(texto)
@@ -403,10 +404,7 @@ function mutacaoDeuCerto(dados: Record<string, unknown>, campo: string): boolean
   if (resultado === null || resultado === undefined) return false;
   const erros = resultado.userErrors;
   if (Array.isArray(erros) && erros.length > 0) {
-    console.warn(
-      '[shopify-links] a Shopify recusou o cadastro:',
-      JSON.stringify(erros).slice(0, 500),
-    );
+    log.aviso('shopify-links.cadastro-recusado', { erros });
     return false;
   }
   return true;

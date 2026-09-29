@@ -61,6 +61,7 @@ vi.mock('@/lib/supabase/admin', () => ({
 
 const { POST: postarAparelho } = await import('@/app/api/public/devices/route');
 const { POST: postarEvento } = await import('@/app/api/public/events/route');
+const { POST: postarErro } = await import('@/app/api/public/errors/route');
 
 let chaveOriginal: string | undefined;
 let avisos: MockInstance<typeof console.warn>;
@@ -282,5 +283,146 @@ describe('POST /api/public/events', () => {
     const corpoDaResposta = (await resposta.json()) as { erro: string; campos: string[] };
     expect(corpoDaResposta.erro).toBe('corpo_invalido');
     expect(corpoDaResposta.campos).toEqual(expect.arrayContaining(['event', 'itemCount']));
+  });
+});
+
+describe('POST /api/public/errors', () => {
+  const DSN = 'https://abc@o1.ingest.sentry.io/99';
+  const dsnOriginal = process.env.SENTRY_DSN;
+  /** Os envelopes que chegaram ao "Sentry". */
+  let enviados: string[] = [];
+
+  const corpo = JSON.stringify({
+    appId: APP,
+    tipo: 'TypeError',
+    mensagem: 'undefined is not an object',
+    pilha: 'TypeError: undefined is not an object\n    at abrir (address at main.jsbundle:1:42)',
+    fatal: true,
+    platform: 'ios',
+    appVersion: '1.2.0',
+  });
+
+  beforeEach(() => {
+    process.env.SENTRY_DSN = DSN;
+    enviados = [];
+    retornoDaRpc = { data: true, error: null };
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (_url: string, init?: RequestInit) => {
+        enviados.push(typeof init?.body === 'string' ? init.body : '');
+        return await Promise.resolve(new Response('{}', { status: 200 }));
+      }),
+    );
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    if (dsnOriginal === undefined) delete process.env.SENTRY_DSN;
+    else process.env.SENTRY_DSN = dsnOriginal;
+  });
+
+  /** O evento que foi para o Sentry: a terceira linha do envelope. */
+  function evento(): {
+    level: string;
+    tags: Record<string, string>;
+    exception: { values: { type: string; value: string; stacktrace?: { frames: unknown[] } }[] };
+  } {
+    return JSON.parse(enviados[0]?.split('\n')[2] ?? '{}') as ReturnType<typeof evento>;
+  }
+
+  it('segue para o Sentry com o app, a plataforma, a versão e se foi fatal', async () => {
+    const resposta = await postarErro(requisicao('/api/public/errors', corpo, assinado(corpo)));
+
+    expect(resposta.status).toBe(202);
+    await expect(resposta.json()).resolves.toEqual({ recebido: true });
+    expect(argumentosDaRpc).toEqual({
+      p_chave: `app-erros:${APP}`,
+      p_maximo: 100,
+      p_janela_segundos: 3600,
+    });
+    expect(enviados).toHaveLength(1);
+    expect(evento().level).toBe('error');
+    expect(evento().tags).toMatchObject({
+      origem: 'app',
+      app: APP,
+      plataforma: 'ios',
+      versao: '1.2.0',
+      fatal: 'true',
+    });
+    // A pilha é a do app, e não a desta rota.
+    expect(evento().exception.values[0]).toMatchObject({
+      type: 'TypeError',
+      value: 'undefined is not an object',
+      stacktrace: { frames: [{ function: 'abrir', filename: 'main.jsbundle' }] },
+    });
+  });
+
+  it('erro que não derrubou o app vai como aviso', async () => {
+    const leve = JSON.stringify({
+      appId: APP,
+      tipo: 'Error',
+      mensagem: 'falhou ao ler a config salva',
+      fatal: false,
+      platform: 'android',
+    });
+    await postarErro(requisicao('/api/public/errors', leve, assinado(leve)));
+
+    expect(evento().level).toBe('warning');
+    expect(evento().tags).toMatchObject({ plataforma: 'android', fatal: 'false' });
+    expect(evento().tags).not.toHaveProperty('versao');
+  });
+
+  it('sem Sentry configurado, 202 sem abrir o banco nem mandar nada', async () => {
+    delete process.env.SENTRY_DSN;
+    const resposta = await postarErro(requisicao('/api/public/errors', corpo, assinado(corpo)));
+
+    expect(resposta.status).toBe(202);
+    await expect(resposta.json()).resolves.toEqual({ recebido: false });
+    expect(argumentosDaRpc).toBeNull();
+    expect(enviados).toEqual([]);
+  });
+
+  it('401 sem assinatura, ou com o corpo trocado: nada chega ao Sentry', async () => {
+    expect((await postarErro(requisicao('/api/public/errors', corpo, null))).status).toBe(401);
+
+    const trocado = corpo.replace('undefined is not an object', 'qualquer coisa');
+    const outra = await postarErro(requisicao('/api/public/errors', trocado, assinado(corpo)));
+    expect(outra.status).toBe(401);
+
+    expect(argumentosDaRpc).toBeNull();
+    expect(enviados).toEqual([]);
+  });
+
+  it('400 com os campos errados quando o corpo vem torto', async () => {
+    const torto = JSON.stringify({ appId: APP, tipo: 'Error', mensagem: '', platform: 'web' });
+    const resposta = await postarErro(requisicao('/api/public/errors', torto, assinado(torto)));
+
+    expect(resposta.status).toBe(400);
+    const corpoDaResposta = (await resposta.json()) as { erro: string; campos: string[] };
+    expect(corpoDaResposta.campos).toEqual(
+      expect.arrayContaining(['mensagem', 'fatal', 'platform']),
+    );
+    expect(enviados).toEqual([]);
+  });
+
+  it('429 acima do teto do app: um erro em laço não esgota a cota do Sentry', async () => {
+    retornoDaRpc = { data: false, error: null };
+    const resposta = await postarErro(requisicao('/api/public/errors', corpo, assinado(corpo)));
+
+    expect(resposta.status).toBe(429);
+    expect(enviados).toEqual([]);
+  });
+
+  it('503 quando o teto não responde, e o motivo fica no log', async () => {
+    const erros = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    retornoDaRpc = { data: null, error: { message: 'conexão caiu' } };
+    const resposta = await postarErro(requisicao('/api/public/errors', corpo, assinado(corpo)));
+
+    expect(resposta.status).toBe(503);
+    await expect(resposta.json()).resolves.toEqual({ erro: 'indisponivel' });
+    expect(enviados).toEqual([]);
+    const linha = JSON.parse(String(erros.mock.calls[0]?.[0])) as Record<string, unknown>;
+    expect(linha).toMatchObject({ evento: 'app-erros.teto-indisponivel', nivel: 'erro' });
+    erros.mockRestore();
   });
 });

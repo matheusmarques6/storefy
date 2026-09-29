@@ -10,6 +10,7 @@ import type { Database } from '@storefy/db';
 import { cancelarAssinatura } from '@/lib/asaas';
 import { criarClientServiceRole } from '@/lib/supabase/admin';
 import type { SituacaoDaCobranca } from '@/lib/cobranca';
+import { log } from '@/lib/log';
 
 export type { SituacaoDaCobranca } from '@/lib/cobranca';
 
@@ -100,7 +101,7 @@ export async function cancelarAssinaturaDaEmpresa(
     .eq('org_id', orgId)
     .maybeSingle();
   if (error != null) {
-    console.error('[cobranca] assinatura não lida:', error.message);
+    log.erro('cobranca.assinatura-nao-lida', { falha: error });
     return { ok: false, motivo: 'Não conseguimos ler a assinatura. Tente de novo.' };
   }
   if (assinatura == null || assinatura.cancelada_em != null) return { ok: true, cancelou: false };
@@ -116,7 +117,7 @@ export async function cancelarAssinaturaDaEmpresa(
   if (erroAqui != null) {
     // Cancelada na Asaas e não gravada aqui: o aviso SUBSCRIPTION_DELETED da
     // própria Asaas grava depois. O log é para a equipe conferir se não veio.
-    console.error('[cobranca] cancelada na Asaas, não gravada:', orgId, erroAqui.message);
+    log.erro('cobranca.cancelada-na-asaas-nao-gravada', { org: orgId, falha: erroAqui });
     return {
       ok: false,
       motivo:

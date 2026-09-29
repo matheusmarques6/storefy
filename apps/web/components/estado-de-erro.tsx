@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { AlertCircle, RotateCcw } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
+import { relatarNoNavegador } from '@/lib/erros-do-navegador';
 
 /**
  * Estado de erro reutilizável (regra 7 do CLAUDE.md).
@@ -25,8 +26,10 @@ export function EstadoDeErro({
   rotuloVoltar?: string;
 }) {
   useEffect(() => {
-    // O Sentry entra na Fase 8; até lá o log do servidor já registra.
     console.error(erro);
+    // Erro com `digest` veio do servidor, que já relatou; o resto quebrou só
+    // aqui no navegador, e sem isto ninguém veria.
+    relatarNoNavegador(erro, 'tela', window.location.pathname);
   }, [erro]);
 
   return (

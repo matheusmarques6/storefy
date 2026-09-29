@@ -9,6 +9,8 @@ import 'server-only';
  * decisão errada de "tentar de novo" manda a campanha duas vezes.
  */
 import { iguaisEmTempoConstante } from '@/lib/cripto';
+import { log } from '@/lib/log';
+import { criarClientServiceRole } from '@/lib/supabase/admin';
 
 /** O cabeçalho que o Vercel Cron envia. */
 export const CABECALHO_DO_CRON = 'authorization';
@@ -88,4 +90,43 @@ export function faltaConfiguracao(
     return 'Falta a chave de envio desta loja.';
   }
   return null;
+}
+
+/** Os jobs do Vercel Cron, com o nome que a página de status conhece. */
+export type NomeDoJob = 'dispatch-push' | 'push-stats' | 'review-status' | 'analytics';
+
+/**
+ * Anota a execução — deu certo, ou falhou com qual erro — para a página de
+ * status e a A13. É o que transforma "o cron parou há três horas" de algo que
+ * o lojista descobre pelo cliente em algo que a equipe vê numa tela.
+ *
+ * NUNCA DERRUBA O JOB: anotar é secundário. Uma falha aqui vira aviso no log,
+ * e o job responde o que ia responder.
+ */
+export async function registrarBatimento(
+  job: NomeDoJob,
+  inicioMs: number,
+  falha?: unknown,
+): Promise<void> {
+  try {
+    const { error } = await criarClientServiceRole().rpc('registrar_batimento', {
+      p_job: job,
+      p_ok: falha === undefined,
+      p_duracao_ms: Math.max(0, Math.round(Date.now() - inicioMs)),
+      ...(falha === undefined ? {} : { p_erro: textoDaFalha(falha) }),
+    });
+    if (error != null) log.aviso('job.batimento-nao-anotado', { job, falha: error });
+  } catch (erro) {
+    log.aviso('job.batimento-nao-anotado', { job, erro });
+  }
+}
+
+/** O texto de uma falha qualquer, sem virar "[object Object]". */
+function textoDaFalha(falha: unknown): string {
+  if (falha instanceof Error) return falha.message;
+  if (typeof falha === 'string') return falha;
+  if (falha !== null && typeof falha === 'object' && 'message' in falha) {
+    if (typeof falha.message === 'string') return falha.message;
+  }
+  return 'Falhou sem detalhe.';
 }

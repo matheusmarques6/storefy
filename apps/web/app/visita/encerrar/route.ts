@@ -14,6 +14,7 @@ import { criarClientServidor } from '@/lib/supabase/server';
 import { criarClientServiceRole } from '@/lib/supabase/admin';
 import { DURACAO_DA_VISITA_MS, conferirToken } from '@/lib/visita';
 import { COOKIE_LOJA_DA_VISITA, COOKIE_VISITA } from '@/lib/visita-nomes';
+import { log } from '@/lib/log';
 
 export const dynamic = 'force-dynamic';
 
@@ -39,7 +40,7 @@ export async function POST(requisicao: NextRequest): Promise<NextResponse> {
       });
     // A visita fecha de qualquer jeito: prender o admin dentro dela por uma
     // falha de registro seria pior. O começo já está na trilha.
-    if (error != null) console.error('[visita] fim não registrado:', error.message);
+    if (error != null) log.erro('visita.fim-nao-registrado', { falha: error });
   }
 
   const destino = visita == null ? '/admin/organizacoes' : `/admin/organizacoes/${visita.orgId}`;

@@ -74,7 +74,14 @@ describe('GET /api/jobs/analytics', () => {
 
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ ok: true, dias: 3, escritas: 7 });
-    expect(chamadas).toEqual([{ nome: 'consolidar_analytics', args: { p_dias: 3 } }]);
+    expect(chamadas).toEqual([
+      { nome: 'consolidar_analytics', args: { p_dias: 3 } },
+      // E anota o batimento, para a página de status saber que o cron está vivo.
+      {
+        nome: 'registrar_batimento',
+        args: { p_job: 'analytics', p_ok: true, p_duracao_ms: expect.any(Number) as number },
+      },
+    ]);
   });
 
   it('respeita a janela pedida na chamada', async () => {
@@ -114,10 +121,19 @@ describe('GET /api/jobs/analytics', () => {
    * Falha vira 500. Um 200 aqui faria o cron seguir em frente achando que
    * consolidou, e o painel mostraria o número de antes como se fosse de agora.
    */
-  it('erro do banco vira 500', async () => {
+  it('erro do banco vira 500, e a falha fica anotada no batimento', async () => {
     resposta = { data: null, error: { message: 'deadlock detected' } };
 
     expect((await GET(chamar())).status).toBe(500);
+    expect(chamadas.at(-1)).toEqual({
+      nome: 'registrar_batimento',
+      args: {
+        p_job: 'analytics',
+        p_ok: false,
+        p_duracao_ms: expect.any(Number) as number,
+        p_erro: 'deadlock detected',
+      },
+    });
   });
 
   it('e uma exceção também', async () => {

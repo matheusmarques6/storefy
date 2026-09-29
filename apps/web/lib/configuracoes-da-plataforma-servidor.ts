@@ -25,6 +25,7 @@ import {
   lerConfiguracoes,
   type ConfiguracoesDaPlataforma,
 } from '@/lib/configuracoes-da-plataforma';
+import { log } from '@/lib/log';
 
 export const configuracoesDaPlataforma = cache(
   async function configuracoesDaPlataforma(): Promise<ConfiguracoesDaPlataforma> {
@@ -34,15 +35,12 @@ export const configuracoesDaPlataforma = cache(
         .from('platform_settings')
         .select('chave, valor');
       if (error != null) {
-        console.error('[plataforma] chaves não lidas, valendo o padrão:', error.message);
+        log.erro('plataforma.chaves-nao-lidas', { falha: error });
         return PADRAO;
       }
       return lerConfiguracoes(data);
     } catch (erro) {
-      console.error(
-        '[plataforma] chaves não lidas, valendo o padrão:',
-        erro instanceof Error ? erro.message : erro,
-      );
+      log.erro('plataforma.chaves-nao-lidas', { erro });
       return PADRAO;
     }
   },

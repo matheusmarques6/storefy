@@ -208,3 +208,25 @@ export function credenciaisDe(ambiente: {
   if (base === '') return null;
   return { apiBase: base, appId: ambiente.appId, segredo: ambiente.deviceSecret };
 }
+
+/** Um erro do próprio app, para o alerta da Storefy (ver `nucleo/erros.ts`). */
+export interface DadosDoErro {
+  tipo: string;
+  mensagem: string;
+  pilha?: string;
+  fatal: boolean;
+  platform: 'ios' | 'android';
+  appVersion?: string;
+}
+
+/**
+ * Relata um erro do app. Prazo curto: num erro fatal, o app fecha logo em
+ * seguida, e esperar a rede não o salvaria.
+ */
+export function relatarErroDoApp(
+  credenciais: Credenciais,
+  dados: DadosDoErro,
+  opcoes: Opcoes = {},
+): Promise<Resultado<{ recebido: boolean }>> {
+  return enviar(credenciais, '/api/public/errors', { ...dados }, { timeoutMs: 5000, ...opcoes });
+}

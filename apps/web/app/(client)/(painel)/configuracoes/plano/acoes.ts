@@ -43,6 +43,7 @@ import {
   type ErrosDeCampo,
   type ValoresDigitados,
 } from '@/lib/validacao';
+import { log } from '@/lib/log';
 
 export interface EstadoDaCobranca {
   ok?: boolean;
@@ -99,7 +100,9 @@ async function gravarFaturasDaAssinatura(assinatura: string): Promise<string | u
       p_vencimento: fatura.dueDate,
       ...(fatura.invoiceUrl === null ? {} : { p_link: fatura.invoiceUrl }),
     });
-    if (error != null) console.error('[cobranca] fatura não gravada:', fatura.id, error.message);
+    if (error != null) {
+      log.erro('cobranca.fatura-nao-gravada', { fatura: fatura.id, falha: error });
+    }
     if (situacao === 'pending' && fatura.invoiceUrl !== null) link ??= fatura.invoiceUrl;
   }
   return link;
@@ -219,7 +222,10 @@ export async function assinarPlano(
     // assinatura que o painel não mostra.
     const desfeita = await cancelarNaAsaas(criada.dados.id);
     if (!desfeita.ok) {
-      console.error('[cobranca] assinatura órfã na Asaas:', criada.dados.id, organizacao.id);
+      log.erro('cobranca.assinatura-orfa-na-asaas', {
+        assinatura: criada.dados.id,
+        org: organizacao.id,
+      });
     }
     return {
       mensagem: mensagemDaFalha(

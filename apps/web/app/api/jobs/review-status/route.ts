@@ -15,12 +15,13 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { criarClientServiceRole } from '@/lib/supabase/admin';
 import { criptografiaConfigurada, descriptografar } from '@/lib/cripto';
 import { serviceRoleConfigurada, supabaseConfigurado, urlDoSite } from '@/lib/env';
-import { CABECALHO_DO_CRON, autorizarJob } from '@/lib/jobs';
+import { CABECALHO_DO_CRON, autorizarJob, registrarBatimento } from '@/lib/jobs';
 import { consultarRevisao, mensagemDaRevisao } from '@/lib/revisao';
 import { enviarEmail } from '@/lib/email';
 import { mereceAviso, montarAviso } from '@/lib/aviso-da-revisao';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '@storefy/db';
+import { log } from '@/lib/log';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -36,7 +37,7 @@ export async function GET(requisicao: NextRequest): Promise<NextResponse> {
     process.env.CRON_SECRET,
   );
   if (!autorizacao.ok) {
-    console.warn('[review-status] recusado:', autorizacao.motivo);
+    log.aviso('job-revisao.recusado', { motivo: autorizacao.motivo });
     return NextResponse.json(
       { erro: 'nao_autorizado' },
       { status: autorizacao.status, headers: SEM_CACHE },
@@ -53,6 +54,7 @@ export async function GET(requisicao: NextRequest): Promise<NextResponse> {
   let consultados = 0;
   let mudados = 0;
   let avisados = 0;
+  const inicio = Date.now();
 
   try {
     const supabase = criarClientServiceRole();
@@ -124,14 +126,16 @@ export async function GET(requisicao: NextRequest): Promise<NextResponse> {
       }
     }
   } catch (erro) {
-    console.error('[review-status] falhou:', erro instanceof Error ? erro.message : erro);
+    log.erro('job-revisao.falhou', { erro });
+    await registrarBatimento('review-status', inicio, erro);
     return NextResponse.json(
       { erro: 'falhou', consultados, mudados },
       { status: 500, headers: SEM_CACHE },
     );
   }
 
-  console.info('[review-status]', { consultados, mudados, avisados });
+  log.info('job-revisao.concluido', { consultados, mudados, avisados });
+  await registrarBatimento('review-status', inicio);
   return NextResponse.json({ consultados, mudados, avisados }, { headers: SEM_CACHE });
 }
 
@@ -186,7 +190,7 @@ async function avisar(
   const envio = await enviarEmail({ ...mensagem, para });
   if (envio.ok) return true;
 
-  console.warn('[review-status] aviso não saiu:', envio.motivo);
+  log.aviso('job-revisao.aviso-nao-saiu', { motivo: envio.motivo });
   if (envio.passageiro) await supabase.rpc('devolver_aviso', { p_id: buildId });
   return false;
 }

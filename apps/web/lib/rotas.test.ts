@@ -56,6 +56,17 @@ describe('matcher do proxy', () => {
     expect(intercepta('/privacy/11111111-1111-4111-8111-111111111111')).toBe(false);
   });
 
+  /*
+   * A página de status precisa abrir justamente quando algo vai mal — inclusive
+   * quando a sessão não carrega. Sem sessão, o proxy a mandaria para o login.
+   */
+  it('NÃO intercepta a página pública de status', () => {
+    expect(intercepta('/status')).toBe(false);
+    expect(intercepta('/status/')).toBe(false);
+    // …e só ela: uma tela que apenas começa com as mesmas letras continua guardada.
+    expect(intercepta('/statusx')).toBe(true);
+  });
+
   it('NÃO intercepta o callback do auth', () => {
     // Precisa rodar sem interferência para trocar o código pela sessão.
     expect(intercepta('/auth/callback')).toBe(false);

@@ -22,13 +22,14 @@ import {
   autorizar,
   type Resposta,
 } from '@/lib/endpoint-do-app';
+import { log } from '@/lib/log';
 
 export const dynamic = 'force-dynamic';
 
 export async function POST(requisicao: NextRequest): Promise<NextResponse> {
   const resposta = await decidir(requisicao);
   if (resposta.motivo != null) {
-    console.warn('[back-in-stock] recusado:', resposta.motivo);
+    log.aviso('app-de-volta.recusado', { motivo: resposta.motivo });
   }
   return NextResponse.json(resposta.corpo, {
     status: resposta.status,

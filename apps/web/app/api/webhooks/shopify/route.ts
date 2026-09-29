@@ -26,6 +26,7 @@ import {
 import { conferirHmacDoWebhook } from '@/lib/shopify-assinatura';
 import { segredoDoWebhook } from '@/lib/shopify-conexao';
 import { aplicarWebhook } from '@/lib/shopify-webhook';
+import { log } from '@/lib/log';
 
 export const dynamic = 'force-dynamic';
 
@@ -72,7 +73,7 @@ export async function POST(requisicao: NextRequest): Promise<NextResponse> {
   }
 
   if (!conferirHmacDoWebhook(requisicao.headers.get(CABECALHO_DA_ASSINATURA), segredo, texto)) {
-    console.warn('[webhook-shopify] assinatura não confere');
+    log.aviso('webhook-shopify.assinatura-invalida', { loja: shop, topico });
     return NextResponse.json({ erro: 'nao_autorizado' }, { status: 401, headers: SEM_CACHE });
   }
 
@@ -89,11 +90,7 @@ export async function POST(requisicao: NextRequest): Promise<NextResponse> {
     const resultado = await aplicarWebhook(servico, topico, shop, texto);
     return NextResponse.json({ ok: true, ...resultado }, { headers: SEM_CACHE });
   } catch (erro) {
-    console.error(
-      '[webhook-shopify] falhou:',
-      topico,
-      erro instanceof Error ? erro.message : 'desconhecido',
-    );
+    log.erro('webhook-shopify.falhou', { topico, loja: shop, erro });
     // 500 para a Shopify reentregar: um pedido perdido é receita não atribuída.
     return NextResponse.json({ erro: 'indisponivel' }, { status: 500, headers: SEM_CACHE });
   }

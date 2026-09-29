@@ -28,6 +28,7 @@ import {
   type ErrosDeCampo,
   type ValoresDigitados,
 } from '@/lib/validacao';
+import { log } from '@/lib/log';
 
 export interface EstadoDoConviteDaPlataforma {
   ok?: boolean;
@@ -177,7 +178,7 @@ export async function cancelarConviteDaPlataforma(
     .select('email')
     .maybeSingle();
   if (error != null || data == null) {
-    if (error != null) console.error('[convites] cancelamento recusado:', error.message);
+    if (error != null) log.erro('convites.cancelamento-recusado', { falha: error });
     return { mensagem: 'Não conseguimos cancelar. Atualize a página e tente de novo.' };
   }
 

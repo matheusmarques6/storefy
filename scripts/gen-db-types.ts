@@ -300,6 +300,9 @@ async function main(): Promise<void> {
     'estender_teste',
     // C12 — o resultado do vínculo do app no domínio da loja (Universal Links).
     'registrar_links_do_app',
+    // Fase 8 — o batimento dos jobs do cron e a página pública de status.
+    'registrar_batimento',
+    'batimentos_publicos',
     'salvar_quem_paga',
     'registrar_assinatura',
     'trocar_plano_da_assinatura',

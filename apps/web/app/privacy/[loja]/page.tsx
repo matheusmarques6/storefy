@@ -54,9 +54,25 @@ async function buscarLoja(id: string): Promise<Loja | null> {
    */
   const { data: app } = await servico
     .from('apps')
-    .select('id, onesignal_app_id, device_secret_enc')
+    .select('id, onesignal_app_id')
     .eq('store_id', id)
     .maybeSingle();
+
+  /*
+   * Sem o segredo do aparelho o app não consegue assinar o que manda, então
+   * não há evento de carrinho nenhum chegando. Pergunta-se SE ele existe, sem
+   * trazê-lo: esta página é pública, e o valor cifrado não tem o que fazer
+   * aqui.
+   */
+  const { count: comSegredo } =
+    app == null
+      ? { count: 0 }
+      : await servico
+          .from('apps')
+          .select('id', { count: 'exact', head: true })
+          .eq('id', app.id)
+          .not('device_secret_enc', 'is', null)
+          .neq('device_secret_enc', '');
 
   /*
    * O Face ID é da config NO AR — a que está nos celulares. Um rascunho com o
@@ -83,9 +99,7 @@ async function buscarLoja(id: string): Promise<Loja | null> {
       config.features.biometricLogin &&
       config.tabs.some((aba) => aba.type === 'account'),
     pushLigado: app?.onesignal_app_id != null && app.onesignal_app_id !== '',
-    // Sem o segredo do aparelho o app não consegue assinar o que manda, então
-    // não há evento de carrinho nenhum chegando.
-    eventosDeCarrinho: app?.device_secret_enc != null && app.device_secret_enc !== '',
+    eventosDeCarrinho: (comSegredo ?? 0) > 0,
   };
 }
 

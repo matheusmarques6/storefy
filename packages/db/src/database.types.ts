@@ -836,6 +836,36 @@ export type Database = {
           },
         ];
       };
+      job_heartbeats: {
+        Row: {
+          job: string;
+          last_success_at: string | null;
+          last_failure_at: string | null;
+          failing_since: string | null;
+          last_error: string | null;
+          last_duration_ms: number | null;
+          updated_at: string;
+        };
+        Insert: {
+          job: string;
+          last_success_at?: string | null;
+          last_failure_at?: string | null;
+          failing_since?: string | null;
+          last_error?: string | null;
+          last_duration_ms?: number | null;
+          updated_at?: string;
+        };
+        Update: {
+          job?: string;
+          last_success_at?: string | null;
+          last_failure_at?: string | null;
+          failing_since?: string | null;
+          last_error?: string | null;
+          last_duration_ms?: number | null;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
       memberships: {
         Row: {
           org_id: string;
@@ -1549,6 +1579,10 @@ export type Database = {
         Args: { p_app_id: string; p_variant_id: string };
         Returns: number;
       };
+      batimentos_publicos: {
+        Args: Record<string, never>;
+        Returns: { job: string | null; ultimo_sucesso: string | null; ultima_falha: string | null; falhando_desde: string | null }[];
+      };
       builds_em_revisao: {
         Args: { p_limite?: number };
         Returns: { id: string | null; bundle_id_ios: string | null; asc_key_enc: string | null; asc_key_id: string | null; asc_issuer_id: string | null }[];
@@ -1687,6 +1721,10 @@ export type Database = {
       };
       registrar_assinatura: {
         Args: { p_org_id: string; p_provider: Database["public"]["Enums"]["billing_provider"]; p_assinatura: string; p_plan_id: string; p_valor_centavos: number; p_ator: string };
+        Returns: unknown;
+      };
+      registrar_batimento: {
+        Args: { p_job: string; p_ok: boolean; p_duracao_ms?: number; p_erro?: string };
         Returns: unknown;
       };
       registrar_evento_de_carrinho: {

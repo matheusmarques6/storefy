@@ -25,6 +25,7 @@ import {
   slugDoProjeto,
 } from '@/lib/build-interno';
 import { canalDaOta } from '@/lib/ota';
+import { log } from '@/lib/log';
 
 export const dynamic = 'force-dynamic';
 
@@ -44,7 +45,7 @@ export async function POST(requisicao: NextRequest): Promise<NextResponse> {
     process.env.BUILD_API_SECRET,
   );
   if (!autorizacao.ok) {
-    console.warn('[ota-interno] recusado:', autorizacao.motivo);
+    log.aviso('ota.recusado', { motivo: autorizacao.motivo });
     return NextResponse.json(
       { erro: 'nao_autorizado' },
       { status: autorizacao.status, headers: SEM_CACHE },
@@ -135,7 +136,7 @@ export async function POST(requisicao: NextRequest): Promise<NextResponse> {
   } catch (erro) {
     // A mensagem vai para o NOSSO log: um erro do Postgres pode carregar o
     // valor de uma coluna, e esta rota lida com a coluna do segredo do app.
-    console.error('[ota-interno] falhou:', erro instanceof Error ? erro.message : 'desconhecido');
+    log.erro('ota.falhou', { erro });
     return NextResponse.json({ erro: 'indisponivel' }, { status: 503, headers: SEM_CACHE });
   }
 }

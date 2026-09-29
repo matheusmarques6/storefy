@@ -22,6 +22,7 @@ import {
   lerLinhaDoAparelho,
   type Resposta,
 } from '@/lib/endpoint-do-app';
+import { log } from '@/lib/log';
 
 export const dynamic = 'force-dynamic';
 
@@ -29,7 +30,7 @@ export async function POST(requisicao: NextRequest): Promise<NextResponse> {
   const resposta = await decidir(requisicao);
   if (resposta.motivo != null) {
     // Só no nosso log. O corpo da resposta nunca explica a recusa.
-    console.warn('[devices] recusado:', resposta.motivo);
+    log.aviso('app-aparelhos.recusado', { motivo: resposta.motivo });
   }
   return NextResponse.json(resposta.corpo, {
     status: resposta.status,

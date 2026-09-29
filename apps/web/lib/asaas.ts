@@ -13,6 +13,7 @@ import 'server-only';
  * assinatura pelo painel ainda não está ligada.
  */
 import { reaisParaAsaas } from '@/lib/cobranca';
+import { log } from '@/lib/log';
 
 export const URL_DA_ASAAS = 'https://api.asaas.com/v3';
 const TIMEOUT_MS = 15_000;
@@ -110,17 +111,17 @@ async function chamar<T>(
     }
 
     if (!resposta.ok) {
-      console.error('[asaas] recusado:', metodo, caminho, resposta.status, texto.slice(0, 500));
+      log.erro('asaas.recusado', {
+        metodo,
+        caminho,
+        status: resposta.status,
+        resposta: texto.slice(0, 500),
+      });
       return { ok: false, status: resposta.status, motivo: motivoDaRecusa(resposta.status, json) };
     }
     return { ok: true, dados: json as T };
   } catch (erro) {
-    console.error(
-      '[asaas] sem resposta:',
-      metodo,
-      caminho,
-      erro instanceof Error ? erro.message : erro,
-    );
+    log.erro('asaas.sem-resposta', { metodo, caminho, erro });
     return { ok: false, status: 0, motivo: motivoDaRecusa(0, null) };
   } finally {
     clearTimeout(relogio);

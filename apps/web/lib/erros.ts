@@ -1,3 +1,4 @@
+import { log } from '@/lib/log';
 /**
  * Reconhece os erros que o Next lança de propósito para controlar navegação.
  *
@@ -67,14 +68,14 @@ export function textoNossoDaFalha(falha: FalhaDoSupabase): string | null {
  * A mensagem de uma falha, pronta para o lojista ler — e o detalhe técnico no
  * log do servidor, onde ele serve para alguém.
  *
- * `onde` é a etiqueta do log (`[lojas] 42P01 relation ... does not exist`),
- * para quem investigar saber de que tela veio.
+ * `onde` é a área do evento no log (`lojas.falha-do-banco`, com o código e o
+ * texto do Postgres), para quem investigar saber de que tela veio.
  */
 export function mensagemDaFalha(onde: string, falha: FalhaDoSupabase, reserva: string): string {
   const nosso = textoNossoDaFalha(falha);
   if (nosso !== null) return nosso;
 
-  console.error(`[${onde}]`, falha.code ?? 'sem código', falha.message);
+  log.erro(`${onde}.falha-do-banco`, { codigo: falha.code ?? 'sem código', texto: falha.message });
   return reserva;
 }
 

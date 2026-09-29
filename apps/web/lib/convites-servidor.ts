@@ -19,6 +19,7 @@ import {
   vencimentoDoConvite,
   type DadosDoEmailDeConvite,
 } from '@/lib/convites';
+import { log } from '@/lib/log';
 
 /** Quem convida aparece no e-mail pelo nome; sem nome, pelo e-mail. */
 export function nomeDeQuemConvida(usuario: {
@@ -100,7 +101,7 @@ export async function criarOuReenviarConvite(
       .select('id')
       .maybeSingle();
     if (error != null || data == null) {
-      if (error != null) console.error('[convites] reenvio recusado:', error.message);
+      if (error != null) log.erro('convites.reenvio-recusado', { falha: error });
       return { ok: false, mensagem: 'Não conseguimos reenviar o convite. Tente de novo.' };
     }
     return { ok: true, id: data.id, segredo, reenviado: true };
@@ -128,7 +129,7 @@ export async function criarOuReenviarConvite(
     if (corrida !== null) return reenviar(corrida);
   }
 
-  console.error('[convites] convite recusado:', error.code, error.message);
+  log.erro('convites.convite-recusado', { falha: error });
   return { ok: false, mensagem: 'Não conseguimos criar o convite. Tente de novo.' };
 }
 
@@ -151,7 +152,7 @@ export async function entregarConvite(
   if (!emailConfigurado()) return { link, enviadoPorEmail: false };
 
   const envio = await enviarEmail({ para: [para], ...montarEmailDoConvite({ ...dados, link }) });
-  if (!envio.ok) console.warn('[convites] e-mail não saiu:', envio.motivo);
+  if (!envio.ok) log.aviso('convites.email-nao-saiu', { motivo: envio.motivo });
   return { link, enviadoPorEmail: envio.ok };
 }
 

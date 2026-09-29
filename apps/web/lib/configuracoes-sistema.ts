@@ -132,6 +132,14 @@ export const INTEGRACOES: Integracao[] = [
     nivel: 'opcional',
   },
   {
+    chave: 'erros',
+    nome: 'Alerta de erros (Sentry)',
+    variaveis: ['SENTRY_DSN'],
+    oQueQuebra:
+      'Nada quebra para o cliente: os erros do servidor, do painel e do app continuam no log da Vercel. Só ninguém é avisado quando algo falha.',
+    nivel: 'opcional',
+  },
+  {
     chave: 'google',
     nome: 'Entrar com o Google',
     variaveis: ['NEXT_PUBLIC_GOOGLE_OAUTH_ENABLED'],

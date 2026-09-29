@@ -11,6 +11,7 @@ import { criarClientServiceRole } from '@/lib/supabase/admin';
 import { serviceRoleConfigurada, supabaseConfigurado } from '@/lib/env';
 import { CABECALHO_DO_SEGREDO, autorizarWorkflow } from '@/lib/build-interno';
 import { terminou } from '@/lib/ota';
+import { log } from '@/lib/log';
 
 export const dynamic = 'force-dynamic';
 
@@ -31,7 +32,7 @@ export async function POST(requisicao: NextRequest): Promise<NextResponse> {
     process.env.BUILD_API_SECRET,
   );
   if (!autorizacao.ok) {
-    console.warn('[ota-status] recusado:', autorizacao.motivo);
+    log.aviso('ota-status.recusado', { motivo: autorizacao.motivo });
     return NextResponse.json(
       { erro: 'nao_autorizado' },
       { status: autorizacao.status, headers: SEM_CACHE },
@@ -94,10 +95,7 @@ export async function POST(requisicao: NextRequest): Promise<NextResponse> {
       await servico.from('ota_updates').update({ commit_sha: commitSha }).eq('id', otaId);
     }
   } catch (erroDoBanco) {
-    console.error(
-      '[ota-status] falhou:',
-      erroDoBanco instanceof Error ? erroDoBanco.message : 'desconhecido',
-    );
+    log.erro('ota-status.falhou', { erro: erroDoBanco });
     return NextResponse.json({ erro: 'indisponivel' }, { status: 503, headers: SEM_CACHE });
   }
 

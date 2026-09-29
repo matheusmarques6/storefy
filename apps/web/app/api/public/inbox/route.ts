@@ -21,13 +21,14 @@ import {
   lerCaixaDeAvisos,
   type Resposta,
 } from '@/lib/endpoint-do-app';
+import { log } from '@/lib/log';
 
 export const dynamic = 'force-dynamic';
 
 export async function POST(requisicao: NextRequest): Promise<NextResponse> {
   const resposta = await decidir(requisicao);
   if (resposta.motivo != null) {
-    console.warn('[inbox] recusado:', resposta.motivo);
+    log.aviso('app-caixa.recusado', { motivo: resposta.motivo });
   }
   return NextResponse.json(resposta.corpo, {
     status: resposta.status,

@@ -33,6 +33,7 @@ import 'server-only';
  * tem, não consegue mais fazer um, e vai pelo OAuth.
  */
 import { ehDominioDeLoja } from '@/lib/shopify';
+import { log } from '@/lib/log';
 
 /** O que a Shopify devolve, e quanto tempo ele dura. */
 export interface TokenDeCredenciais {
@@ -154,7 +155,10 @@ async function traduzirFalha(resposta: Response): Promise<string> {
   const texto = await resposta.text().catch(() => '');
 
   // Só para o nosso log. O corpo pode ser grande; o começo basta.
-  console.warn('[shopify-credenciais] recusado:', resposta.status, texto.slice(0, 500));
+  log.aviso('shopify-credenciais.recusado', {
+    status: resposta.status,
+    resposta: texto.slice(0, 500),
+  });
 
   if (/application_cannot_be_found/i.test(texto)) {
     return 'Não achamos esse app na loja. Confira o Client ID e veja se o app está instalado nela.';

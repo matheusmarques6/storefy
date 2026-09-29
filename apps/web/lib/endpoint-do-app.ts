@@ -79,6 +79,17 @@ export const CorpoDaCaixa = z.object({
   subscriptionId: inscricao,
 });
 
+/** Um erro de JavaScript do próprio app (`apps/mobile/src/nucleo/erros.ts`). */
+export const CorpoDoErroDoApp = z.object({
+  appId: uuid,
+  tipo: z.string().trim().min(1).max(100),
+  mensagem: z.string().trim().min(1).max(500),
+  pilha: z.string().max(5000).optional(),
+  fatal: z.boolean(),
+  platform: z.enum(['ios', 'android']),
+  appVersion: z.string().trim().min(1).max(32).optional(),
+});
+
 /**
  * O pedido de "me avise quando voltar".
  *

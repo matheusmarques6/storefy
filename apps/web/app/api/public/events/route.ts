@@ -18,13 +18,14 @@ import {
   lerLinhaDoEvento,
   type Resposta,
 } from '@/lib/endpoint-do-app';
+import { log } from '@/lib/log';
 
 export const dynamic = 'force-dynamic';
 
 export async function POST(requisicao: NextRequest): Promise<NextResponse> {
   const resposta = await decidir(requisicao);
   if (resposta.motivo != null) {
-    console.warn('[events] recusado:', resposta.motivo);
+    log.aviso('app-eventos.recusado', { motivo: resposta.motivo });
   }
   return NextResponse.json(resposta.corpo, {
     status: resposta.status,
