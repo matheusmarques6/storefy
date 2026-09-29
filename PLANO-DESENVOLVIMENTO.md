@@ -1278,7 +1278,7 @@ com um servidor no lugar da Asaas falando HTTP de verdade com o painel). A suít
 
 ### Fase 8 — Polimento, QA e lançamento (5+ dias)
 - Trocar os layouts provisórios pelos do Claude Design (tela por tela, usando os IDs C/A/M).
-- Testes E2E com Playwright (onboarding → editor → publicar config → campanha). ✅ `e2e/jornada.spec.ts` faz a jornada inteira só pela tela (cadastro → loja → editor → publicar → campanha agendada), e a suíte tem 43 testes
+- Testes E2E com Playwright (onboarding → editor → publicar config → campanha). ✅ `e2e/jornada.spec.ts` faz a jornada inteira só pela tela (cadastro → loja → editor → publicar → campanha agendada), e a suíte tem 78 testes — na rodada de 29/09/2026, a suíte inteira passou (78 de 78, em 9 minutos), contra o Supabase local e o build de produção (`scripts/e2e-local.sh`)
 - Maestro para fluxos do app (abrir, trocar aba, carrinho, offline). ✅ escritos em `apps/mobile/.maestro/` (abrir, trocar aba, busca, carrinho, offline, ajustes e desligar as notificações), conferidos pelo `maestro check-syntax` 2.10; `src/maestro.test.ts` quebra se um fluxo citar texto ou `id` que o app não tem. Rodar depende de simulador/emulador com o build da loja de teste (ver "Depende de ação humana" da Fase 8c)
 - Sentry (web + mobile), logs estruturados, status page. ✅ Fase 8b
 - Revisão de segurança: RLS, segredos, rate limit, HMAC. ✅ Fase 8b
