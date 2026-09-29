@@ -256,3 +256,58 @@ test('a ficha de um cliente que ainda não publicou diz isso, sem inventar núme
   await expect(bloco.getByText('Não configuradas')).toBeVisible();
   await expect(bloco.getByText('Nenhuma automação ligada.')).toBeVisible();
 });
+
+test('C13: o vídeo do passo a passo, gravado na A13, aparece no cartão da conta ainda não conectada', async ({
+  browser,
+}) => {
+  const equipe = await (await browser.newContext()).newPage();
+  const idDaEquipe = await entrarComoEquipe(equipe, 'c13-equipe');
+  await equipe.goto('/admin/sistema');
+  await equipe.waitForLoadState('networkidle');
+  const videoDaApple = equipe.getByLabel('Vídeo: conectar a conta Apple');
+  const salvar = equipe.getByRole('button', { name: 'Salvar chaves' });
+
+  // O que não é vídeo desses serviços é recusado, dizendo o que aceita.
+  await videoDaApple.fill('https://exemplo.com/video.mp4');
+  await salvar.click();
+  await expect(equipe.locator('form').getByRole('alert')).toContainText(
+    'O vídeo da Apple precisa ser um link do YouTube, do Vimeo ou do Loom',
+  );
+
+  await videoDaApple.fill('https://www.youtube.com/watch?v=dQw4w9WgXcQ');
+  await equipe.getByLabel('Vídeo: conectar a conta Google').fill('https://vimeo.com/123456789');
+  await salvar.click();
+  await expect(equipe.getByText('Chaves salvas.')).toBeVisible();
+
+  const { data: trilha } = await bancoDeTeste()
+    .from('audit_logs')
+    .select('diff')
+    .eq('entity', 'platform_settings')
+    .eq('actor_id', idDaEquipe);
+  expect(JSON.stringify(trilha)).toContain('video_da_apple');
+  expect(JSON.stringify(trilha)).toContain('video_do_google');
+
+  // O lojista vê os dois vídeos, pelo player — o do YouTube sem cookies.
+  const lojista = await (await browser.newContext()).newPage();
+  const email = emailDeTeste('c13-lojista');
+  await criarUsuarioConfirmado(email, 'Empresa C13');
+  await entrar(lojista, email);
+  await lojista.goto('/publicacao/contas');
+  await expect(lojista.getByTitle('Vídeo: como conectar a conta Apple')).toHaveAttribute(
+    'src',
+    'https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ',
+  );
+  await expect(lojista.getByTitle('Vídeo: como conectar a conta Google')).toHaveAttribute(
+    'src',
+    'https://player.vimeo.com/video/123456789',
+  );
+
+  // Sem o vídeo, o cartão fica só com os passos escritos — e não um player vazio.
+  await videoDaApple.fill('');
+  await salvar.click();
+  await expect(equipe.getByText('Chaves salvas.')).toBeVisible();
+  await lojista.reload();
+  await expect(lojista.getByTitle('Vídeo: como conectar a conta Apple')).toHaveCount(0);
+  await expect(lojista.getByText('Usuários e Acesso', { exact: false })).toBeVisible();
+  await expect(lojista.getByTitle('Vídeo: como conectar a conta Google')).toBeVisible();
+});

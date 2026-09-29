@@ -22,6 +22,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { CampoDeArquivo } from './campo-de-arquivo';
 import { EstadoDaConta } from './estado-da-conta';
+import { VideoDoPassoAPasso } from './video-do-passo-a-passo';
 import { conectarApple, desconectarConta } from '../acoes';
 
 const VAZIO = {
@@ -36,9 +37,12 @@ const VAZIO = {
 export function CartaoDaApple({
   conta,
   podeEscrever,
+  video,
 }: {
   conta: ContaNaTela | null;
   podeEscrever: boolean;
+  /** O vídeo do passo a passo (C13), da A13. Vazio, só os passos escritos. */
+  video: string;
 }) {
   const router = useRouter();
   const [valores, setValores] = useState(VAZIO);
@@ -116,6 +120,10 @@ export function CartaoDaApple({
               das notificações.
             </li>
           </ol>
+        )}
+
+        {conectada ? null : (
+          <VideoDoPassoAPasso endereco={video} titulo="Vídeo: como conectar a conta Apple" />
         )}
 
         {podeEscrever ? (

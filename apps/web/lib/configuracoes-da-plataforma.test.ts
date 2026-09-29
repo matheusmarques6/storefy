@@ -16,7 +16,23 @@ describe('lerConfiguracoes', () => {
       avisoNoPainel: '',
       previaNoIphone: '',
       previaNoAndroid: '',
+      videoDaApple: '',
+      videoDoGoogle: '',
     });
+  });
+
+  /*
+   * O vídeo vai para um iframe na tela de todo lojista (C13): só o que passa
+   * na conferência, e sempre pelo player — um valor gravado à mão que não é
+   * vídeo desses serviços vira "sem vídeo".
+   */
+  it('lê os vídeos do passo a passo, e descarta o que não é vídeo', () => {
+    const lido = lerConfiguracoes([
+      { chave: 'video_da_apple', valor: 'https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ' },
+      { chave: 'video_do_google', valor: 'https://exemplo.com/pagina' },
+    ]);
+    expect(lido.videoDaApple).toBe('https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ');
+    expect(lido.videoDoGoogle).toBe('');
   });
 
   it('lê o que foi mudado', () => {

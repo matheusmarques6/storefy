@@ -155,6 +155,8 @@ export default async function PaginaSistema() {
             avisoNoPainel={chaves.avisoNoPainel}
             previaNoIphone={chaves.previaNoIphone}
             previaNoAndroid={chaves.previaNoAndroid}
+            videoDaApple={chaves.videoDaApple}
+            videoDoGoogle={chaves.videoDoGoogle}
             podeMudar={papel === 'superadmin'}
           />
         </CardContent>

@@ -5,6 +5,7 @@ import { ChevronLeft } from 'lucide-react';
 import { exigirContextoCliente } from '@/lib/contexto';
 import { criarClientServidor } from '@/lib/supabase/server';
 import { contasDaOrganizacao } from '@/lib/contas-de-desenvolvedor';
+import { configuracoesDaPlataforma } from '@/lib/configuracoes-da-plataforma-servidor';
 import { CartaoDaApple } from './cartao-apple';
 import { CartaoDoGoogle } from './cartao-google';
 
@@ -13,7 +14,10 @@ export const metadata: Metadata = { title: 'Contas Apple e Google' };
 export default async function PaginaDeContas() {
   const { organizacao, papel } = await exigirContextoCliente();
   const supabase = await criarClientServidor();
-  const contas = await contasDaOrganizacao(supabase, organizacao.id);
+  const [contas, plataforma] = await Promise.all([
+    contasDaOrganizacao(supabase, organizacao.id),
+    configuracoesDaPlataforma(),
+  ]);
   const podeEscrever = papel === 'owner' || papel === 'admin';
 
   return (
@@ -35,8 +39,16 @@ export default async function PaginaDeContas() {
       </div>
 
       <div className="grid gap-6">
-        <CartaoDaApple conta={contas.apple} podeEscrever={podeEscrever} />
-        <CartaoDoGoogle conta={contas.google} podeEscrever={podeEscrever} />
+        <CartaoDaApple
+          conta={contas.apple}
+          podeEscrever={podeEscrever}
+          video={plataforma.videoDaApple}
+        />
+        <CartaoDoGoogle
+          conta={contas.google}
+          podeEscrever={podeEscrever}
+          video={plataforma.videoDoGoogle}
+        />
       </div>
     </div>
   );

@@ -4647,6 +4647,12 @@ select tests.ok('chaves da plataforma',
            ('previa_no_android', '"https://play.google.com/store/apps/details?id=br.storefy"')$q$),
   'os links do Storefy Preview são chaves que o banco conhece');
 
+select tests.ok('chaves da plataforma',
+  tests.permitido($q$insert into public.platform_settings (chave, valor)
+    values ('video_da_apple', '"https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ"'),
+           ('video_do_google', '"https://player.vimeo.com/video/123456789"')$q$),
+  'os vídeos do passo a passo (C13) são chaves que o banco conhece');
+
 reset role;
 select tests.logout();
 delete from public.platform_settings;

@@ -22,12 +22,17 @@ export function ChavesDaPlataforma({
   avisoNoPainel,
   previaNoIphone,
   previaNoAndroid,
+  videoDaApple,
+  videoDoGoogle,
   podeMudar,
 }: {
   cadastroAberto: boolean;
   avisoNoPainel: string;
   previaNoIphone: string;
   previaNoAndroid: string;
+  /** O vídeo do passo a passo de cada conta (C13), no endereço de incorporar. */
+  videoDaApple: string;
+  videoDoGoogle: string;
   /** Só superadmin muda; `support` vê. O servidor confere de novo. */
   podeMudar: boolean;
 }) {
@@ -131,6 +136,38 @@ export function ChavesDaPlataforma({
               inputMode="url"
               defaultValue={estado.valores?.previaNoAndroid ?? previaNoAndroid}
               placeholder="https://play.google.com/…"
+            />
+          </div>
+        </div>
+
+        <div className="space-y-4">
+          <div>
+            <p className="text-sm font-medium">Vídeos do passo a passo (C13)</p>
+            <p className="text-muted-foreground text-sm">
+              Aparecem na tela de contas Apple e Google, enquanto o lojista ainda não conectou. Link
+              do YouTube, do Vimeo ou do Loom; vazio, a tela fica só com os passos escritos.
+            </p>
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="video-da-apple">Vídeo: conectar a conta Apple</Label>
+            <Input
+              id="video-da-apple"
+              name="videoDaApple"
+              type="url"
+              inputMode="url"
+              defaultValue={estado.valores?.videoDaApple ?? videoDaApple}
+              placeholder="https://www.youtube.com/watch?v=…"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="video-do-google">Vídeo: conectar a conta Google</Label>
+            <Input
+              id="video-do-google"
+              name="videoDoGoogle"
+              type="url"
+              inputMode="url"
+              defaultValue={estado.valores?.videoDoGoogle ?? videoDoGoogle}
+              placeholder="https://www.youtube.com/watch?v=…"
             />
           </div>
         </div>

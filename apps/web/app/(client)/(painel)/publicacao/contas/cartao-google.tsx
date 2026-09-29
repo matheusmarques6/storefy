@@ -17,14 +17,18 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { CampoDeArquivo } from './campo-de-arquivo';
 import { EstadoDaConta } from './estado-da-conta';
+import { VideoDoPassoAPasso } from './video-do-passo-a-passo';
 import { conectarGoogle, desconectarConta } from '../acoes';
 
 export function CartaoDoGoogle({
   conta,
   podeEscrever,
+  video,
 }: {
   conta: ContaNaTela | null;
   podeEscrever: boolean;
+  /** O vídeo do passo a passo (C13), da A13. Vazio, só os passos escritos. */
+  video: string;
 }) {
   const router = useRouter();
   const [arquivo, setArquivo] = useState('');
@@ -101,6 +105,10 @@ export function CartaoDoGoogle({
               Cloud.
             </li>
           </ol>
+        )}
+
+        {conectada ? null : (
+          <VideoDoPassoAPasso endereco={video} titulo="Vídeo: como conectar a conta Google" />
         )}
 
         {podeEscrever ? (

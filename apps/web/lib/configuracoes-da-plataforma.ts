@@ -11,6 +11,7 @@
  * aqui não pode derrubar o painel de todos os lojistas.
  */
 import type { Json } from '@storefy/db';
+import { conferirVideo } from '@/lib/video-do-passo';
 
 export interface ConfiguracoesDaPlataforma {
   /** O cadastro por e-mail aceita contas novas. */
@@ -24,6 +25,13 @@ export interface ConfiguracoesDaPlataforma {
    */
   previaNoIphone: string;
   previaNoAndroid: string;
+  /**
+   * O vídeo do passo a passo de cada conta (C13), já no endereço de
+   * incorporar do YouTube (sem cookies), do Vimeo ou do Loom. Vazio, o cartão
+   * da conta fica só com os passos escritos.
+   */
+  videoDaApple: string;
+  videoDoGoogle: string;
 }
 
 /** Onde baixar o Storefy Preview, como as telas do lojista recebem. Vazio é "ainda não". */
@@ -41,6 +49,8 @@ export const PADRAO: ConfiguracoesDaPlataforma = {
   avisoNoPainel: '',
   previaNoIphone: '',
   previaNoAndroid: '',
+  videoDaApple: '',
+  videoDoGoogle: '',
 };
 
 /** O aviso tem de caber numa faixa: é uma frase, não um comunicado. */
@@ -75,7 +85,17 @@ export function lerConfiguracoes(
     // melhor do que um botão levando para outro lugar.
     previaNoIphone: linkGravado(valorDe('previa_no_iphone'), 'iphone'),
     previaNoAndroid: linkGravado(valorDe('previa_no_android'), 'android'),
+    // O mesmo cuidado: um vídeo gravado que não passa mais vira "sem vídeo",
+    // e não um iframe apontando para outro lugar.
+    videoDaApple: videoGravado(valorDe('video_da_apple'), 'Apple'),
+    videoDoGoogle: videoGravado(valorDe('video_do_google'), 'Google'),
   };
+}
+
+function videoGravado(valor: Json | undefined, conta: 'Apple' | 'Google'): string {
+  if (typeof valor !== 'string') return '';
+  const conferido = conferirVideo(valor, conta);
+  return conferido.ok ? conferido.link : '';
 }
 
 function linkGravado(valor: Json | undefined, plataforma: 'iphone' | 'android'): string {
