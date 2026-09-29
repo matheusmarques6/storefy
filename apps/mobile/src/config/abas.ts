@@ -78,11 +78,6 @@ export function resolverAbas(config: AppConfig): AbaResolvida[] {
   });
 }
 
-/** A aba que mostra a quantidade de itens do carrinho, se houver. */
-export function abaDoCarrinho(abas: readonly AbaResolvida[]): AbaResolvida | null {
-  return abas.find((aba) => aba.badge === 'cart_count') ?? null;
-}
-
 /**
  * Para onde um deep link de push deve levar.
  *

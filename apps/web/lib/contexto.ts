@@ -66,15 +66,6 @@ export interface ContextoCliente {
   visita: { expiraEm: string } | null;
 }
 
-/** Usuário autenticado, ou null. */
-export async function obterUsuario(): Promise<User | null> {
-  const supabase = await criarClientServidor();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  return user;
-}
-
 /**
  * Contexto completo. Redireciona para o login se não houver sessão.
  *

@@ -1,5 +1,5 @@
 /**
- * Onboarding nativo (passo 3 da seção 5.3, item da checklist 5.7).
+ * M02 — onboarding nativo em slides (passo 3 da seção 5.3, item da checklist 5.7).
  *
  * Aparece uma vez só, no primeiro uso, e só quando a loja configurou slides.
  * Conta muito na revisão da Apple: é um dos recursos nativos que diferenciam o

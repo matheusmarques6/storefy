@@ -1,6 +1,6 @@
 'use client';
 
-/** Boas-vindas, banner e recursos do app (C06d). */
+/** Boas-vindas e permissões (C06d); banner e recursos do app (C06e). */
 import { Plus, Trash2 } from 'lucide-react';
 import type { AppConfig } from '@storefy/config-schema';
 import { Button } from '@/components/ui/button';

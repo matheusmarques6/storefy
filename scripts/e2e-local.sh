@@ -57,6 +57,9 @@ export NEXT_PUBLIC_SITE_URL="http://app.localhost:${PORTA}"
 export E2E_BASE_URL="http://app.localhost:${PORTA}"
 export ENCRYPTION_KEY="${ENCRYPTION_KEY:-$(openssl rand -base64 32)}"
 export CRON_SECRET="${CRON_SECRET:-cron-do-e2e-local}"
+# O segredo das rotas internas do build e da OTA: é com ele que o
+# `segredo-do-app.spec.ts` faz o papel do workflow do GitHub.
+export BUILD_API_SECRET="${BUILD_API_SECRET:-build-do-e2e-local}"
 # A Asaas do e2e é um servidor na própria máquina, que o `cobranca.spec.ts`
 # sobe na porta abaixo: a cobrança de verdade passa pelo sandbox da Asaas, com
 # uma conta que é da Storefy (ver PLANO, Fase 7).

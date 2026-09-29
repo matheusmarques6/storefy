@@ -158,6 +158,13 @@ jobs:
           export STOREFY_APP_ID=$(jq -r '.appId' /tmp/loja.json)
           export ONESIGNAL_APP_ID=$(jq -r '.oneSignalAppId // empty' /tmp/loja.json)
           export STOREFY_DEVICE_SECRET=$(jq -r '.deviceSecret // empty' /tmp/loja.json)
+          # A correção leva o segredo aos apps gerados antes de o build criá-lo;
+          # sem ele, publicaria um pacote que não fala com o servidor.
+          if [ -z "$STOREFY_DEVICE_SECRET" ]; then
+            echo "::error::A Storefy não devolveu o segredo do app desta loja."
+            exit 1
+          fi
+          echo "::add-mask::$STOREFY_DEVICE_SECRET"
           export EAS_PROJECT_ID=$(jq -r '.expoProjectId // empty' /tmp/loja.json)
           # O slug é por loja: o EAS confere o slug do config contra o do
           # projeto, e um slug fixo faria a correção desta loja ser recusada —

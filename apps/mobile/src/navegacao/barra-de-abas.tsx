@@ -23,7 +23,7 @@ interface Props {
   abas: readonly AbaResolvida[];
   /** `id` da aba visível. */
   ativa: string;
-  /** Quantidade de itens no carrinho, para o badge. */
+  /** Quantidade de itens no carrinho, para o badge da aba do carrinho (M05). */
   itensNoCarrinho: number;
   /** Avisos não lidos na caixa, para o badge da aba de notificações. */
   avisosNaoLidos: number;

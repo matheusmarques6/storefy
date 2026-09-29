@@ -1584,6 +1584,23 @@ por um caminho DENTRO do app (4.5.4), e o Storefy é campanha de promoção.
 | Pedir à Shopify o acesso a dados protegidos de cliente (incluindo o e-mail) para o app público da Storefy. Sem ele, as lojas conectadas pelo OAuth mandam o `customerId` no lugar do e-mail — a resposta 422 diz isso a quem configura | time | Partner Dashboard › app › API access › Protected customer data |
 | Conferir num fluxo real do Klaviyo (ação "Webhook") e do Omnisend (plano pago) com uma loja piloto | time | contas da loja piloto |
 
+#### Fase 8f — Entregue (29/09/2026): o segredo do app, que nenhum build levava
+
+| Item | Estado |
+|---|---|
+| O defeito | ❌→✅ nada criava o segredo com que o app assina o que manda. A função que o gerava não tinha quem a chamasse, `apps.device_secret_enc` ficava nulo, e todo build saía com `deviceSecret` nulo. O app, sem com que assinar, desistia em silêncio: não registrava o aparelho nem mandava evento de carrinho, erro ou "me avise" — push, automações e números paravam na origem, e nenhum teste via, porque cada ponta era testada com um segredo que o teste mesmo punha |
+| O segredo nasce no build | ✅ `garantirSegredoDoApp` cria o segredo no primeiro build da loja (32 bytes, gravado cifrado) e o devolve em claro só ao workflow; os builds seguintes levam o MESMO — é com ele que os apps instalados assinam. O iOS e o Android pedindo ao mesmo tempo não criam dois: a gravação só vale com a coluna vazia, e quem perde a corrida usa o do vencedor |
+| A correção OTA leva o segredo aos apps antigos | ✅ a etapa da loja cria o segredo se ela ainda não tem, e o pacote OTA o entrega aos apps gerados antes desta correção |
+| Segredo que não abre | ✅ falha alto (503, o build fica na fila, `segredo-do-app.ilegivel` no log) em vez de gerar outro por cima: quase sempre é a `ENCRYPTION_KEY` errada no servidor, e trocar derrubaria todos os apps instalados da loja |
+| Os workflows | ✅ o de build e o de OTA param com erro se a resposta vier sem segredo, em vez de gerar um binário mudo; o da OTA passou a mascarar o segredo no log, como o de build já fazia |
+| Testes | ✅ 9 da função (inclusive a corrida), 3 na rota do build, 3 na da OTA; e um e2e que faz o papel do workflow: publica pela tela, pede o build, recebe o segredo, registra o aparelho com uma assinatura calculada do zero, vê a assinatura falsa ser recusada e o build da outra plataforma levar o mesmo segredo |
+
+**Depende de ação humana**
+
+| O quê | Quem | Onde |
+|---|---|---|
+| Se um dia o log mostrar `segredo-do-app.ilegivel`: conferir a `ENCRYPTION_KEY` do servidor. Só se o valor estiver de fato perdido, zerar `apps.device_secret_enc` daquele app — o próximo build cria outro, e os apps já instalados voltam a falar com o servidor quando receberem o build ou a correção OTA | time | Vercel (variáveis) e SQL no Supabase |
+
 **Estimativa total:** cerca de 7 a 9 semanas para uma pessoa com Claude Code em ritmo forte. O MVP vendável (Fases 0–4) leva cerca de 4 a 5 semanas.
 
 ---
@@ -1653,7 +1670,7 @@ SUPABASE_SERVICE_ROLE_KEY=           ENCRYPTION_KEY=
 ONESIGNAL_ORG_API_KEY=               ONESIGNAL_ORG_ID=
 GITHUB_DISPATCH_TOKEN=               GITHUB_REPO=
 EXPO_TOKEN=                          EAS_WEBHOOK_SECRET=
-CRON_SECRET=                         APP_HMAC_SECRET=
+CRON_SECRET=
 SHOPIFY_API_KEY=                     SHOPIFY_API_SECRET=      SHOPIFY_SCOPES=
 ASAAS_API_KEY=  ASAAS_WEBHOOK_TOKEN=  RESEND_API_KEY=          EMAIL_REMETENTE=
 SENTRY_DSN=                          BUILD_API_SECRET=

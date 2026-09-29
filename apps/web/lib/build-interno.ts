@@ -135,8 +135,11 @@ export interface DadosParaOBuild {
   /** Slug do projeto EAS desta loja. Ver `slugDoProjeto`. */
   slug: string;
   oneSignalAppId: string | null;
-  /** Segredo com que o app assina o que manda, em claro. */
-  deviceSecret: string | null;
+  /**
+   * Segredo com que o app assina o que manda, em claro. Nunca nulo: sem ele o
+   * app não registra o aparelho nem manda evento (`garantirSegredoDoApp`).
+   */
+  deviceSecret: string;
   /** Canal de EAS Update desta loja. */
   canal: string;
   corDeFundo: string;

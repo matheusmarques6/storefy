@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 import { parseAppConfig, type AppConfigInput } from '@storefy/config-schema';
 import {
   abaDaConta,
-  abaDoCarrinho,
   abaParaCaminho,
   abasUsaveis,
   resolverAbas,
@@ -132,17 +131,6 @@ describe('resolverAbas', () => {
   it('preserva rótulo, ícone e badge', () => {
     const carrinho = resolverAbas(config(QUATRO_ABAS)).find((a) => a.id === 'carrinho');
     expect(carrinho).toMatchObject({ label: 'Carrinho', icone: 'bag', badge: 'cart_count' });
-  });
-});
-
-describe('abaDoCarrinho', () => {
-  it('encontra a aba que mostra a quantidade', () => {
-    expect(abaDoCarrinho(resolverAbas(config(QUATRO_ABAS)))?.id).toBe('carrinho');
-  });
-
-  it('devolve null quando nenhuma aba mostra badge de carrinho', () => {
-    const semBadge = QUATRO_ABAS.map((a) => ({ ...a, badge: 'none' as const }));
-    expect(abaDoCarrinho(resolverAbas(config(semBadge)))).toBeNull();
   });
 });
 

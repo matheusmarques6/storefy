@@ -1,6 +1,6 @@
 /**
- * Telas de aviso do app: carregando, sem conexão, erro e atualização
- * obrigatória (seções 5.3 e 5.4 do plano).
+ * Telas de aviso do app: carregando, sem conexão (M09), erro com recarregar
+ * (M10) e atualização obrigatória (M11) — seções 5.3 e 5.4 do plano.
  *
  * Todas são NATIVAS, e não uma página da loja: quando a rede cai, carregar
  * qualquer coisa da web é justamente o que não funciona. Ter essas telas
@@ -69,6 +69,7 @@ export function TelaDeCarregamento({ cores }: { cores?: Cores }): React.ReactNod
   );
 }
 
+/** M09 — sem conexão. */
 export function TelaSemConexao({
   cores,
   aoTentarDeNovo,
@@ -87,6 +88,7 @@ export function TelaSemConexao({
   );
 }
 
+/** M10 — erro, com recarregar. */
 export function TelaDeErro({
   cores,
   aoTentarDeNovo,
@@ -106,7 +108,7 @@ export function TelaDeErro({
 }
 
 /**
- * Atualização obrigatória.
+ * M11 — atualização obrigatória.
  *
  * Sem botão de fechar de propósito: a config diz que esta versão não funciona
  * mais, e deixar entrar assim mesmo daria uma tela quebrada em vez de um aviso.

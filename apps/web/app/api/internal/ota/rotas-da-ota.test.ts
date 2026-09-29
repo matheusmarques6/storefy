@@ -8,7 +8,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest';
 import { NextRequest } from 'next/server';
-import { criptografar } from '@/lib/cripto';
+import { criptografar, descriptografar } from '@/lib/cripto';
 
 const CHAVE = Buffer.alloc(32, 31).toString('base64');
 const SEGREDO = 'segredo-do-build';
@@ -25,6 +25,8 @@ let dadosDaLoja: Record<string, unknown>[] = [];
 let chamadas: { nome: string; args: unknown }[] = [];
 /** O que foi gravado em `ota_updates`. */
 let gravado: Record<string, unknown> | null = null;
+/** O que foi gravado em `apps`: o segredo criado para a loja que não tinha. */
+let gravadoNoApp: Record<string, unknown> | null = null;
 /** A leitura de progresso que a rota de status faz. */
 let progresso: Record<string, unknown> | null = null;
 
@@ -43,8 +45,9 @@ vi.mock('@/lib/supabase/admin', () => ({
       if (nome === 'dados_da_ota') return Promise.resolve({ data: dadosDaLoja, error: null });
       return Promise.resolve({ data: null, error: null });
     },
-    from: () => {
+    from: (tabela: string) => {
       const encadeavel: Record<string, unknown> = {};
+      let atualizouOApp = false;
       /*
        * O mock APLICA o filtro `.in('status', …)`. Sem isso, tirar a trava da
        * rota não mudaria nada no teste — e a rota continuaria servindo o
@@ -55,10 +58,16 @@ vi.mock('@/lib/supabase/admin', () => ({
       Object.assign(encadeavel, {
         select: () => encadeavel,
         update: (valores: Record<string, unknown>) => {
-          gravado = valores;
+          if (tabela === 'apps') {
+            gravadoNoApp = valores;
+            atualizouOApp = true;
+          } else {
+            gravado = valores;
+          }
           return encadeavel;
         },
         eq: () => encadeavel,
+        is: () => encadeavel,
         in: (_coluna: string, valores: readonly string[]) => {
           statusAceitos = valores;
           return encadeavel;
@@ -71,7 +80,9 @@ vi.mock('@/lib/supabase/admin', () => ({
             (statusAceitos === null || (status !== undefined && statusAceitos.includes(status)));
           return Promise.resolve({ data: passa ? linha : null, error: null });
         },
-        then: (aceitar: (v: unknown) => unknown) => aceitar({ data: null, error: null }),
+        // O `update(...).select('id')` do segredo devolve a linha gravada.
+        then: (aceitar: (v: unknown) => unknown) =>
+          aceitar({ data: atualizouOApp ? [{ id: 'app-a' }] : null, error: null }),
       });
       return encadeavel;
     },
@@ -94,6 +105,7 @@ beforeEach(() => {
 
   chamadas = [];
   gravado = null;
+  gravadoNoApp = null;
   progresso = null;
   rodada = { id: OTA, status: 'queued' };
   lojas = [
@@ -178,6 +190,39 @@ describe('POST /api/internal/ota', () => {
       deviceSecret: 'segredo-da-loja-a',
       canal: `production-${LOJA_A}`,
     });
+  });
+
+  it('loja que já tem segredo recebe o mesmo, sem gravar nada', async () => {
+    await postarOta(
+      requisicao('/api/internal/ota', { etapa: 'loja', otaId: OTA, storeId: LOJA_A }),
+    );
+    expect(gravadoNoApp).toBeNull();
+  });
+
+  /*
+   * Os apps gerados antes de o build criar o segredo saíram sem ele — e sem
+   * ele não registram o aparelho nem mandam evento. A correção OTA é o que o
+   * leva até eles: a loja sem segredo ganha um aqui.
+   */
+  it('loja sem segredo ganha um, gravado cifrado, e o pacote o leva aos apps instalados', async () => {
+    dadosDaLoja = [{ ...dadosDaLoja[0], device_secret_enc: null }];
+    const resposta = await postarOta(
+      requisicao('/api/internal/ota', { etapa: 'loja', otaId: OTA, storeId: LOJA_A }),
+    );
+    expect(resposta.status).toBe(200);
+
+    const { deviceSecret } = (await resposta.json()) as { deviceSecret: string };
+    expect(deviceSecret).toMatch(/^[A-Za-z0-9_-]{43}$/);
+    expect(descriptografar(String(gravadoNoApp?.device_secret_enc))).toBe(deviceSecret);
+  });
+
+  it('segredo que não abre: 503, e nada é gravado por cima', async () => {
+    dadosDaLoja = [{ ...dadosDaLoja[0], device_secret_enc: 'cifrado-com-outra-chave' }];
+    const resposta = await postarOta(
+      requisicao('/api/internal/ota', { etapa: 'loja', otaId: OTA, storeId: LOJA_A }),
+    );
+    expect(resposta.status).toBe(503);
+    expect(gravadoNoApp).toBeNull();
   });
 
   /*

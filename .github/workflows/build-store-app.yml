@@ -276,10 +276,17 @@ jobs:
           export STOREFY_APP_ID=$(jq -r '.appId' /tmp/build.json)
           export ONESIGNAL_APP_ID=$(jq -r '.oneSignalAppId // empty' /tmp/build.json)
           export STOREFY_DEVICE_SECRET=$(jq -r '.deviceSecret // empty' /tmp/build.json)
+          # Sem o segredo, o app sairia sem conseguir registrar o aparelho nem
+          # mandar evento — e ninguém notaria até o primeiro push não chegar.
+          # Foi assim que todos os builds saíram antes de a rota criá-lo.
+          if [ -z "$STOREFY_DEVICE_SECRET" ]; then
+            echo "::error::A Storefy não devolveu o segredo do app. O binário sairia sem falar com o servidor."
+            exit 1
+          fi
           # Ele vai para o `eas.json` logo abaixo (a EAS precisa dele para
           # embutir no binário). Mascarado, nenhuma ferramenta que imprima o
           # ambiente o deixa no log do GitHub.
-          if [ -n "$STOREFY_DEVICE_SECRET" ]; then echo "::add-mask::$STOREFY_DEVICE_SECRET"; fi
+          echo "::add-mask::$STOREFY_DEVICE_SECRET"
           export EAS_PROJECT_ID="${{ steps.projeto.outputs.id }}"
           export APP_SLUG=$(jq -r '.slug' /tmp/build.json)
           export APP_NAME=$(jq -r '.nomeDoApp' /tmp/build.json)

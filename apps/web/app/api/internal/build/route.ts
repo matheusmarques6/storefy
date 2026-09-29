@@ -32,6 +32,7 @@ import {
 } from '@/lib/build-interno';
 import { log } from '@/lib/log';
 import { lido } from '@/lib/leitura';
+import { garantirSegredoDoApp } from '@/lib/segredo-do-app';
 
 export const dynamic = 'force-dynamic';
 
@@ -147,6 +148,13 @@ async function montar(buildId: string): Promise<DadosParaOBuild | null> {
   if (config == null) return null;
 
   /*
+   * O segredo com que o app vai assinar o que manda, criado no primeiro build
+   * da loja. Antes da reserva da versão: se falhar, o build fica na fila e o
+   * workflow reexecutado tenta de novo, sem queimar número.
+   */
+  const deviceSecret = await garantirSegredoDoApp(servico, app.id, app.device_secret_enc);
+
+  /*
    * O número vem ANTES do status: se a reserva falhar, o build continua na
    * fila, e o workflow reexecutado tenta de novo. Um build marcado como
    * "gerando" sem número sairia como 1.0.0 (1) — exatamente o que isto
@@ -188,7 +196,7 @@ async function montar(buildId: string): Promise<DadosParaOBuild | null> {
     expoProjectId: app.expo_project_id,
     slug: slugDoProjeto(loja.id),
     oneSignalAppId: app.onesignal_app_id,
-    deviceSecret: abrirOuNulo(app.device_secret_enc, descriptografar),
+    deviceSecret,
     canal: canalDaLoja(loja.id, build.profile),
     corDeFundo: tema,
     config: config.config,

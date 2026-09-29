@@ -1,5 +1,5 @@
 /**
- * Raiz do app (seção 5.3 do plano).
+ * Raiz do app e a splash (M01, seção 5.3 do plano).
  *
  * A splash nativa fica de pé até a primeira página da loja carregar, ou até
  * quatro segundos — o que vier primeiro. Sem esse teto, uma loja lenta deixaria

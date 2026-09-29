@@ -11,8 +11,8 @@
  */
 import type { AppConfig } from '@storefy/config-schema';
 import {
-  SEM_EXIGENCIA,
   comAtualizacaoObrigatoria,
+  exigeAtualizacao,
   versaoDoNumero,
 } from '@/lib/atualizacao-obrigatoria';
 
@@ -31,7 +31,7 @@ export function SecaoAtualizacao({
   const atual = config.minSupportedBuild;
   // Um número gravado antes que não é o de hoje continua na lista, marcado —
   // sumir com ele trocaria a escolha do lojista sem ele pedir.
-  const outroGravado = atual > SEM_EXIGENCIA && atual !== numeroExigivel ? atual : null;
+  const outroGravado = exigeAtualizacao(config) && atual !== numeroExigivel ? atual : null;
 
   return (
     <section className="space-y-3">
@@ -57,7 +57,7 @@ export function SecaoAtualizacao({
               type="radio"
               name="atualizacao-obrigatoria"
               className="mt-0.5 size-4"
-              checked={atual <= SEM_EXIGENCIA}
+              checked={!exigeAtualizacao(config)}
               onChange={() => {
                 aoMudar(comAtualizacaoObrigatoria(config, null));
               }}

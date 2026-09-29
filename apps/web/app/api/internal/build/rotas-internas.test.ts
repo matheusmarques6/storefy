@@ -11,7 +11,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest';
 import { NextRequest } from 'next/server';
-import { criptografar } from '@/lib/cripto';
+import { criptografar, descriptografar } from '@/lib/cripto';
 import { slugDoProjeto } from '@/lib/build-interno';
 
 const CHAVE = Buffer.alloc(32, 7).toString('base64');
@@ -33,6 +33,8 @@ let filtros: { coluna: string; valor: unknown }[] = [];
 let filtrosDoApp: { metodo: string; coluna: string; valor: unknown }[] = [];
 /** A ordem em que a rota chamou o banco: reserva da versão e updates. */
 let ordem: string[] = [];
+/** O segredo do app no banco, cifrado; nulo é o app que nunca teve build. */
+let segredoDoApp: string | null = null;
 /** O que a reserva da versão responde. */
 let reserva: {
   data: { numero: number; versao: string }[] | null;
@@ -113,7 +115,7 @@ function leitura(tabela: string): Record<string, unknown> {
     tabela === 'builds'
       ? linhaDoBuild()
       : tabela === 'apps'
-        ? { ...LINHA_DO_APP }
+        ? { ...LINHA_DO_APP, device_secret_enc: segredoDoApp }
         : tabela === 'stores'
           ? {
               id: LOJA,
@@ -174,6 +176,7 @@ beforeEach(() => {
   filtros = [];
   filtrosDoApp = [];
   ordem = [];
+  segredoDoApp = null;
   reserva = { data: [{ numero: 7, versao: '1.0.7' }], error: null };
   avisos = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
   erros = vi.spyOn(console, 'error').mockImplementation(() => undefined);
@@ -312,6 +315,50 @@ describe('POST /api/internal/build — etapa de envio', () => {
     expect(dados.dominioDaLoja).toBe('www.loja.com.br');
     expect(dados.esquema).toBe(slugDoProjeto(LOJA));
     expect(ordem.indexOf('reservar_versao_do_build')).toBeLessThan(ordem.indexOf('update:builds'));
+  });
+
+  /*
+   * O defeito: nada criava o segredo do app. Todo build saía com
+   * `deviceSecret` nulo, e o app, sem com que assinar, não registrava o
+   * aparelho nem mandava evento — push e automações paravam na origem.
+   */
+  it('o primeiro build cria o segredo do app, grava cifrado e o entrega em claro', async () => {
+    statusDoBuild = 'queued';
+    const resposta = await postarBuild(requisicao('/api/internal/build', { buildId: BUILD }));
+    expect(resposta.status).toBe(200);
+
+    const { deviceSecret } = (await resposta.json()) as { deviceSecret: string };
+    expect(deviceSecret).toMatch(/^[A-Za-z0-9_-]{43}$/);
+
+    const gravado = String(gravadoNoApp?.device_secret_enc);
+    expect(gravado).not.toContain(deviceSecret);
+    expect(descriptografar(gravado)).toBe(deviceSecret);
+    // Só grava se ainda estiver vazio: o build da outra plataforma pode ter criado antes.
+    expect(filtrosDoApp).toContainEqual({ metodo: 'is', coluna: 'device_secret_enc', valor: null });
+    // Criado antes da reserva: se falhar, o build fica na fila sem queimar número.
+    expect(ordem.indexOf('update:apps')).toBeLessThan(ordem.indexOf('reservar_versao_do_build'));
+  });
+
+  it('os builds seguintes levam o MESMO segredo: é com ele que os apps instalados assinam', async () => {
+    statusDoBuild = 'queued';
+    segredoDoApp = criptografar('segredo-que-ja-existia');
+    const resposta = await postarBuild(requisicao('/api/internal/build', { buildId: BUILD }));
+
+    const { deviceSecret } = (await resposta.json()) as { deviceSecret: string };
+    expect(deviceSecret).toBe('segredo-que-ja-existia');
+    expect(gravadoNoApp).toBeNull();
+  });
+
+  it('segredo que não abre: 503, sem gerar outro por cima e sem começar o build', async () => {
+    statusDoBuild = 'queued';
+    segredoDoApp = 'cifrado-com-outra-chave';
+    const resposta = await postarBuild(requisicao('/api/internal/build', { buildId: BUILD }));
+
+    expect(resposta.status).toBe(503);
+    expect(gravadoNoApp).toBeNull();
+    expect(ordem).not.toContain('reservar_versao_do_build');
+    expect(ordem).not.toContain('update:builds');
+    expect(erros).toHaveBeenCalledWith(expect.stringContaining('segredo-do-app.ilegivel'));
   });
 
   it('sem número reservado, o build não começa e fica na fila', async () => {

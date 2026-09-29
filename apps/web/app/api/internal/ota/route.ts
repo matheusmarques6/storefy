@@ -16,17 +16,13 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { z } from 'zod';
 import { criarClientServiceRole } from '@/lib/supabase/admin';
-import { criptografiaConfigurada, descriptografar } from '@/lib/cripto';
+import { criptografiaConfigurada } from '@/lib/cripto';
 import { serviceRoleConfigurada, supabaseConfigurado } from '@/lib/env';
-import {
-  CABECALHO_DO_SEGREDO,
-  abrirOuNulo,
-  autorizarWorkflow,
-  slugDoProjeto,
-} from '@/lib/build-interno';
+import { CABECALHO_DO_SEGREDO, autorizarWorkflow, slugDoProjeto } from '@/lib/build-interno';
 import { canalDaOta } from '@/lib/ota';
 import { log } from '@/lib/log';
 import { lido } from '@/lib/leitura';
+import { garantirSegredoDoApp } from '@/lib/segredo-do-app';
 
 export const dynamic = 'force-dynamic';
 
@@ -132,7 +128,12 @@ export async function POST(requisicao: NextRequest): Promise<NextResponse> {
         expoProjectId: loja.expo_project_id,
         slug: slugDoProjeto(loja.store_id),
         oneSignalAppId: loja.onesignal_app_id,
-        deviceSecret: abrirOuNulo(loja.device_secret_enc, descriptografar),
+        /*
+         * Criado aqui se a loja ainda não tem: os apps gerados antes de o
+         * build criar o segredo saíram sem ele, e é esta correção que o leva
+         * até eles — sem ele, o app não registra o aparelho nem manda evento.
+         */
+        deviceSecret: await garantirSegredoDoApp(servico, loja.app_id, loja.device_secret_enc),
         canal: canalDaOta(loja.store_id),
       },
       { headers: SEM_CACHE },

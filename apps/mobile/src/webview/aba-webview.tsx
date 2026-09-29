@@ -1,5 +1,6 @@
 /**
- * Uma aba de WebView (seção 5.4 do plano).
+ * Uma aba de WebView (seção 5.4 do plano): M04 (início, coleções,
+ * promoções), M05 (carrinho, com o badge na barra) e M06 (conta).
  *
  * Cada aba tem a SUA instância, montada uma vez e mantida viva enquanto o app
  * existe. As inativas ficam com `display: none`, e não desmontadas: é o que faz
