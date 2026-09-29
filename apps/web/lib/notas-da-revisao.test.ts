@@ -81,6 +81,15 @@ describe('notas para a revisão da Apple', () => {
     expect(notas(config, true)).not.toContain('settings screen');
   });
 
+  it('a busca nativa, quando o app tem a aba de busca', () => {
+    expect(notas(configInicial(LOJA))).toContain(
+      'Native search field at the top of the "Buscar" tab',
+    );
+    const semBusca = configInicial(LOJA);
+    semBusca.tabs = semBusca.tabs.filter((aba) => aba.type !== 'search');
+    expect(notas(semBusca)).not.toContain('search field');
+  });
+
   it('Face ID só quando está ligado e há aba Conta', () => {
     const desligado = notas(configInicial(LOJA));
     expect(desligado).not.toMatch(/Face ID/);

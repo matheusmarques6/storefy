@@ -72,7 +72,7 @@ export function resolverAbas(config: AppConfig): AbaResolvida[] {
       badge: aba.badge,
       url,
       // `notifications` é nativa. As demais precisam de WebView, inclusive
-      // `search`, cujo campo é nativo mas cujo resultado é a página da loja.
+      // `search`, cujo campo é nativo (M08) mas cujo resultado é a página da loja.
       webview: url !== null,
     };
   });
@@ -146,4 +146,28 @@ export function abasUsaveis(
     (aba) => aba.webview || (aba.tipo === 'notifications' && recursos.push),
   );
   return servem.length === 0 ? [...abas] : servem;
+}
+
+/** O termo mais longo que a busca aceita: mais que isso é colagem por engano. */
+export const MAXIMO_DA_BUSCA = 100;
+
+/**
+ * M08 — o caminho da busca de um termo, na página de busca da própria aba.
+ *
+ * Parte do endereço da aba, e não de `/search` fixo: é o lojista quem diz
+ * onde fica a busca da loja. O termo vai em `q`, que é o parâmetro da busca
+ * da Shopify (`/search?q=tenis`); o que já estava na URL da aba continua.
+ * Termo vazio não busca nada — devolve `null`.
+ */
+export function caminhoDaBusca(urlDaAba: string, termo: string): string | null {
+  const limpo = termo.trim().slice(0, MAXIMO_DA_BUSCA);
+  if (limpo === '') return null;
+  let url: URL;
+  try {
+    url = new URL(urlDaAba);
+  } catch {
+    return null;
+  }
+  url.searchParams.set('q', limpo);
+  return `${url.pathname}${url.search}`;
 }

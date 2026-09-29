@@ -73,6 +73,12 @@ export function montarNotasDaRevisao(dados: DadosDasNotas): string {
       `Native notification inbox in the ${entreAspas(avisos.label)} tab, with read and unread states.`,
     );
   }
+  const busca = abas.find((aba) => aba.type === 'search');
+  if (busca !== undefined) {
+    recursos.push(
+      `Native search field at the top of the ${entreAspas(busca.label)} tab; results open on the store's own search page.`,
+    );
+  }
   if (config.features.onboardingSlides.length > 0) {
     recursos.push('Native welcome screens on the first launch.');
   }

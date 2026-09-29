@@ -16,7 +16,14 @@ import { BackHandler, Platform, Share, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { AppConfig } from '@storefy/config-schema';
 import type { NativeToWeb } from '@storefy/bridge';
-import { abaDaConta, abaParaCaminho, abasUsaveis, resolverAbas } from '../config/abas';
+import {
+  abaDaConta,
+  abaParaCaminho,
+  abasUsaveis,
+  caminhoDaBusca,
+  resolverAbas,
+  type AbaResolvida,
+} from '../config/abas';
 import { BarraDeAbas } from '../navegacao/barra-de-abas';
 import { AbaWebView, type ControleDaAba } from '../webview/aba-webview';
 import type { ContextoDoApp } from '../webview/scripts';
@@ -34,6 +41,7 @@ import {
 import { usarProtecaoDaConta } from '../nucleo/usar-biometria';
 import { PrePromptDePush } from './pre-prompt';
 import { AjustesDoApp, EntradaDosAjustes } from './ajustes';
+import { CampoDeBusca } from './campo-de-busca';
 import { textoDaVersao, urlDaPolitica } from '../push/ajustes';
 import { credenciaisDe } from '../push/api';
 import { CaixaDeAvisos } from './caixa-de-avisos';
@@ -262,6 +270,16 @@ export function Loja({
   const politica = useMemo(() => urlDaPolitica(credenciaisDe(ambiente)), [ambiente]);
   // Sem caixa de avisos, a engrenagem não tem onde morar: vai para a aba Conta.
   const semCaixaDeAvisos = !abas.some((aba) => aba.tipo === 'notifications');
+
+  /* M08: o campo nativo leva a aba Busca à página de resultados da loja. */
+  const buscar = useCallback(
+    (aba: AbaResolvida, termo: string): void => {
+      if (aba.url === null) return;
+      const caminho = caminhoDaBusca(aba.url, termo);
+      if (caminho !== null) controles.get(aba.id)?.irPara(caminho);
+    },
+    [controles],
+  );
 
   const aoAgir = useCallback(
     /*
@@ -538,6 +556,17 @@ export function Loja({
               aoCarregar={aba.id === primeira.id ? aoCarregar : undefined}
               desviar={desviarParaConta}
               aoVerEndereco={aoVerEndereco}
+              cabecalho={
+                aba.tipo === 'search' ? (
+                  <CampoDeBusca
+                    tema={config.theme}
+                    nomeDaLoja={config.store.name}
+                    aoBuscar={(termo) => {
+                      buscar(aba, termo);
+                    }}
+                  />
+                ) : undefined
+              }
             />
           ) : (
             /*

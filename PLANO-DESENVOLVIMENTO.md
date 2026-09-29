@@ -295,6 +295,7 @@ Conferido contra o código na Fase 8a (ver "Fase 8a — Entregue").
 - [x] Face ID opcional — aba Conta, ligado em Recursos
 - [x] Pedido de avaliação do app — depois da compra, vista pela página de obrigado
 - [x] Universal Links — o app declara o domínio, e a C12 manda a Shopify publicar a associação (ou entrega os arquivos, fora da Shopify). Ligar em produção depende da Shopify liberar a permissão (ver Fase 8a)
+- [x] Busca nativa (M08) — o campo é do app, no topo da aba Busca, e o resultado é a página de busca da loja (`/search?q=`)
 - [x] Ajustes do app (M12) — desligar as notificações dentro do app (diretriz 4.5.4, obrigatória para push de promoção) e a política de privacidade a um toque (5.1.1). Entrada pela engrenagem da caixa de avisos ou pelo topo da aba Conta; sem nenhuma das duas, a C12 trava o envio (ver Fase 8c)
 
 ---
@@ -1478,7 +1479,7 @@ está em 40 testes.
 | Publicar a extensão de tema com o botão novo do "Me avise" (`shopify app deploy`) | time | Shopify CLI, com o app no Partner Dashboard |
 | Mandar a correção do app para as lojas por OTA | time | admin › "enviar correção OTA para todas as lojas" |
 
-#### Fase 8c — Entregue (29/09/2026): Ajustes do app (M12)
+#### Fase 8c — Entregue (29/09/2026): Ajustes do app (M12) e busca nativa (M08)
 
 A M12 estava no plano (9.3) e nos comentários do código ("quem já recusou é
 atendido pela tela de ajustes do app (M12)") — mas não existia. E ela não é
@@ -1494,6 +1495,7 @@ por um caminho DENTRO do app (4.5.4), e o Storefy é campanha de promoção.
 | Painel | ✅ o editor avisa quando o app fica sem entrada para os ajustes; a C12 trava o envio no item "Ajustes do app ao alcance do cliente"; as notas da revisão dizem ao revisor onde desligar as notificações; a política conta o caminho |
 | "Me avise" com as notificações desligadas no app | ✅ pergunta antes de religar — religar liga também as promoções que a pessoa desligou |
 | Checklist da C12 acessível | ✅ cada item diz "Pronto", "Falta" ou "Recomendado" a quem usa leitor de tela (antes, só o ícone dizia) |
+| Busca nativa (M08) | ✅ também faltava: a aba Busca só abria a página da loja, e um comentário dizia que o campo era nativo. Agora o campo é do app (tecla "Buscar", limpar, termo cortado em 100 caracteres) e leva a aba a `/search?q=` na busca da própria loja; as notas da revisão contam o recurso |
 
 **Estimativa total:** cerca de 7 a 9 semanas para uma pessoa com Claude Code em ritmo forte. O MVP vendável (Fases 0–4) leva cerca de 4 a 5 semanas.
 

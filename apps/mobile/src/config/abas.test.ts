@@ -7,6 +7,8 @@ import {
   abasUsaveis,
   resolverAbas,
   urlDaAba,
+  caminhoDaBusca,
+  MAXIMO_DA_BUSCA,
 } from './abas';
 
 function config(tabs: AppConfigInput['tabs']) {
@@ -229,5 +231,35 @@ describe('abasUsaveis', () => {
     ];
     const abas = resolverAbas(config(soAvisos));
     expect(abasUsaveis(abas, { push: false })).toHaveLength(2);
+  });
+});
+
+describe('caminhoDaBusca — M08', () => {
+  it('põe o termo em q, na página de busca da aba', () => {
+    expect(caminhoDaBusca('https://oak.com.br/search', 'tênis azul')).toBe(
+      '/search?q=t%C3%AAnis+azul',
+    );
+  });
+
+  it('mantém o que já estava na URL da aba', () => {
+    expect(caminhoDaBusca('https://oak.com.br/search?type=product', 'bota')).toBe(
+      '/search?type=product&q=bota',
+    );
+  });
+
+  it('termo vazio não busca nada', () => {
+    expect(caminhoDaBusca('https://oak.com.br/search', '   ')).toBeNull();
+  });
+
+  it('caracteres especiais não quebram a URL nem viram outro parâmetro', () => {
+    const caminho = caminhoDaBusca('https://oak.com.br/search', 'a&b=c#d');
+    expect(caminho).toBe('/search?q=a%26b%3Dc%23d');
+  });
+
+  it('colagem enorme é cortada', () => {
+    const caminho = caminhoDaBusca('https://oak.com.br/search', 'x'.repeat(500)) ?? '';
+    expect(new URL(caminho, 'https://oak.com.br').searchParams.get('q')).toHaveLength(
+      MAXIMO_DA_BUSCA,
+    );
   });
 });
