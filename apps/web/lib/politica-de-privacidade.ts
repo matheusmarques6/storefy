@@ -104,7 +104,7 @@ export function montarPolitica(dados: DadosDaPolitica): Politica {
          * faria a política prometer menos do que o app faz.
          */
         'O envio é feito pela OneSignal. Ela recebe o código de inscrição do aparelho, o conteúdo das mensagens e as marcações que servem para escolher quem recebe cada aviso: quantos itens e qual valor há no carrinho, se você já comprou pelo app, a versão do app e, quando você entra na sua conta da loja, o seu código de cliente da loja.',
-        'Para parar de receber, desligue as notificações do app nos ajustes do seu celular. Isso não afeta suas compras.',
+        'Para parar de receber, desligue "Receber notificações" nos Ajustes do app (na engrenagem da aba de avisos ou no topo da aba da conta), ou desligue as notificações do app nos ajustes do seu celular. Isso não afeta suas compras.',
       ],
     });
   }

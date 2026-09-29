@@ -118,6 +118,15 @@ export const RequestPushPermissionSchema = z.object({
   type: z.literal('REQUEST_PUSH_PERMISSION'),
 });
 
+/**
+ * Abrir os ajustes do app (M12): desligar as notificações, a política de
+ * privacidade, a versão. Para a loja pôr um link "Ajustes do app" onde quiser
+ * — no rodapé, na página da conta —, além das entradas que o app já tem.
+ */
+export const OpenAppSettingsSchema = z.object({
+  type: z.literal('OPEN_APP_SETTINGS'),
+});
+
 /** Abrir um endereço fora do app. */
 export const OpenExternalSchema = z.object({
   type: z.literal('OPEN_EXTERNAL'),
@@ -151,6 +160,7 @@ export const WebToNativeSchema = z.discriminatedUnion('type', [
   HapticSchema,
   ShareSchema,
   RequestPushPermissionSchema,
+  OpenAppSettingsSchema,
   OpenExternalSchema,
   NotifyWhenBackSchema,
 ]);

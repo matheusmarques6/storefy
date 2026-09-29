@@ -15,6 +15,7 @@ import {
   removerAba,
   tiposDisponiveis,
   validarConfig,
+  entradaDosAjustes,
 } from '@/lib/editor-de-config';
 
 const LOJA = { name: 'Oak Vintage', url: 'https://oakvintage.com.br' };
@@ -211,5 +212,33 @@ describe('validarConfig', () => {
     for (const problema of validarConfig(config)) {
       expect(problema.mensagem).not.toMatch(/zod|string|array|expected|invalid_/i);
     }
+  });
+});
+
+describe('entradaDosAjustes', () => {
+  const LOJA = { name: 'Oak Vintage', url: 'https://oakvintage.com.br' };
+
+  it('com push e caixa de avisos, a engrenagem dela', () => {
+    const config = configInicial(LOJA);
+    config.tabs.push({
+      id: 'avisos',
+      label: 'Avisos',
+      icon: 'bell',
+      type: 'notifications',
+      badge: 'unread',
+    });
+    expect(entradaDosAjustes(config, { push: true })).toBe('avisos');
+    // Sem push a caixa some do app, e a entrada volta para a aba Conta.
+    expect(entradaDosAjustes(config, { push: false })).toBe('conta');
+  });
+
+  it('sem a caixa, a linha no topo da aba Conta', () => {
+    expect(entradaDosAjustes(configInicial(LOJA), { push: true })).toBe('conta');
+  });
+
+  it('sem Conta nem Avisos, nenhum caminho', () => {
+    const config = configInicial(LOJA);
+    config.tabs = config.tabs.filter((aba) => aba.type !== 'account');
+    expect(entradaDosAjustes(config, { push: true })).toBeNull();
   });
 });

@@ -97,6 +97,12 @@ describe('acaoParaMensagem — recurso que este build não tem', () => {
     ).toEqual({ tipo: 'pedir-push' });
   });
 
+  it('abre os ajustes do app com ou sem push: lá também estão a política e a versão', () => {
+    const mensagem = comoPostMessage({ type: 'OPEN_APP_SETTINGS' });
+    expect(acaoParaMensagem(mensagem, FASE_1)).toEqual({ tipo: 'abrir-ajustes' });
+    expect(acaoParaMensagem(mensagem, COMPLETO)).toEqual({ tipo: 'abrir-ajustes' });
+  });
+
   /*
    * O pedido de aviso depende do PUSH, e não do backend de eventos: aceitar a
    * inscrição num app sem push registraria a intenção de alguém que nunca

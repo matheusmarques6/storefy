@@ -18,6 +18,7 @@ const PRONTO: EstadoDaPublicacao = {
   appleConectada: true,
   googleConectada: true,
   pushLigado: true,
+  ajustesAoAlcance: true,
 };
 
 describe('montarChecklist', () => {
@@ -45,6 +46,8 @@ describe('montarChecklist', () => {
       [{ versaoPublicada: null }, 'config'],
       [{ iconePronto: false }, 'icone'],
       [{ splashPronta: false }, 'splash'],
+      // Sem por onde chegar aos ajustes: sem onde desligar as notificações.
+      [{ ajustesAoAlcance: false }, 'ajustes'],
     ];
     for (const [faltando, chave] of casos) {
       const itens = montarChecklist({ ...PRONTO, ...faltando });
@@ -112,6 +115,7 @@ describe('montarChecklist', () => {
       appleConectada: false,
       googleConectada: false,
       pushLigado: false,
+      ajustesAoAlcance: false,
     })) {
       expect(item.titulo.length).toBeGreaterThan(5);
       expect(item.comoResolver.length).toBeGreaterThan(20);

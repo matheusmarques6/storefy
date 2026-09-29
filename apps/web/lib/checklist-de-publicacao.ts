@@ -27,6 +27,12 @@ export interface EstadoDaPublicacao {
   googleConectada: boolean;
   /** Push é opcional para publicar, mas vale avisar. */
   pushLigado: boolean;
+  /**
+   * A config publicada tem por onde chegar aos Ajustes do app (aba Conta, ou
+   * Avisos com push): é lá que o cliente desliga as notificações e lê a
+   * política de privacidade (`entradaDosAjustes`).
+   */
+  ajustesAoAlcance: boolean;
 }
 
 export interface ItemDoChecklist {
@@ -132,6 +138,16 @@ export function montarChecklist(estado: EstadoDaPublicacao): ItemDoChecklist[] {
       obrigatorio: true,
       plataforma: 'android',
       caminho: null,
+    },
+    {
+      chave: 'ajustes',
+      titulo: 'Ajustes do app ao alcance do cliente',
+      comoResolver:
+        'Adicione a aba Conta (ou Avisos) no editor e publique. É por ela que o cliente chega aos Ajustes do app, onde desliga as notificações e lê a política de privacidade — a Apple exige esse caminho dentro do app.',
+      pronto: estado.ajustesAoAlcance,
+      obrigatorio: true,
+      plataforma: null,
+      caminho: '/app',
     },
     {
       chave: 'push',

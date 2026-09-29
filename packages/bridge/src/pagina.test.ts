@@ -17,6 +17,7 @@ interface Storefy {
   haptic: (estilo?: unknown) => boolean;
   openExternal: (url?: unknown) => boolean;
   requestPushPermission: () => boolean;
+  openAppSettings: () => boolean;
   notifyWhenBack: (variante?: unknown, caminho?: unknown) => boolean;
 }
 
@@ -55,7 +56,7 @@ function unicaMensagem(mensagens: string[]): unknown {
 }
 
 describe('window.Storefy', () => {
-  it('instala as quatro funções do contrato', () => {
+  it('instala as funções do contrato', () => {
     const pagina = criarPagina();
     pagina.injetar();
     const api = pagina.api();
@@ -63,6 +64,7 @@ describe('window.Storefy', () => {
     expect(typeof api.haptic).toBe('function');
     expect(typeof api.openExternal).toBe('function');
     expect(typeof api.requestPushPermission).toBe('function');
+    expect(typeof api.openAppSettings).toBe('function');
     expect(typeof api.notifyWhenBack).toBe('function');
     expect((pagina.janela.Storefy as Registro)[MARCA_DA_API]).toBe(true);
   });
@@ -160,6 +162,13 @@ describe('window.Storefy', () => {
     expect(unicaMensagem(pagina.mensagens)).toEqual({ type: 'REQUEST_PUSH_PERMISSION' });
   });
 
+  it('abre os ajustes do app (M12)', () => {
+    const pagina = criarPagina();
+    pagina.injetar();
+    expect(pagina.api().openAppSettings()).toBe(true);
+    expect(unicaMensagem(pagina.mensagens)).toEqual({ type: 'OPEN_APP_SETTINGS' });
+  });
+
   it('DEVOLVE FALSE fora do app, para o tema cair no comportamento web', () => {
     // A mesma página abre no Safari. Sem esse retorno, o botão de
     // compartilhar do tema não faria nada e ninguém saberia por quê.
@@ -170,6 +179,7 @@ describe('window.Storefy', () => {
     expect(api.haptic('light')).toBe(false);
     expect(api.openExternal('https://instagram.com/oakvintage')).toBe(false);
     expect(api.requestPushPermission()).toBe(false);
+    expect(api.openAppSettings()).toBe(false);
     expect(pagina.mensagens).toHaveLength(0);
   });
 

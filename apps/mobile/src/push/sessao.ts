@@ -261,9 +261,18 @@ export type RespostaDoAvisoDeVolta =
  */
 export async function avisarQuandoVoltar(
   dependencias: DependenciasDaSessao,
-  estado: { inscricao: string | null; sistema: PermissaoDoSistema },
+  estado: {
+    inscricao: string | null;
+    sistema: PermissaoDoSistema;
+    /** `getOptedInAsync`: `false` com a permissão dada é quem desligou no app (M12). */
+    inscrito: boolean | null;
+  },
   pedido: { variantId: string; path?: string },
-  pedirPermissao: () => Promise<boolean>,
+  interacoes: {
+    pedirPermissao: () => Promise<boolean>;
+    /** Quem desligou no app: pergunta antes de religar (religar liga as promoções também). */
+    confirmarReligar: () => Promise<boolean>;
+  },
 ): Promise<RespostaDoAvisoDeVolta> {
   const { credenciais, notificador } = dependencias;
   if (credenciais === null || dependencias.oneSignalAppId === null) {
@@ -275,11 +284,28 @@ export async function avisarQuandoVoltar(
   if (estado.sistema !== 'concedida') {
     let aceitou = false;
     try {
-      aceitou = await pedirPermissao();
+      aceitou = await interacoes.pedirPermissao();
     } catch {
       aceitou = false;
     }
     if (!aceitou) return { ok: false, reason: 'permission' };
+  } else if (estado.inscrito === false) {
+    /*
+     * Permissão dada e não inscrito: desligou na M12. O pedido de aviso não
+     * religa calado — isso ligaria as promoções que a pessoa desligou.
+     */
+    let quer = false;
+    try {
+      quer = await interacoes.confirmarReligar();
+    } catch {
+      quer = false;
+    }
+    if (!quer) return { ok: false, reason: 'permission' };
+    try {
+      notificador.ligar();
+    } catch {
+      return { ok: false, reason: 'unavailable' };
+    }
   }
 
   let inscricao = estado.inscricao;

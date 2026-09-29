@@ -21,6 +21,8 @@ interface Props {
   /** Toque num aviso: marca como lido e, se houver link, navega. */
   aoTocar: (aviso: AvisoNaTela) => void;
   aoMarcarTudoLido: () => void;
+  /** A engrenagem: abre os ajustes do app (M12), onde se desligam as notificações. */
+  aoAbrirAjustes: () => void;
 }
 
 export function CaixaDeAvisos({
@@ -30,6 +32,7 @@ export function CaixaDeAvisos({
   aoRecarregar,
   aoTocar,
   aoMarcarTudoLido,
+  aoAbrirAjustes,
 }: Props): React.ReactNode {
   const temNaoLido = avisos.some((aviso) => !aviso.lido);
   const agora = Date.now();
@@ -38,13 +41,23 @@ export function CaixaDeAvisos({
     <View style={[estilos.tela, { backgroundColor: tema.background }]}>
       <View style={estilos.cabecalho}>
         <Text style={[estilos.tituloDaTela, { color: tema.text }]}>Avisos</Text>
-        {temNaoLido ? (
-          <Pressable accessibilityRole="button" onPress={aoMarcarTudoLido} hitSlop={8}>
-            <Text style={[estilos.acaoDoCabecalho, { color: tema.primary }]}>
-              Marcar tudo como lido
-            </Text>
+        <View style={estilos.acoesDoCabecalho}>
+          {temNaoLido ? (
+            <Pressable accessibilityRole="button" onPress={aoMarcarTudoLido} hitSlop={8}>
+              <Text style={[estilos.acaoDoCabecalho, { color: tema.primary }]}>
+                Marcar tudo como lido
+              </Text>
+            </Pressable>
+          ) : null}
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Ajustes do app"
+            onPress={aoAbrirAjustes}
+            hitSlop={10}
+          >
+            <Ionicons name="settings-outline" size={22} color={tema.text} />
           </Pressable>
-        ) : null}
+        </View>
       </View>
 
       <FlatList
@@ -128,6 +141,7 @@ const estilos = StyleSheet.create({
   },
   tituloDaTela: { fontSize: 24, fontWeight: '700' },
   acaoDoCabecalho: { fontSize: 14, fontWeight: '600' },
+  acoesDoCabecalho: { flexDirection: 'row', alignItems: 'center', gap: 16 },
   lista: { paddingBottom: 24 },
   item: { flexDirection: 'row', alignItems: 'flex-start', paddingVertical: 14, paddingRight: 16 },
   marcador: { width: 7, height: 7, borderRadius: 4, marginTop: 8, marginHorizontal: 8 },

@@ -53,6 +53,34 @@ describe('notas para a revisão da Apple', () => {
     expect(texto).toContain('also appear in the "Avisos" tab');
   });
 
+  /*
+   * A diretriz 4.5.4 exige desligar as notificações de promoção DENTRO do
+   * app, e o revisor procura. A nota diz onde — o caminho que o app tem.
+   */
+  it('com push, diz onde desligar as notificações dentro do app', () => {
+    const comCaixa = notas(comAvisos(), true);
+    expect(comCaixa).toContain('Native settings screen (the gear icon in the "Avisos" tab)');
+    expect(comCaixa).toContain('switch off "Receber notificações"');
+
+    // Sem caixa de avisos, a entrada é a linha no topo da aba Conta.
+    const semCaixa = notas(configInicial(LOJA), true);
+    expect(semCaixa).toContain('"Ajustes do app" (App settings) at the top of the "Conta" tab');
+    expect(semCaixa).toContain('turn notifications off inside the app');
+  });
+
+  it('sem push, os ajustes aparecem sem falar de notificação', () => {
+    const texto = notas(configInicial(LOJA), false);
+    expect(texto).toContain('Native settings screen');
+    expect(texto).toContain('privacy policy');
+    expect(texto).not.toMatch(/notification/i);
+  });
+
+  it('sem aba Conta nem caixa de avisos, não promete uma tela que o revisor não acha', () => {
+    const config = configInicial(LOJA);
+    config.tabs = config.tabs.filter((aba) => aba.type !== 'account');
+    expect(notas(config, true)).not.toContain('settings screen');
+  });
+
   it('Face ID só quando está ligado e há aba Conta', () => {
     const desligado = notas(configInicial(LOJA));
     expect(desligado).not.toMatch(/Face ID/);

@@ -93,6 +93,26 @@ export function montarNotasDaRevisao(dados: DadosDasNotas): string {
     recursos.push('Native App Store rating prompt after a completed purchase.');
   }
 
+  /*
+   * Onde ficam os ajustes do app (M12). Com push, é ali que a diretriz 4.5.4
+   * manda o revisor procurar o "parar de receber" dentro do app — e ele
+   * procura. A entrada segue o app: a engrenagem da caixa de avisos ou, sem
+   * ela, a linha no topo da aba Conta.
+   */
+  const entradaDosAjustes =
+    avisos !== undefined
+      ? `the gear icon in the ${entreAspas(avisos.label)} tab`
+      : conta !== undefined
+        ? `"Ajustes do app" (App settings) at the top of the ${entreAspas(conta.label)} tab`
+        : null;
+  if (entradaDosAjustes !== null) {
+    recursos.push(
+      pushLigado
+        ? `Native settings screen (${entradaDosAjustes}): turn notifications off inside the app, see the app version and open the privacy policy.`
+        : `Native settings screen (${entradaDosAjustes}): app version and privacy policy.`,
+    );
+  }
+
   const passos: string[] = [];
   if (shopify) {
     passos.push(
@@ -114,6 +134,11 @@ export function montarNotasDaRevisao(dados: DadosDasNotas): string {
         ? 'Allow notifications when asked to receive messages from the store.'
         : `Allow notifications when asked; messages sent by the store also appear in the ${entreAspas(avisos.label)} tab.`,
     );
+    if (entradaDosAjustes !== null) {
+      passos.push(
+        `To stop receiving notifications from inside the app, open ${entradaDosAjustes} and switch off "Receber notificações" (Receive notifications).`,
+      );
+    }
   }
 
   const texto = [

@@ -21,6 +21,8 @@ export type AcaoNativa =
   | { tipo: 'compartilhar'; url: string; title?: string }
   | { tipo: 'abrir-fora'; url: string }
   | { tipo: 'pedir-push' }
+  /** Abrir a M12: a página da loja tem um link "Ajustes do app". */
+  | { tipo: 'abrir-ajustes' }
   | { tipo: 'identificar-cliente'; customerId?: string; emailHash?: string }
   | { tipo: 'checkout-iniciado'; token: string }
   /**
@@ -78,6 +80,10 @@ export function acaoParaMensagem(bruta: unknown, contexto: ContextoDasAcoes): Ac
 
     case 'OPEN_EXTERNAL':
       return { tipo: 'abrir-fora', url: mensagem.url };
+
+    case 'OPEN_APP_SETTINGS':
+      // Sempre: mesmo sem push, a M12 tem a política de privacidade e a versão.
+      return { tipo: 'abrir-ajustes' };
 
     case 'REQUEST_PUSH_PERMISSION':
       // No iOS o sistema mostra o pedido UMA vez. Disparar sem ter para onde

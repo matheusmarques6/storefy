@@ -6,7 +6,7 @@
  * `permissao.ts` — e guardar o pouco de estado que a tela precisa ver.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Platform } from 'react-native';
+import { Alert, Platform } from 'react-native';
 import type { AppConfig } from '@storefy/config-schema';
 import type { Ambiente } from '../nucleo/ambiente.ts';
 import { buscarCaixaDeAvisos, credenciaisDe, type AvisoDaCaixa } from './api.ts';
@@ -41,6 +41,12 @@ import {
 } from './sessao.ts';
 import type { DestinoDoPush } from './deep-link.ts';
 import type { CarrinhoParaTag } from './tags.ts';
+import {
+  desligarNotificacoes,
+  estadoDasNotificacoes,
+  ligarNotificacoes,
+  type EstadoDasNotificacoes,
+} from './ajustes.ts';
 
 export interface UsoDoPush {
   /** Mostrar a tela de explicação (M03) agora? */
@@ -68,6 +74,48 @@ export interface UsoDoPush {
     variantId: string;
     path?: string;
   }) => Promise<RespostaDoAvisoDeVolta>;
+  /** M12: o estado das notificações, e ligar e desligar dentro do app. */
+  notificacoes: EstadoDasNotificacoes;
+  mudandoNotificacoes: boolean;
+  erroNasNotificacoes: string | null;
+  lerNotificacoes: () => void;
+  ligarAsNotificacoes: () => void;
+  desligarAsNotificacoes: () => void;
+}
+
+/**
+ * Quem desligou as notificações no app e toca em "me avise" quer ESTE aviso —
+ * mas religar liga também as promoções. Então pergunta, em vez de religar
+ * calado (e em vez de gravar um pedido que nunca chegaria).
+ */
+function perguntarSeReliga(nomeDaLoja: string): Promise<boolean> {
+  return new Promise((resolver) => {
+    Alert.alert(
+      'Ligar as notificações?',
+      `Você desligou as notificações da ${nomeDaLoja}. Para avisar quando o produto voltar, elas precisam estar ligadas.`,
+      [
+        {
+          text: 'Agora não',
+          style: 'cancel',
+          onPress: () => {
+            resolver(false);
+          },
+        },
+        {
+          text: 'Ligar',
+          onPress: () => {
+            resolver(true);
+          },
+        },
+      ],
+      {
+        cancelable: true,
+        onDismiss: () => {
+          resolver(false);
+        },
+      },
+    );
+  });
 }
 
 interface Opcoes {
@@ -105,6 +153,11 @@ export function usarPush({ ambiente, config, ativo, navegar }: Opcoes): UsoDoPus
   const [historico, setHistorico] = useState<HistoricoDoPrePrompt>(HISTORICO_VAZIO);
   const [aberturas, setAberturas] = useState(0);
   const [mostrarPrePrompt, setMostrarPrePrompt] = useState(false);
+
+  /** `getOptedInAsync`; `null` até ser lido. */
+  const [inscrito, setInscrito] = useState<boolean | null>(null);
+  const [mudandoNotificacoes, setMudandoNotificacoes] = useState(false);
+  const [erroNasNotificacoes, setErroNasNotificacoes] = useState<string | null>(null);
 
   const [avisosBrutos, setAvisosBrutos] = useState<AvisoDaCaixa[]>([]);
   const [lidos, setLidos] = useState<string[]>([]);
@@ -158,6 +211,13 @@ export function usarPush({ ambiente, config, ativo, navegar }: Opcoes): UsoDoPus
         setSistema('nao-perguntado');
       } finally {
         if (segueVivo()) setSistemaLido(true);
+      }
+
+      try {
+        const estaInscrito = await notificadorReal.inscrito();
+        if (segueVivo()) setInscrito(estaInscrito);
+      } catch {
+        if (segueVivo()) setErroNasNotificacoes('Não foi possível conferir as notificações agora.');
       }
     }
 
@@ -213,6 +273,70 @@ export function usarPush({ ambiente, config, ativo, navegar }: Opcoes): UsoDoPus
   const chamarSistema = useCallback(async (): Promise<void> => {
     await pedirAoSistema();
   }, [pedirAoSistema]);
+
+  /* ------------------------------------------ M12: ligar e desligar */
+
+  /*
+   * Relê permissão e inscrição. A tela de ajustes chama ao abrir, e o SDK
+   * avisa quando a permissão muda — inclusive nos ajustes do celular: quem
+   * vai lá ligar e volta encontra a tela certa, sem reabrir o app.
+   */
+  const lerNotificacoes = useCallback((): void => {
+    if (!ativo) return;
+    setErroNasNotificacoes(null);
+    void (async (): Promise<void> => {
+      try {
+        const tem = await notificadorReal.temPermissao();
+        const pode = tem || (await notificadorReal.podePedir());
+        setSistema(tem ? 'concedida' : pode ? 'nao-perguntado' : 'negada');
+        setSistemaLido(true);
+        setInscrito(await notificadorReal.inscrito());
+      } catch {
+        setErroNasNotificacoes('Não foi possível conferir as notificações agora.');
+      }
+    })();
+  }, [ativo]);
+
+  const jaOuvePermissao = useRef(false);
+  useEffect(() => {
+    if (!ativo || jaOuvePermissao.current) return;
+    jaOuvePermissao.current = true;
+    notificadorReal.aoMudarPermissao(() => {
+      lerNotificacoes();
+    });
+  }, [ativo, lerNotificacoes]);
+
+  const ligarAsNotificacoes = useCallback((): void => {
+    setMudandoNotificacoes(true);
+    setErroNasNotificacoes(null);
+    ligarNotificacoes(notificadorReal, sistema, pedirAoSistema)
+      .then((resultado) => {
+        setSistema(
+          resultado === 'ligadas'
+            ? 'concedida'
+            : resultado === 'bloqueadas'
+              ? 'negada'
+              : 'nao-perguntado',
+        );
+        setInscrito(resultado === 'ligadas');
+      })
+      .catch(() => {
+        setErroNasNotificacoes('Não foi possível ligar as notificações agora. Tente de novo.');
+      })
+      .finally(() => {
+        setMudandoNotificacoes(false);
+      });
+  }, [pedirAoSistema, sistema]);
+
+  const desligarAsNotificacoes = useCallback((): void => {
+    setErroNasNotificacoes(null);
+    try {
+      desligarNotificacoes(notificadorReal);
+      setInscrito(false);
+    } catch {
+      setErroNasNotificacoes('Não foi possível desligar as notificações agora. Tente de novo.');
+    }
+  }, []);
 
   const perguntarSePuder = useCallback(
     (gatilho: Gatilho): void => {
@@ -327,11 +451,26 @@ export function usarPush({ ambiente, config, ativo, navegar }: Opcoes): UsoDoPus
     identificarCliente(notificadorReal, customerId);
   }, []);
 
+  const nomeDaLoja = config?.store.name ?? 'loja';
   const aoPedirAvisoDeVolta = useCallback(
-    (pedido: { variantId: string; path?: string }): Promise<RespostaDoAvisoDeVolta> =>
-      avisarQuandoVoltar(dependencias, { inscricao, sistema }, pedido, pedirAoSistema),
-    [dependencias, inscricao, pedirAoSistema, sistema],
+    async (pedido: { variantId: string; path?: string }): Promise<RespostaDoAvisoDeVolta> => {
+      const resposta = await avisarQuandoVoltar(
+        dependencias,
+        { inscricao, sistema, inscrito },
+        pedido,
+        {
+          pedirPermissao: pedirAoSistema,
+          confirmarReligar: () => perguntarSeReliga(nomeDaLoja),
+        },
+      );
+      // O pedido pode ter ligado as notificações: a M12 precisa ver isso.
+      lerNotificacoes();
+      return resposta;
+    },
+    [dependencias, inscricao, inscrito, lerNotificacoes, nomeDaLoja, pedirAoSistema, sistema],
   );
+
+  const notificacoes = estadoDasNotificacoes({ disponivel: ativo, sistemaLido, sistema, inscrito });
 
   return {
     mostrarPrePrompt,
@@ -349,5 +488,11 @@ export function usarPush({ ambiente, config, ativo, navegar }: Opcoes): UsoDoPus
     aoConcluirPedido,
     aoIdentificarCliente,
     aoPedirAvisoDeVolta,
+    notificacoes,
+    mudandoNotificacoes,
+    erroNasNotificacoes,
+    lerNotificacoes,
+    ligarAsNotificacoes,
+    desligarAsNotificacoes,
   };
 }

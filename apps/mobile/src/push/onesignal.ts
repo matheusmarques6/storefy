@@ -26,6 +26,20 @@ export interface Notificador {
   aoTocar: (ouvinte: (notificacao: NotificacaoRecebida) => void) => void;
   /** Avisa quando o ID de inscrição aparece ou muda. */
   aoMudarInscricao: (ouvinte: (id: string | null) => void) => void;
+  /**
+   * O cliente recebe notificações? Verdadeiro só com a permissão do sistema E
+   * sem ter desligado no app (M12).
+   */
+  inscrito: () => Promise<boolean>;
+  /** Volta a receber, depois de ter desligado no app. */
+  ligar: () => void;
+  /** Para de receber, sem mexer na permissão do sistema (M12). */
+  desligar: () => void;
+  /**
+   * Avisa quando a permissão muda — inclusive nos ajustes do celular, com o
+   * app em segundo plano: o SDK confere ao voltar.
+   */
+  aoMudarPermissao: (ouvinte: (concedida: boolean) => void) => void;
 }
 
 export const notificadorReal: Notificador = {
@@ -60,5 +74,15 @@ export const notificadorReal: Notificador = {
     OneSignal.User.pushSubscription.addEventListener('change', (evento) => {
       ouvinte(evento.current.id ?? null);
     });
+  },
+  inscrito: () => OneSignal.User.pushSubscription.getOptedInAsync(),
+  ligar: () => {
+    OneSignal.User.pushSubscription.optIn();
+  },
+  desligar: () => {
+    OneSignal.User.pushSubscription.optOut();
+  },
+  aoMudarPermissao: (ouvinte) => {
+    OneSignal.Notifications.addEventListener('permissionChange', ouvinte);
   },
 };

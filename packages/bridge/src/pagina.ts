@@ -57,6 +57,9 @@ return enviar({type:'OPEN_EXTERNAL',url:u});
 requestPushPermission:function(){
 return enviar({type:'REQUEST_PUSH_PERMISSION'});
 },
+openAppSettings:function(){
+return enviar({type:'OPEN_APP_SETTINGS'});
+},
 notifyWhenBack:function(variante,caminho){
 var v=texto(variante);
 if(!v)return false;

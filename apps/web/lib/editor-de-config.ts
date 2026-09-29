@@ -72,6 +72,24 @@ export function tiposDisponiveis(
     .filter((tipo) => !TIPOS_UNICOS.includes(tipo) || !usados.has(tipo));
 }
 
+/**
+ * Por onde o cliente chega aos Ajustes do app (M12) — o mesmo critério do
+ * app: a engrenagem da caixa de avisos (que só existe com push) ou, sem ela,
+ * a linha no topo da aba Conta.
+ *
+ * `null` é um app sem caminho: o cliente não tem onde desligar as
+ * notificações dentro do app (diretriz 4.5.4 da Apple) nem onde ler a
+ * política de privacidade (5.1.1).
+ */
+export function entradaDosAjustes(
+  config: AppConfig,
+  recursos: { push: boolean },
+): 'avisos' | 'conta' | null {
+  if (recursos.push && config.tabs.some((aba) => aba.type === 'notifications')) return 'avisos';
+  if (config.tabs.some((aba) => aba.type === 'account')) return 'conta';
+  return null;
+}
+
 export function podeAdicionarAba(
   config: AppConfig,
   recursos: { push: boolean } = { push: false },

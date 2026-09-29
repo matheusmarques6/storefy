@@ -80,6 +80,11 @@ interface Props {
    * Chega mais de uma vez para o mesmo endereço — quem ouve não conta duas.
    */
   aoVerEndereco?: (url: string) => void;
+  /**
+   * Uma faixa nativa acima da página, dentro da aba: a entrada dos ajustes do
+   * app na aba Conta, quando não há caixa de avisos para a engrenagem.
+   */
+  cabecalho?: React.ReactNode;
 }
 
 type Falha = 'rede' | 'servidor' | null;
@@ -96,6 +101,7 @@ export function AbaWebView({
   aoCarregar,
   desviar,
   aoVerEndereco,
+  cabecalho,
 }: Props): React.ReactNode {
   // `ComponentRef<typeof WebView>` e não `WebView`: a classe é genérica, e
   // `useRef<WebView>` fixa um parâmetro que não bate com o que o `ref` espera.
@@ -327,6 +333,7 @@ export function AbaWebView({
       importantForAccessibility={visivel ? 'auto' : 'no-hide-descendants'}
       pointerEvents={visivel ? 'auto' : 'none'}
     >
+      {cabecalho}
       {comPuxar}
       <BarraDeProgresso valor={progresso} cor={config.theme.primary} />
       {falha !== null ? (

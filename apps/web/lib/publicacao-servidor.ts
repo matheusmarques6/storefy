@@ -12,6 +12,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { safeParseAppConfig, type AppConfig } from '@storefy/config-schema';
 import type { Database } from '@storefy/db';
 import type { EstadoDaPublicacao } from '@/lib/checklist-de-publicacao';
+import { entradaDosAjustes } from '@/lib/editor-de-config';
 import type { DadosDosLinks } from '@/lib/links-do-app';
 import { ESCOPO_DOS_LINKS } from '@/lib/links-do-app';
 import { escoposPedidos } from '@/lib/shopify-servidor';
@@ -121,6 +122,7 @@ export async function dadosDaPublicacao(
 
   const lida = publicada == null ? null : safeParseAppConfig(publicada.config);
   const contaApple = (contas ?? []).find((conta) => conta.platform === 'apple');
+  const pushLigado = app.onesignal_app_id !== null && app.onesignal_app_id !== '';
 
   return {
     appId: app.id,
@@ -159,7 +161,13 @@ export async function dadosDaPublicacao(
       packageAndroid: app.package_android,
       appleConectada: verificada('apple'),
       googleConectada: verificada('google'),
-      pushLigado: app.onesignal_app_id !== null && app.onesignal_app_id !== '',
+      pushLigado,
+      /*
+       * Da config PUBLICADA, que é a do binário. Sem publicação ainda, o item
+       * "Configuração publicada" já trava — e este é conferido depois dela.
+       */
+      ajustesAoAlcance:
+        lida?.success !== true || entradaDosAjustes(lida.data, { push: pushLigado }) !== null,
     },
     builds: (builds ?? []).map((linha) => ({
       id: linha.id,

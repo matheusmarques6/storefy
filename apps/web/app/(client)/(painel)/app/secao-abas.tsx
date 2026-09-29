@@ -1,8 +1,9 @@
 'use client';
 
 /** As abas da barra: ordem, nome, ícone e destino (C06b). */
-import { ArrowDown, ArrowUp, Plus, Trash2 } from 'lucide-react';
+import { AlertTriangle, ArrowDown, ArrowUp, Plus, Trash2 } from 'lucide-react';
 import { NOMES_DE_ICONE, ROTULO_DO_ICONE, type AppConfig, type Tab } from '@storefy/config-schema';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -12,6 +13,7 @@ import {
   MIN_ABAS,
   adicionarAba,
   editarAba,
+  entradaDosAjustes,
   moverAba,
   podeAdicionarAba,
   podeRemoverAba,
@@ -50,12 +52,26 @@ export function SecaoAbas({
 }) {
   const recursos = { push: pushConfigurado };
   const disponiveis = tiposDisponiveis(config, recursos);
+  const semAjustes = entradaDosAjustes(config, recursos) === null;
 
   return (
     <div className="space-y-4">
       <p className="text-muted-foreground text-sm">
         A barra cabe de {MIN_ABAS} a {MAX_ABAS} abas, na ordem em que aparecem aqui.
       </p>
+
+      {semAjustes ? (
+        <Alert>
+          <AlertTriangle className="size-4" aria-hidden />
+          <AlertTitle>Sem a aba Conta, o cliente não acha os ajustes do app</AlertTitle>
+          <AlertDescription>
+            É nos Ajustes do app que o cliente desliga as notificações e lê a política de
+            privacidade, e a Apple exige esse caminho dentro do app. Ele fica no topo da aba Conta
+            {pushConfigurado ? ' (ou na engrenagem da aba Avisos)' : ''}. Sem uma delas, o envio
+            para as lojas fica travado.
+          </AlertDescription>
+        </Alert>
+      ) : null}
 
       <ul className="space-y-3">
         {config.tabs.map((aba, indice) => (

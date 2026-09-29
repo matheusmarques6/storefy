@@ -80,6 +80,10 @@ test('o lojista liga o Face ID, publica, e a ficha e a política passam a contar
   await page.waitForLoadState('networkidle');
   await page.getByRole('button', { name: 'Abas' }).click();
   await page.getByRole('button', { name: 'Remover Conta' }).click();
+  // Sem a Conta, os ajustes do app (M12) ficam sem entrada — e o editor diz.
+  await expect(
+    page.getByText('Sem a aba Conta, o cliente não acha os ajustes do app'),
+  ).toBeVisible();
   await page.getByRole('button', { name: 'Recursos' }).click();
   await expect(page.getByText(/Precisa da aba Conta, que é a parte protegida/)).toBeVisible();
   await expect(chave).toBeChecked();
@@ -98,6 +102,82 @@ test('o lojista liga o Face ID, publica, e a ficha e a política passam a contar
   await expect(page.getByRole('heading', { name: 'Face ID e digital' })).toBeVisible();
   await page.goto('/publicacao');
   await expect(notas.locator('pre')).toContainText('Face ID / Touch ID protection');
+});
+
+/*
+ * Os ajustes do app (M12) são onde o cliente desliga as notificações e lê a
+ * política de privacidade, e a Apple exige esse caminho dentro do app. O
+ * caminho é a aba Conta (ou a caixa de avisos): sem ela, o envio às lojas
+ * trava, dizendo o que fazer. E a política abre pelo id do app, que é o que o
+ * app sabe.
+ */
+test('sem a aba Conta, o envio às lojas trava nos ajustes do app; a política abre pelo app', async ({
+  page,
+}) => {
+  const email = emailDeTeste('ajustes');
+  await criarUsuarioConfirmado(email, 'Empresa Ajustes');
+  await entrar(page, email);
+  const lojaId = await criarLojaPelaTela(page, 'Loja Ajustes', 'loja-ajustes.com.br');
+
+  // A política pelo id do app: o endereço que a tela de ajustes abre.
+  const { data: app } = await bancoDeTeste()
+    .from('apps')
+    .select('id')
+    .eq('store_id', lojaId)
+    .single();
+  if (app == null) throw new Error('A loja de teste ficou sem app.');
+  await page.goto(`/privacy/app/${app.id}`);
+  await expect(page).toHaveURL(new RegExp(`/privacy/${lojaId}$`));
+  await expect(
+    page.getByRole('heading', { name: 'Política de Privacidade — Loja Ajustes' }),
+  ).toBeVisible();
+  const inexistente = await page.goto('/privacy/app/00000000-0000-4000-8000-000000000000');
+  expect(inexistente?.status()).toBe(404);
+
+  // Sem a aba Conta: o editor avisa, e dá para publicar assim mesmo.
+  await page.goto('/app');
+  await page.waitForLoadState('networkidle');
+  await page.getByRole('button', { name: 'Abas' }).click();
+  await page.getByRole('button', { name: 'Remover Conta' }).click();
+  await expect(
+    page.getByText('Sem a aba Conta, o cliente não acha os ajustes do app'),
+  ).toBeVisible();
+  await page.getByRole('button', { name: 'Salvar rascunho' }).click();
+  await expect(page.getByText('Rascunho salvo.').first()).toBeVisible();
+  await page.getByRole('button', { name: 'Publicar', exact: true }).click();
+  await page.getByRole('button', { name: 'Publicar agora' }).click();
+  await expect(page.getByText(/Versão \d+ publicada/)).toBeVisible();
+
+  // O envio trava nas duas lojas, no item dos ajustes, com o caminho.
+  await page.goto('/publicacao');
+  const itemDosAjustes = page
+    .getByRole('listitem')
+    .filter({ hasText: 'Ajustes do app ao alcance do cliente' });
+  await expect(itemDosAjustes).toHaveCount(2);
+  await expect(itemDosAjustes.first()).toContainText('Falta:');
+  await expect(itemDosAjustes.first()).toContainText('Adicione a aba Conta (ou Avisos)');
+  await expect(itemDosAjustes.first().getByRole('link', { name: 'Resolver' })).toHaveAttribute(
+    'href',
+    '/app',
+  );
+
+  // A Conta de volta, publicada: o item fica pronto.
+  await page.goto('/app');
+  await page.waitForLoadState('networkidle');
+  await page.getByRole('button', { name: 'Abas' }).click();
+  await page.getByRole('button', { name: 'Conta', exact: true }).click();
+  await expect(page.getByText('Sem a aba Conta, o cliente não acha os ajustes do app')).toHaveCount(
+    0,
+  );
+  await page.getByRole('button', { name: 'Salvar rascunho' }).click();
+  await expect(page.getByText('Rascunho salvo.').first()).toBeVisible();
+  await page.getByRole('button', { name: 'Publicar', exact: true }).click();
+  await page.getByRole('button', { name: 'Publicar agora' }).click();
+  await expect(page.getByText(/Versão \d+ publicada/)).toBeVisible();
+
+  await page.goto('/publicacao');
+  await expect(itemDosAjustes.first()).toContainText('Pronto:');
+  await expect(itemDosAjustes.first()).not.toContainText('Adicione a aba Conta');
 });
 
 /*

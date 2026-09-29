@@ -102,6 +102,10 @@ export function ChecklistDaPlataforma({
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
                     <span className={item.pronto ? 'text-muted-foreground' : ''}>
+                      {/* O ícone é só visual: quem usa leitor de tela ouve o estado. */}
+                      <span className="sr-only">
+                        {item.pronto ? 'Pronto: ' : item.obrigatorio ? 'Falta: ' : 'Recomendado: '}
+                      </span>
                       {item.titulo}
                     </span>
                     {item.obrigatorio ? null : (

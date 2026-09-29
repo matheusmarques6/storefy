@@ -33,6 +33,9 @@ import {
 } from '../webview/jornada';
 import { usarProtecaoDaConta } from '../nucleo/usar-biometria';
 import { PrePromptDePush } from './pre-prompt';
+import { AjustesDoApp, EntradaDosAjustes } from './ajustes';
+import { textoDaVersao, urlDaPolitica } from '../push/ajustes';
+import { credenciaisDe } from '../push/api';
 import { CaixaDeAvisos } from './caixa-de-avisos';
 import { ContaProtegida } from './conta-protegida';
 
@@ -247,6 +250,19 @@ export function Loja({
   const tokenDoCarrinho = useRef<string | null>(null);
   const clienteIdentificado = useRef<string | null>(null);
 
+  /* ------------------------------------------------ M12: os ajustes */
+
+  const [ajustesAbertos, setAjustesAbertos] = useState(false);
+  const { lerNotificacoes } = push;
+  const abrirAjustes = useCallback((): void => {
+    // Relê ao abrir: a permissão pode ter mudado nos ajustes do celular.
+    lerNotificacoes();
+    setAjustesAbertos(true);
+  }, [lerNotificacoes]);
+  const politica = useMemo(() => urlDaPolitica(credenciaisDe(ambiente)), [ambiente]);
+  // Sem caixa de avisos, a engrenagem não tem onde morar: vai para a aba Conta.
+  const semCaixaDeAvisos = !abas.some((aba) => aba.tipo === 'notifications');
+
   const aoAgir = useCallback(
     /*
      * `responder` só existe quando a ação veio de uma mensagem da página; as
@@ -318,6 +334,10 @@ export function Loja({
           push.pedirPermissao();
           return;
 
+        case 'abrir-ajustes':
+          abrirAjustes();
+          return;
+
         case 'identificar-cliente':
           // Toda página da loja repete quem está logado; o SDK só precisa
           // saber quando MUDA.
@@ -375,7 +395,7 @@ export function Loja({
         }
       }
     },
-    [itensNoCarrinho, push],
+    [abrirAjustes, itensNoCarrinho, push],
   );
 
   /* ------------------------------------------- o que o endereço conta */
@@ -474,6 +494,11 @@ export function Loja({
                   registrarControle={registrarControle}
                   aoCarregar={aba.id === primeira.id ? aoCarregar : undefined}
                   aoVerEndereco={aoVerEndereco}
+                  cabecalho={
+                    semCaixaDeAvisos ? (
+                      <EntradaDosAjustes tema={config.theme} aoAbrir={abrirAjustes} />
+                    ) : undefined
+                  }
                 />
               ) : null}
               {protecao.situacao === 'livre' ? null : (
@@ -533,6 +558,7 @@ export function Loja({
                 tema={config.theme}
                 aoRecarregar={push.recarregarCaixa}
                 aoMarcarTudoLido={push.marcarTudoLido}
+                aoAbrirAjustes={abrirAjustes}
                 aoTocar={(aviso) => {
                   push.marcarAvisoLido(aviso.id);
                   if (aviso.deepLink !== null) abrirCaminho(aviso.deepLink);
@@ -558,6 +584,22 @@ export function Loja({
         tema={config.theme}
         aoAceitar={push.aceitarNoPrePrompt}
         aoRecusar={push.recusarNoPrePrompt}
+      />
+      <AjustesDoApp
+        visivel={ajustesAbertos}
+        tema={config.theme}
+        nomeDaLoja={config.store.name}
+        notificacoes={push.notificacoes}
+        mudando={push.mudandoNotificacoes}
+        erro={push.erroNasNotificacoes}
+        aoLigar={push.ligarAsNotificacoes}
+        aoDesligar={push.desligarAsNotificacoes}
+        aoTentarDeNovo={push.lerNotificacoes}
+        versao={textoDaVersao(ambiente.appVersion, ambiente.buildAtual)}
+        urlDaPolitica={politica}
+        aoFechar={() => {
+          setAjustesAbertos(false);
+        }}
       />
     </View>
   );

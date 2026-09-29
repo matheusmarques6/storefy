@@ -263,6 +263,7 @@ type WebToNative =
  | { type: 'HAPTIC'; style: 'light' | 'medium' | 'success' }
  | { type: 'SHARE'; url: string; title?: string }
  | { type: 'REQUEST_PUSH_PERMISSION' }
+ | { type: 'OPEN_APP_SETTINGS' }                                            // abre a M12
  | { type: 'OPEN_EXTERNAL'; url: string }
  | { type: 'NOTIFY_WHEN_BACK'; variantId: string; path?: string };          // botão "me avise" do tema
 
@@ -294,6 +295,7 @@ Conferido contra o código na Fase 8a (ver "Fase 8a — Entregue").
 - [x] Face ID opcional — aba Conta, ligado em Recursos
 - [x] Pedido de avaliação do app — depois da compra, vista pela página de obrigado
 - [x] Universal Links — o app declara o domínio, e a C12 manda a Shopify publicar a associação (ou entrega os arquivos, fora da Shopify). Ligar em produção depende da Shopify liberar a permissão (ver Fase 8a)
+- [x] Ajustes do app (M12) — desligar as notificações dentro do app (diretriz 4.5.4, obrigatória para push de promoção) e a política de privacidade a um toque (5.1.1). Entrada pela engrenagem da caixa de avisos ou pelo topo da aba Conta; sem nenhuma das duas, a C12 trava o envio (ver Fase 8c)
 
 ---
 
@@ -1475,6 +1477,23 @@ está em 40 testes.
 | Divulgar o endereço `/status` aos lojistas (Ajuda, e-mail de boas-vindas) | time | — |
 | Publicar a extensão de tema com o botão novo do "Me avise" (`shopify app deploy`) | time | Shopify CLI, com o app no Partner Dashboard |
 | Mandar a correção do app para as lojas por OTA | time | admin › "enviar correção OTA para todas as lojas" |
+
+#### Fase 8c — Entregue (29/09/2026): Ajustes do app (M12)
+
+A M12 estava no plano (9.3) e nos comentários do código ("quem já recusou é
+atendido pela tela de ajustes do app (M12)") — mas não existia. E ela não é
+enfeite: a Apple exige que o cliente possa parar de receber push de promoção
+por um caminho DENTRO do app (4.5.4), e o Storefy é campanha de promoção.
+
+| Item | Estado |
+|---|---|
+| Tela M12 | ✅ `telas/ajustes.tsx`: "Receber notificações" liga e desliga no app (`optIn`/`optOut` do OneSignal, sem mexer na permissão do sistema); bloqueadas no sistema, a tela diz isso e abre os ajustes do celular; política de privacidade; versão e build |
+| Estado real, e atualizado | ✅ lido ao abrir a tela e quando a permissão muda — inclusive nos ajustes do celular, com o app em segundo plano; carregando e erro com "tentar de novo" |
+| Entradas | ✅ engrenagem na caixa de avisos (M07); sem ela, a linha "Ajustes do app" no topo da aba Conta; e `Storefy.openAppSettings()` para a loja pôr um link onde quiser |
+| Política pelo id do app | ✅ `/privacy/app/<appId>` leva à política da loja dona do app (o app sabe o próprio id, não o da loja) |
+| Painel | ✅ o editor avisa quando o app fica sem entrada para os ajustes; a C12 trava o envio no item "Ajustes do app ao alcance do cliente"; as notas da revisão dizem ao revisor onde desligar as notificações; a política conta o caminho |
+| "Me avise" com as notificações desligadas no app | ✅ pergunta antes de religar — religar liga também as promoções que a pessoa desligou |
+| Checklist da C12 acessível | ✅ cada item diz "Pronto", "Falta" ou "Recomendado" a quem usa leitor de tela (antes, só o ícone dizia) |
 
 **Estimativa total:** cerca de 7 a 9 semanas para uma pessoa com Claude Code em ritmo forte. O MVP vendável (Fases 0–4) leva cerca de 4 a 5 semanas.
 

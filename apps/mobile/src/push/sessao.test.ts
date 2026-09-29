@@ -62,6 +62,10 @@ function fingirNotificador(inscricao: string | null = 'sub-1'): {
     marcar: (tags) => registro.tags.push(tags),
     aoTocar: (ouvinte) => registro.aoTocar.push(ouvinte),
     aoMudarInscricao: (ouvinte) => registro.aoMudar.push(ouvinte),
+    inscrito: () => Promise.resolve(true),
+    ligar: () => undefined,
+    desligar: () => undefined,
+    aoMudarPermissao: () => undefined,
   };
 
   return { notificador, registro };
@@ -487,9 +491,10 @@ describe('avisarQuandoVoltar', () => {
 
     const r = await avisarQuandoVoltar(
       dependencias(notificador),
-      { inscricao: 'sub-1', sistema: 'concedida' },
+      { inscricao: 'sub-1', sistema: 'concedida', inscrito: true },
       PEDIDO,
-      pedir,
+
+      { pedirPermissao: pedir, confirmarReligar: () => Promise.resolve(true) },
     );
 
     expect(r).toEqual({ ok: true });
@@ -515,9 +520,13 @@ describe('avisarQuandoVoltar', () => {
 
     const r = await avisarQuandoVoltar(
       dependencias(notificador),
-      { inscricao: 'sub-1', sistema: 'negada' },
+      { inscricao: 'sub-1', sistema: 'negada', inscrito: true },
       PEDIDO,
-      () => Promise.resolve(true),
+
+      {
+        pedirPermissao: () => Promise.resolve(true),
+        confirmarReligar: () => Promise.resolve(true),
+      },
     );
 
     expect(r).toEqual({ ok: false, reason: 'permission' });
@@ -537,9 +546,10 @@ describe('avisarQuandoVoltar', () => {
 
     const r = await avisarQuandoVoltar(
       dependencias(notificador),
-      { inscricao: 'sub-1', sistema: 'nao-perguntado' },
+      { inscricao: 'sub-1', sistema: 'nao-perguntado', inscrito: true },
       PEDIDO,
-      pedir,
+
+      { pedirPermissao: pedir, confirmarReligar: () => Promise.resolve(true) },
     );
 
     expect(r).toEqual({ ok: true });
@@ -555,9 +565,13 @@ describe('avisarQuandoVoltar', () => {
 
     const r = await avisarQuandoVoltar(
       dependencias(notificador),
-      { inscricao: 'sub-1', sistema: 'nao-perguntado' },
+      { inscricao: 'sub-1', sistema: 'nao-perguntado', inscrito: true },
       PEDIDO,
-      () => Promise.resolve(false),
+
+      {
+        pedirPermissao: () => Promise.resolve(false),
+        confirmarReligar: () => Promise.resolve(true),
+      },
     );
 
     expect(r).toEqual({ ok: false, reason: 'permission' });
@@ -572,9 +586,13 @@ describe('avisarQuandoVoltar', () => {
 
     const r = await avisarQuandoVoltar(
       dependencias(notificador),
-      { inscricao: null, sistema: 'nao-perguntado' },
+      { inscricao: null, sistema: 'nao-perguntado', inscrito: true },
       PEDIDO,
-      () => Promise.resolve(true),
+
+      {
+        pedirPermissao: () => Promise.resolve(true),
+        confirmarReligar: () => Promise.resolve(true),
+      },
     );
 
     expect(r).toEqual({ ok: true });
@@ -594,9 +612,13 @@ describe('avisarQuandoVoltar', () => {
 
     const r = await avisarQuandoVoltar(
       dependencias(notificador),
-      { inscricao: 'sub-1', sistema: 'concedida' },
+      { inscricao: 'sub-1', sistema: 'concedida', inscrito: true },
       PEDIDO,
-      () => Promise.resolve(true),
+
+      {
+        pedirPermissao: () => Promise.resolve(true),
+        confirmarReligar: () => Promise.resolve(true),
+      },
     );
 
     expect(r).toEqual({ ok: true });
@@ -616,9 +638,13 @@ describe('avisarQuandoVoltar', () => {
       await expect(
         avisarQuandoVoltar(
           dependencias(notificador),
-          { inscricao: 'sub-1', sistema: 'concedida' },
+          { inscricao: 'sub-1', sistema: 'concedida', inscrito: true },
           PEDIDO,
-          () => Promise.resolve(true),
+
+          {
+            pedirPermissao: () => Promise.resolve(true),
+            confirmarReligar: () => Promise.resolve(true),
+          },
         ),
       ).resolves.toEqual({ ok: false, reason: 'unavailable' });
       vi.unstubAllGlobals();
@@ -628,9 +654,13 @@ describe('avisarQuandoVoltar', () => {
     await expect(
       avisarQuandoVoltar(
         dependencias(notificador),
-        { inscricao: null, sistema: 'concedida' },
+        { inscricao: null, sistema: 'concedida', inscrito: true },
         PEDIDO,
-        () => Promise.resolve(true),
+
+        {
+          pedirPermissao: () => Promise.resolve(true),
+          confirmarReligar: () => Promise.resolve(true),
+        },
       ),
     ).resolves.toEqual({ ok: false, reason: 'unavailable' });
   });
@@ -641,12 +671,81 @@ describe('avisarQuandoVoltar', () => {
       await expect(
         avisarQuandoVoltar(
           dependencias(notificador, extra),
-          { inscricao: 'sub-1', sistema: 'concedida' },
+          { inscricao: 'sub-1', sistema: 'concedida', inscrito: true },
           PEDIDO,
-          () => Promise.resolve(true),
+
+          {
+            pedirPermissao: () => Promise.resolve(true),
+            confirmarReligar: () => Promise.resolve(true),
+          },
         ),
       ).resolves.toEqual({ ok: false, reason: 'unavailable' });
     }
+  });
+
+  /*
+   * Desligou na M12 e tocou em "me avise": religar liga as promoções também.
+   * Então pergunta — e só religa e grava com o "sim".
+   */
+  it('quem desligou no app é perguntado antes de religar', async () => {
+    const { notificador } = fingirNotificador('sub-1');
+    const ligar = vi.fn();
+    const { buscador, enviados } = redeEmSequencia(200);
+    vi.stubGlobal('fetch', buscador);
+    const confirmar = vi.fn(() => Promise.resolve(true));
+
+    const r = await avisarQuandoVoltar(
+      dependencias({ ...notificador, ligar }),
+      { inscricao: 'sub-1', sistema: 'concedida', inscrito: false },
+      PEDIDO,
+      { pedirPermissao: () => Promise.resolve(true), confirmarReligar: confirmar },
+    );
+
+    expect(r).toEqual({ ok: true });
+    expect(confirmar).toHaveBeenCalledOnce();
+    expect(ligar).toHaveBeenCalledOnce();
+    expect(enviados).toHaveLength(1);
+    vi.unstubAllGlobals();
+  });
+
+  it('e com o "agora não", nada é religado nem gravado', async () => {
+    const { notificador } = fingirNotificador('sub-1');
+    const ligar = vi.fn();
+    const { buscador, enviados } = redeEmSequencia();
+    vi.stubGlobal('fetch', buscador);
+
+    const r = await avisarQuandoVoltar(
+      dependencias({ ...notificador, ligar }),
+      { inscricao: 'sub-1', sistema: 'concedida', inscrito: false },
+      PEDIDO,
+      {
+        pedirPermissao: () => Promise.resolve(true),
+        confirmarReligar: () => Promise.resolve(false),
+      },
+    );
+
+    expect(r).toEqual({ ok: false, reason: 'permission' });
+    expect(ligar).not.toHaveBeenCalled();
+    expect(enviados).toEqual([]);
+    vi.unstubAllGlobals();
+  });
+
+  it('quem acabou de dar a permissão não é perguntado de novo', async () => {
+    const { notificador } = fingirNotificador('sub-1');
+    const { buscador } = redeEmSequencia(200);
+    vi.stubGlobal('fetch', buscador);
+    const confirmar = vi.fn(() => Promise.resolve(true));
+
+    // Sem permissão, o `optedIn` é falso por falta dela — e não por escolha.
+    await avisarQuandoVoltar(
+      dependencias(notificador),
+      { inscricao: 'sub-1', sistema: 'nao-perguntado', inscrito: false },
+      PEDIDO,
+      { pedirPermissao: () => Promise.resolve(true), confirmarReligar: confirmar },
+    );
+
+    expect(confirmar).not.toHaveBeenCalled();
+    vi.unstubAllGlobals();
   });
 
   it('o pedido de permissão que estoura vale como "não permitiu"', async () => {
@@ -654,9 +753,13 @@ describe('avisarQuandoVoltar', () => {
     await expect(
       avisarQuandoVoltar(
         dependencias(notificador),
-        { inscricao: 'sub-1', sistema: 'nao-perguntado' },
+        { inscricao: 'sub-1', sistema: 'nao-perguntado', inscrito: true },
         PEDIDO,
-        () => Promise.reject(new Error('SDK fora')),
+
+        {
+          pedirPermissao: () => Promise.reject(new Error('SDK fora')),
+          confirmarReligar: () => Promise.resolve(true),
+        },
       ),
     ).resolves.toEqual({ ok: false, reason: 'permission' });
   });
