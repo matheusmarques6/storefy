@@ -1632,6 +1632,17 @@ por um caminho DENTRO do app (4.5.4), e o Storefy é campanha de promoção.
 | Claro e escuro | ➖ fora de propósito: o app roda sempre claro (`userInterfaceStyle: 'light'` no `app.config.ts`), com as cores da loja; um modo escuro na prévia mostraria um app que não existe. Se o app ganhar tema escuro, a alternância entra junto |
 | Testes | ✅ 9 do contador (inclusive a mesma aba com as chaves em outra ordem) e 6 da escolha do aparelho (inclusive armazenamento bloqueado na leitura e na gravação). E2e do editor: primeira publicação, a cor gravada sozinha (no banco e depois de recarregar), a gravação segurada por duas abas com o mesmo nome, o contador em 1 e 2, a nova publicação, a moldura trocando e lembrando o Android, a restauração de uma versão trocando a tela; e, com a gravação presa no caminho, o nome digitado que fica na tela e vai ao banco, e a mudança gravada ao sair pelo menu |
 
+#### Fase 8i — Entregue (29/09/2026): o aviso no topo do app (C06e)
+
+| Item | Estado |
+|---|---|
+| O que faltava | ❌→✅ o C06e pede "aviso no topo", e o campo `announcement` existia no contrato desde a Fase 2 sem ninguém que o escrevesse nem o desenhasse: nem o editor, nem o app |
+| No editor (C06e › Recursos) | ✅ ligar e desligar, o texto (até 80 caracteres, com o contador — é o que cabe em duas linhas ao lado do "fechar" num celular pequeno) e um link opcional. Ligado sem texto, texto longo demais ou link de fora da loja são pontos a corrigir, e o rascunho não grava até resolver. Desligar guarda o texto para a próxima vez. A moldura da prévia mostra a faixa enquanto se digita |
+| O link | ✅ só endereço DA LOJA — caminho (`/collections/promo`) ou URL de um domínio dela, com os subdomínios. É a mesma regra do toque numa notificação: um aviso escrito num painel levando a um site qualquer, sem barra de endereço e com o nome da loja em volta, seria uma tela de phishing pronta. No app, link que escape disso vira aviso só de texto |
+| No app (casca da loja, M04) | ✅ a faixa nas cores da marca, abaixo da barra de status e em cima de todas as abas; com link, o toque abre a página na aba que cuida dela. O "fechar" tem área de toque própria, e o aviso fechado só volta quando o TEXTO muda (guardado no aparelho): ver o mesmo aviso a cada abertura ensina a ignorá-lo |
+| Compatibilidade | ✅ o campo já era opcional no contrato: config antiga, sem ele, é "desligado" no editor e no app |
+| Testes | ✅ 6 do editor (config antiga, link apagado, texto vazio e longo, links da loja e de fora); 7 no app (config antiga, desligado, texto, links da loja com busca e âncora, link de fora e `javascript:`, fechar por texto); e2e do editor (ligar, recusas, prévia, gravação, desligar guardando o texto); fluxo do Maestro `aviso.yaml` (aparece, fecha e não volta) |
+
 **Estimativa total:** cerca de 7 a 9 semanas para uma pessoa com Claude Code em ritmo forte. O MVP vendável (Fases 0–4) leva cerca de 4 a 5 semanas.
 
 ---

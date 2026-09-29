@@ -9,11 +9,25 @@
  * As mensagens são para o lojista, não para quem programa: nada de "ZodError"
  * nem de "índice 2 do array tabs".
  */
+import { mesmoDominio } from '@storefy/bridge';
 import type { AppConfig, Tab } from '@storefy/config-schema';
 import { safeParseAppConfig } from '@storefy/config-schema';
 
 export const MIN_ABAS = 2;
 export const MAX_ABAS = 5;
+
+/**
+ * O aviso no topo cabe em duas linhas na faixa do app, ao lado do "fechar",
+ * num celular pequeno. Mais do que isso seria cortado no meio da frase.
+ */
+export const MAX_TEXTO_DO_AVISO = 80;
+
+type AvisoDoTopo = NonNullable<AppConfig['announcement']>;
+
+/** Configs anteriores ao aviso não têm o campo: é o mesmo que desligado. */
+export function avisoDaConfig(config: AppConfig): AvisoDoTopo {
+  return config.announcement ?? { enabled: false, text: '' };
+}
 
 /** Cada tipo de aba entra com um rótulo e um ícone que já fazem sentido. */
 export const PADRAO_POR_TIPO: Record<Tab['type'], { label: string; icon: string; url?: string }> = {
@@ -180,6 +194,42 @@ export function editarRecursos(
   return proxima;
 }
 
+/**
+ * Liga, desliga ou muda o aviso no topo (C06e). Link apagado sai da config,
+ * em vez de ficar como texto vazio que o app teria de adivinhar.
+ */
+export function editarAviso(config: AppConfig, mudancas: Partial<AvisoDoTopo>): AppConfig {
+  const proxima = clonar(config);
+  const aviso: AvisoDoTopo = { ...avisoDaConfig(proxima), ...mudancas };
+  if (aviso.url?.trim() === '') delete aviso.url;
+  proxima.announcement = aviso;
+  return proxima;
+}
+
+/**
+ * O link do aviso é um endereço DA LOJA — caminho (`/collections/promo`) ou
+ * URL inteira de um domínio dela. O app só abre esses: um aviso escrito num
+ * painel levando a um site qualquer, sem barra de endereço e com o nome da
+ * loja em volta, seria uma tela de phishing pronta.
+ */
+export function linkDaLoja(link: string, loja: AppConfig['store']): boolean {
+  let alvo: URL;
+  try {
+    alvo = new URL(link.trim(), loja.url);
+  } catch {
+    return false;
+  }
+  if (alvo.protocol !== 'https:' && alvo.protocol !== 'http:') return false;
+  return [loja.url, ...loja.domains].some((entrada) => {
+    try {
+      const host = new URL(entrada.includes('://') ? entrada : `https://${entrada}`).hostname;
+      return mesmoDominio(alvo.hostname, host);
+    } catch {
+      return false;
+    }
+  });
+}
+
 // ------------------------------------------------------------- validação
 
 export interface Problema {
@@ -250,6 +300,30 @@ export function validarConfig(config: AppConfig): Problema[] {
     }
   }
 
+  const aviso = avisoDaConfig(config);
+  if (aviso.enabled) {
+    const texto = aviso.text.trim();
+    if (texto === '') {
+      problemas.push({
+        secao: 'recursos',
+        mensagem: 'O aviso no topo está ligado, mas sem texto. Escreva o que ele deve dizer.',
+      });
+    } else if (texto.length > MAX_TEXTO_DO_AVISO) {
+      problemas.push({
+        secao: 'recursos',
+        mensagem: `O aviso no topo passa de ${String(MAX_TEXTO_DO_AVISO)} caracteres e seria cortado no app. Encurte o texto.`,
+      });
+    }
+    const link = aviso.url?.trim() ?? '';
+    if (link !== '' && !linkDaLoja(link, config.store)) {
+      problemas.push({
+        secao: 'recursos',
+        mensagem:
+          'O link do aviso precisa ser um endereço da sua loja, como /collections/promocao.',
+      });
+    }
+  }
+
   return problemas;
 }
 
@@ -257,7 +331,7 @@ function secaoDoCaminho(caminho: readonly PropertyKey[]): Problema['secao'] {
   const primeiro = String(caminho[0] ?? '');
   if (primeiro === 'theme') return 'aparencia';
   if (primeiro === 'tabs') return 'abas';
-  if (primeiro === 'features') return 'recursos';
+  if (primeiro === 'features' || primeiro === 'announcement') return 'recursos';
   return 'loja';
 }
 

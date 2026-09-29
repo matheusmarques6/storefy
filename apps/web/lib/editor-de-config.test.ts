@@ -4,11 +4,15 @@ import {
   MAX_ABAS,
   MIN_ABAS,
   adicionarAba,
+  MAX_TEXTO_DO_AVISO,
+  avisoDaConfig,
   editarAba,
+  editarAviso,
   editarRecursos,
   editarTema,
   editarWebview,
   idLivre,
+  linkDaLoja,
   moverAba,
   podeAdicionarAba,
   podeRemoverAba,
@@ -212,6 +216,69 @@ describe('validarConfig', () => {
     for (const problema of validarConfig(config)) {
       expect(problema.mensagem).not.toMatch(/zod|string|array|expected|invalid_/i);
     }
+  });
+});
+
+describe('aviso no topo', () => {
+  it('config antiga, sem o campo, vale como desligado e sem problema', () => {
+    const antiga = base();
+    delete antiga.announcement;
+    expect(avisoDaConfig(antiga)).toEqual({ enabled: false, text: '' });
+    expect(validarConfig(antiga)).toEqual([]);
+  });
+
+  it('editar cria o campo, e link apagado sai da config', () => {
+    const ligado = editarAviso(base(), { enabled: true, text: 'Frete grátis', url: '/promo' });
+    expect(ligado.announcement).toEqual({ enabled: true, text: 'Frete grátis', url: '/promo' });
+    expect(editarAviso(ligado, { url: '  ' }).announcement).toEqual({
+      enabled: true,
+      text: 'Frete grátis',
+    });
+  });
+
+  it('ligado sem texto, ou com texto que não cabe na faixa, é problema de Recursos', () => {
+    const vazio = validarConfig(editarAviso(base(), { enabled: true, text: '  ' }));
+    expect(vazio).toEqual([
+      {
+        secao: 'recursos',
+        mensagem: 'O aviso no topo está ligado, mas sem texto. Escreva o que ele deve dizer.',
+      },
+    ]);
+    const longo = validarConfig(
+      editarAviso(base(), { enabled: true, text: 'a'.repeat(MAX_TEXTO_DO_AVISO + 1) }),
+    );
+    expect(longo[0]?.mensagem).toContain(`passa de ${String(MAX_TEXTO_DO_AVISO)} caracteres`);
+    expect(
+      validarConfig(editarAviso(base(), { enabled: true, text: 'a'.repeat(MAX_TEXTO_DO_AVISO) })),
+    ).toEqual([]);
+  });
+
+  it('desligado não cobra nada: o texto fica guardado para a próxima vez', () => {
+    expect(validarConfig(editarAviso(base(), { enabled: false, text: '' }))).toEqual([]);
+  });
+
+  it('o link é da loja: caminho, URL do domínio dela ou de um subdomínio', () => {
+    const loja = { ...base().store, domains: ['oakvintage.com.br', 'oak.myshopify.com'] };
+    expect(linkDaLoja('/collections/promo', loja)).toBe(true);
+    expect(linkDaLoja('collections/promo', loja)).toBe(true);
+    expect(linkDaLoja('https://www.oakvintage.com.br/pages/frete', loja)).toBe(true);
+    expect(linkDaLoja('https://oak.myshopify.com/cart', loja)).toBe(true);
+    expect(linkDaLoja('https://outro-site.com/login', loja)).toBe(false);
+    expect(linkDaLoja('javascript:alert(1)', loja)).toBe(false);
+    expect(linkDaLoja('mailto:contato@oakvintage.com.br', loja)).toBe(false);
+  });
+
+  it('link de fora da loja é problema, com o exemplo do que vale', () => {
+    const problemas = validarConfig(
+      editarAviso(base(), { enabled: true, text: 'Siga a loja', url: 'https://instagram.com/x' }),
+    );
+    expect(problemas).toEqual([
+      {
+        secao: 'recursos',
+        mensagem:
+          'O link do aviso precisa ser um endereço da sua loja, como /collections/promocao.',
+      },
+    ]);
   });
 });
 

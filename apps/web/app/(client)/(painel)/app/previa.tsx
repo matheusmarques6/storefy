@@ -25,6 +25,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { AppConfig } from '@storefy/config-schema';
+import { X } from 'lucide-react';
 import { useAparelhoDaPrevia } from '@/lib/aparelho-da-previa';
 import { MARCA_DA_PREVIA, cssDaPrevia } from '@/lib/preview-proxy';
 import { cn } from '@/lib/utils';
@@ -71,6 +72,8 @@ export function Previa({
   const iframe = useRef<HTMLIFrameElement>(null);
   const [aparelho, trocarAparelho] = useAparelhoDaPrevia();
   const ehIphone = aparelho === 'iphone';
+  // O aviso no topo (C06e), como o app desenha: só ligado e com texto.
+  const aviso = config.announcement?.enabled === true ? config.announcement.text.trim() : '';
 
   /*
    * Os seletores entram na URL só para a primeira pintura não piscar com o
@@ -183,6 +186,19 @@ export function Previa({
             style={{ backgroundColor: theme.statusBar === 'light' ? '#ffffff22' : '#00000018' }}
           />
         </div>
+
+        {aviso === '' ? null : (
+          <div
+            data-testid="aviso-na-previa"
+            className="flex items-center gap-1 py-1.5 pr-2 pl-3"
+            style={{ backgroundColor: theme.primary, color: theme.background }}
+          >
+            <p className="line-clamp-2 flex-1 text-center text-[11px] leading-tight font-semibold">
+              {aviso}
+            </p>
+            <X className="size-3 shrink-0" aria-hidden />
+          </div>
+        )}
 
         <div className="relative h-[460px] w-full overflow-hidden bg-white">
           {selecionando ? (

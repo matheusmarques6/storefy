@@ -24,6 +24,8 @@ import {
   resolverAbas,
   type AbaResolvida,
 } from '../config/abas';
+import { avisoDoTopo, avisoFoiFechado } from '../config/aviso';
+import { gravarAvisoFechado, lerAvisoFechado } from '../config/fontes';
 import { BarraDeAbas } from '../navegacao/barra-de-abas';
 import { AbaWebView, type ControleDaAba } from '../webview/aba-webview';
 import type { ContextoDoApp } from '../webview/scripts';
@@ -46,6 +48,7 @@ import { textoDaVersao, urlDaPolitica } from '../push/ajustes';
 import { credenciaisDe } from '../push/api';
 import { CaixaDeAvisos } from './caixa-de-avisos';
 import { ContaProtegida } from './conta-protegida';
+import { FaixaDeAviso } from './faixa-de-aviso';
 
 interface Props {
   config: AppConfig;
@@ -86,6 +89,31 @@ export function Loja({
     if (primeira === undefined) return;
     if (!abas.some((aba) => aba.id === ativa)) setAtiva(primeira.id);
   }, [abas, ativa, primeira]);
+
+  /* ------------------------------------------------- o aviso no topo */
+
+  const aviso = useMemo(() => avisoDoTopo(config), [config]);
+  /**
+   * O texto do aviso que o cliente fechou. `undefined` enquanto o disco não
+   * responde: a faixa só entra depois, em vez de aparecer e sumir num piscar.
+   */
+  const [avisoFechado, setAvisoFechado] = useState<string | null | undefined>(undefined);
+  useEffect(() => {
+    let cancelado = false;
+    const foiCancelado = (): boolean => cancelado;
+    void lerAvisoFechado().then((texto) => {
+      if (!foiCancelado()) setAvisoFechado(texto);
+    });
+    return () => {
+      cancelado = true;
+    };
+  }, []);
+
+  const fecharAviso = useCallback((): void => {
+    if (aviso === null) return;
+    setAvisoFechado(aviso.texto);
+    void gravarAvisoFechado(aviso.texto);
+  }, [aviso]);
 
   /* ------------------------------------------------------------ conexão */
 
@@ -486,6 +514,14 @@ export function Loja({
     <View style={[estilos.tela, { backgroundColor: config.theme.background }]}>
       <StatusBar style={config.theme.statusBar === 'light' ? 'light' : 'dark'} />
       <SafeAreaView edges={['top']} style={estilos.area}>
+        {aviso !== null && avisoFechado !== undefined && !avisoFoiFechado(aviso, avisoFechado) ? (
+          <FaixaDeAviso
+            aviso={aviso}
+            tema={config.theme}
+            aoAbrir={abrirCaminho}
+            aoFechar={fecharAviso}
+          />
+        ) : null}
         {/*
          * Toda aba vira uma WebView. A Fase 3 põe aqui a caixa de avisos
          * nativa, e até lá `abasUsaveis` não deixa uma aba dessas chegar até

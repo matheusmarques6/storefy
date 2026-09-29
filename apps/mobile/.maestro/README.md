@@ -41,6 +41,7 @@ Filtros úteis:
 - `--exclude-tags android` no iOS: o modo avião do `offline.yaml` só existe no
   emulador do Android.
 - `--exclude-tags push` num build sem notificações (sem OneSignal).
+- `--exclude-tags aviso` se a loja de teste não tiver um aviso no topo publicado.
 
 ## Os fluxos
 
@@ -53,3 +54,4 @@ Filtros úteis:
 | `fluxos/offline.yaml`              | Sem internet, a tela nativa; com "Tentar de novo", a loja volta (Android)                   |
 | `fluxos/ajustes.yaml`              | Os ajustes do app (M12): política de privacidade e versão                                   |
 | `fluxos/ajustes-notificacoes.yaml` | Desligar e religar as notificações dentro do app (Apple 4.5.4)                              |
+| `fluxos/aviso.yaml`                | O aviso no topo aparece e, fechado, não volta na próxima abertura                           |

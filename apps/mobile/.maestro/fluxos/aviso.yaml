@@ -1,0 +1,24 @@
+# O aviso no topo (C06e): aparece em cima da loja, e fechado não volta na
+# próxima abertura. Pede a loja de teste com um aviso publicado no painel
+# (Editor do app › Recursos › Aviso no topo); sem ele, rode com
+# `--exclude-tags aviso`.
+appId: ${APP_ID}
+name: Aviso no topo
+tags:
+  - aviso
+---
+- runFlow: ../comum/abrir.yaml
+- assertVisible:
+    id: 'aviso-do-topo'
+- tapOn:
+    id: 'aviso-do-topo-fechar'
+- assertNotVisible:
+    id: 'aviso-do-topo'
+- stopApp
+- launchApp
+- extendedWaitUntil:
+    visible:
+      id: 'aba-pagina-0'
+    timeout: 30000
+- assertNotVisible:
+    id: 'aviso-do-topo'

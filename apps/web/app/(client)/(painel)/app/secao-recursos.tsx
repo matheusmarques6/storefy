@@ -1,6 +1,6 @@
 'use client';
 
-/** Boas-vindas e permissões (C06d); banner e recursos do app (C06e). */
+/** Boas-vindas e permissões (C06d); banner, aviso no topo e recursos do app (C06e). */
 import { Plus, Trash2 } from 'lucide-react';
 import type { AppConfig } from '@storefy/config-schema';
 import { Button } from '@/components/ui/button';
@@ -9,7 +9,12 @@ import { Label } from '@/components/ui/label';
 import { Select } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
-import { editarRecursos } from '@/lib/editor-de-config';
+import {
+  MAX_TEXTO_DO_AVISO,
+  avisoDaConfig,
+  editarAviso,
+  editarRecursos,
+} from '@/lib/editor-de-config';
 import { SecaoAtualizacao } from './secao-atualizacao';
 
 const MAX_SLIDES = 4;
@@ -30,6 +35,7 @@ export function SecaoRecursos({
   numeroExigivel: number | null;
 }) {
   const { features } = config;
+  const aviso = avisoDaConfig(config);
   const temAbaConta = config.tabs.some((aba) => aba.type === 'account');
 
   function trocarSlide(
@@ -203,6 +209,70 @@ export function SecaoRecursos({
               abra <strong>Configurações do app</strong> e ligue o bloco <strong>Storefy</strong>. É
               uma vez só — depois o texto e os links saem daqui.
             </p>
+          </div>
+        ) : null}
+      </section>
+
+      <section className="space-y-3">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h3 className="text-sm font-medium">Aviso no topo</h3>
+            <p className="text-muted-foreground mt-1 text-sm">
+              Uma faixa curta em cima da loja, dentro do app: frete grátis, uma promoção, o prazo de
+              entrega. O cliente pode fechar, e um texto novo volta a aparecer.
+            </p>
+          </div>
+          <Switch
+            aria-label="Aviso no topo"
+            checked={aviso.enabled}
+            disabled={somenteLeitura}
+            onCheckedChange={(proximo) => {
+              aoMudar(editarAviso(config, { enabled: proximo }));
+            }}
+          />
+        </div>
+
+        {aviso.enabled ? (
+          <div className="space-y-3">
+            <div className="space-y-1.5">
+              <Label htmlFor="texto-do-aviso">Texto do aviso</Label>
+              <Input
+                id="texto-do-aviso"
+                value={aviso.text}
+                placeholder="Frete grátis acima de R$ 199"
+                disabled={somenteLeitura}
+                aria-describedby="texto-do-aviso-ajuda"
+                onChange={(evento) => {
+                  aoMudar(editarAviso(config, { text: evento.target.value }));
+                }}
+              />
+              <p
+                id="texto-do-aviso-ajuda"
+                className={
+                  aviso.text.trim().length > MAX_TEXTO_DO_AVISO
+                    ? 'text-destructive text-xs'
+                    : 'text-muted-foreground text-xs'
+                }
+              >
+                {aviso.text.trim().length} de {MAX_TEXTO_DO_AVISO} caracteres.
+              </p>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="link-do-aviso">Link do aviso (opcional)</Label>
+              <Input
+                id="link-do-aviso"
+                value={aviso.url ?? ''}
+                placeholder="/collections/promocao"
+                disabled={somenteLeitura}
+                aria-describedby="link-do-aviso-ajuda"
+                onChange={(evento) => {
+                  aoMudar(editarAviso(config, { url: evento.target.value }));
+                }}
+              />
+              <p id="link-do-aviso-ajuda" className="text-muted-foreground text-xs">
+                Um endereço da sua loja. Quem tocar no aviso vai para lá; sem link, ele é só texto.
+              </p>
+            </div>
           </div>
         ) : null}
       </section>

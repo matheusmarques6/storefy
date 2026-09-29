@@ -68,6 +68,29 @@ export async function marcarOnboardingVisto(): Promise<void> {
   }
 }
 
+/** O texto do aviso do topo que o cliente fechou (C06e). */
+export const CHAVE_DO_AVISO_FECHADO = 'storefy:aviso-fechado:v1';
+
+/** O texto do último aviso fechado. Falha de leitura conta como "nenhum". */
+export async function lerAvisoFechado(): Promise<string | null> {
+  try {
+    return await AsyncStorage.getItem(CHAVE_DO_AVISO_FECHADO);
+  } catch {
+    // Mostrar de novo um aviso já fechado incomoda pouco; esconder um que o
+    // cliente nunca viu perde a mensagem da loja. Na dúvida, mostra.
+    return null;
+  }
+}
+
+/** Guarda que o cliente fechou ESTE aviso: outro texto volta a aparecer. */
+export async function gravarAvisoFechado(texto: string): Promise<void> {
+  try {
+    await AsyncStorage.setItem(CHAVE_DO_AVISO_FECHADO, texto);
+  } catch {
+    // Sem disco, o aviso volta na próxima abertura. Chato, não quebra.
+  }
+}
+
 /** Busca a config publicada. Devolve `null` em qualquer falha. */
 export async function buscarNaRede(url: string): Promise<unknown> {
   const cancelador = new AbortController();

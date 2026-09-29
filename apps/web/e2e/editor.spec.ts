@@ -34,7 +34,11 @@ async function rascunhoNoBanco(lojaId: string) {
     .eq('status', 'draft')
     .single();
   if (error != null) throw new Error(error.message);
-  return data.config as { theme: { primary: string }; tabs: { id: string; label: string }[] };
+  return data.config as {
+    theme: { primary: string };
+    tabs: { id: string; label: string }[];
+    announcement?: { enabled: boolean; text: string; url?: string };
+  };
 }
 
 test('o rascunho se salva sozinho, e o botão de publicar conta as mudanças', async ({ page }) => {
@@ -189,4 +193,58 @@ test('o que se digita com uma gravação a caminho não se perde quando ela volt
   await expect
     .poll(async () => (await rascunhoNoBanco(lojaId)).theme.primary, { timeout: 10_000 })
     .toBe('#7c3aed');
+});
+
+test('o aviso no topo: liga, confere texto e link, aparece na prévia e grava', async ({ page }) => {
+  const email = emailDeTeste('editor-aviso');
+  await criarUsuarioConfirmado(email, 'Empresa Editor Aviso');
+  await entrar(page, email);
+  const lojaId = await criarLojaPelaTela(page, 'Loja Editor Aviso', 'loja-editor-aviso.com.br');
+
+  await page.goto('/app');
+  await page.waitForLoadState('networkidle');
+  const barra = page.getByRole('region', { name: 'Publicação do app' });
+  await page.getByRole('button', { name: 'Recursos' }).click();
+  await page.getByRole('switch', { name: 'Aviso no topo' }).click();
+
+  // Ligado sem texto não grava, e diz por quê.
+  await expect(
+    page.getByText('O aviso no topo está ligado, mas sem texto. Escreva o que ele deve dizer.'),
+  ).toBeVisible();
+  await expect(
+    barra.getByText('Corrija os pontos destacados para o rascunho ser salvo.'),
+  ).toBeVisible();
+
+  // O texto aparece na prévia enquanto é digitado.
+  await page.getByLabel('Texto do aviso').fill('Frete grátis acima de R$ 199');
+  await expect(page.getByTestId('aviso-na-previa')).toHaveText('Frete grátis acima de R$ 199');
+  await expect(page.getByText('28 de 80 caracteres.')).toBeVisible();
+
+  // Link de fora da loja é recusado, com o exemplo do que vale.
+  const link = page.getByLabel('Link do aviso (opcional)');
+  await link.fill('https://instagram.com/loja');
+  await expect(
+    page.getByText(
+      'O link do aviso precisa ser um endereço da sua loja, como /collections/promocao.',
+    ),
+  ).toBeVisible();
+  await page.waitForTimeout(1500);
+  expect((await rascunhoNoBanco(lojaId)).announcement?.url).toBeUndefined();
+
+  // Um caminho da loja vale, e o rascunho grava sozinho.
+  await link.fill('/collections/promocao');
+  await expect(barra.getByText(/Rascunho salvo às/)).toBeVisible();
+  expect((await rascunhoNoBanco(lojaId)).announcement).toEqual({
+    enabled: true,
+    text: 'Frete grátis acima de R$ 199',
+    url: '/collections/promocao',
+  });
+  await expect(barra.getByText('Ainda não publicado', { exact: false })).toBeVisible();
+
+  // Desligar tira da prévia e grava, mas guarda o texto para a próxima vez.
+  await page.getByRole('switch', { name: 'Aviso no topo' }).click();
+  await expect(page.getByTestId('aviso-na-previa')).toHaveCount(0);
+  await expect(barra.getByText(/Rascunho salvo às/)).toBeVisible();
+  await expect.poll(async () => (await rascunhoNoBanco(lojaId)).announcement?.enabled).toBe(false);
+  expect((await rascunhoNoBanco(lojaId)).announcement?.text).toBe('Frete grátis acima de R$ 199');
 });
