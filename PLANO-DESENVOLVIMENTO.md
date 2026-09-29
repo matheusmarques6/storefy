@@ -1279,7 +1279,7 @@ com um servidor no lugar da Asaas falando HTTP de verdade com o painel). A suít
 ### Fase 8 — Polimento, QA e lançamento (5+ dias)
 - Trocar os layouts provisórios pelos do Claude Design (tela por tela, usando os IDs C/A/M).
 - Testes E2E com Playwright (onboarding → editor → publicar config → campanha). ✅ `e2e/jornada.spec.ts` faz a jornada inteira só pela tela (cadastro → loja → editor → publicar → campanha agendada), e a suíte tem 42 testes
-- Maestro para fluxos do app (abrir, trocar aba, carrinho, offline).
+- Maestro para fluxos do app (abrir, trocar aba, carrinho, offline). ✅ escritos em `apps/mobile/.maestro/` (abrir, trocar aba, busca, carrinho, offline, ajustes e desligar as notificações), conferidos pelo `maestro check-syntax` 2.10; `src/maestro.test.ts` quebra se um fluxo citar texto ou `id` que o app não tem. Rodar depende de simulador/emulador com o build da loja de teste (ver "Depende de ação humana" da Fase 8c)
 - Sentry (web + mobile), logs estruturados, status page. ✅ Fase 8b
 - Revisão de segurança: RLS, segredos, rate limit, HMAC. ✅ Fase 8b
 - **Checklist App Store** (seção 5.7) + notas de revisão padrão explicando os recursos nativos. ✅ Fase 8a
@@ -1495,7 +1495,15 @@ por um caminho DENTRO do app (4.5.4), e o Storefy é campanha de promoção.
 | Painel | ✅ o editor avisa quando o app fica sem entrada para os ajustes; a C12 trava o envio no item "Ajustes do app ao alcance do cliente"; as notas da revisão dizem ao revisor onde desligar as notificações; a política conta o caminho |
 | "Me avise" com as notificações desligadas no app | ✅ pergunta antes de religar — religar liga também as promoções que a pessoa desligou |
 | Checklist da C12 acessível | ✅ cada item diz "Pronto", "Falta" ou "Recomendado" a quem usa leitor de tela (antes, só o ícone dizia) |
+| Fluxos do Maestro | ✅ sete fluxos em `apps/mobile/.maestro/`, com ids estáveis nas abas (pelo tipo, porque o nome muda de loja para loja) e um teste que confere cada texto e cada `id` contra o app — conferido pondo um botão renomeado e uma aba inexistente |
 | Busca nativa (M08) | ✅ também faltava: a aba Busca só abria a página da loja, e um comentário dizia que o campo era nativo. Agora o campo é do app (tecla "Buscar", limpar, termo cortado em 100 caracteres) e leva a aba a `/search?q=` na busca da própria loja; as notas da revisão contam o recurso |
+
+**Depende de ação humana**
+
+| O quê | Quem | Onde |
+|---|---|---|
+| Rodar os fluxos do Maestro num simulador do iOS e num emulador do Android, com o build de desenvolvimento da loja de teste | time | `apps/mobile/.maestro/README.md` |
+| Conferir o "Desligar notificações" num iPhone de verdade antes do primeiro envio à Apple | time | build de desenvolvimento via EAS |
 
 **Estimativa total:** cerca de 7 a 9 semanas para uma pessoa com Claude Code em ritmo forte. O MVP vendável (Fases 0–4) leva cerca de 4 a 5 semanas.
 

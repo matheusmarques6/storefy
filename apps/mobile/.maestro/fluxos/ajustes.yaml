@@ -1,0 +1,16 @@
+# Os ajustes do app (M12): a política de privacidade e a versão, pela aba
+# Conta. Vale para todo build — com ou sem notificações.
+appId: ${APP_ID}
+name: Ajustes do app
+tags:
+  - ajustes
+---
+- runFlow: ../comum/abrir.yaml
+- tapOn:
+    id: 'aba-account'
+- tapOn: 'Ajustes do app'
+- assertVisible: 'Ajustes'
+- assertVisible: 'Política de privacidade'
+- assertVisible: 'Versão .*'
+- tapOn: 'Fechar'
+- assertNotVisible: 'Política de privacidade'

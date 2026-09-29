@@ -15,7 +15,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { Theme } from '@storefy/config-schema';
-import type { AbaResolvida } from '../config/abas';
+import { idDeTesteDaAba, type AbaResolvida } from '../config/abas';
 import { descricaoDeAvisos, descricaoDoBadge, rotuloDoBadge } from './badge';
 import { iconeDaAba } from './icones';
 
@@ -55,7 +55,7 @@ export function BarraDeAbas({
         },
       ]}
     >
-      {abas.map((aba) => {
+      {abas.map((aba, indice) => {
         const selecionada = aba.id === ativa;
         const cor = selecionada ? tema.tabBarActive : tema.tabBarInactive;
         /*
@@ -81,6 +81,7 @@ export function BarraDeAbas({
         return (
           <Pressable
             key={aba.id}
+            testID={idDeTesteDaAba(aba, indice)}
             accessibilityRole="tab"
             accessibilityState={{ selected: selecionada }}
             accessibilityLabel={descricao === null ? aba.label : `${aba.label}, ${descricao}`}

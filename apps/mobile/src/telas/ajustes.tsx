@@ -188,6 +188,7 @@ function Notificacoes({
           <ActivityIndicator color={tema.primary} />
         ) : (
           <Switch
+            testID="ajustes-notificacoes"
             accessibilityLabel="Receber notificações"
             value={ligadas}
             disabled={bloqueadas}

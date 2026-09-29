@@ -1,0 +1,7 @@
+# Os fluxos do app nativo (Fase 8), para o Maestro.
+#
+# Rodam num simulador do iOS ou num emulador do Android, com o build de
+# desenvolvimento da LOJA DE TESTE — ver README.md nesta pasta. Os subfluxos
+# de `comum/` não rodam sozinhos: são chamados pelos fluxos.
+flows:
+  - 'fluxos/*'

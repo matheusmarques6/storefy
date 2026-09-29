@@ -9,6 +9,7 @@ import {
   urlDaAba,
   caminhoDaBusca,
   MAXIMO_DA_BUSCA,
+  idDeTesteDaAba,
 } from './abas';
 
 function config(tabs: AppConfigInput['tabs']) {
@@ -261,5 +262,17 @@ describe('caminhoDaBusca — M08', () => {
     expect(new URL(caminho, 'https://oak.com.br').searchParams.get('q')).toHaveLength(
       MAXIMO_DA_BUSCA,
     );
+  });
+});
+
+describe('idDeTesteDaAba — os fluxos do Maestro', () => {
+  it('pelo tipo, que não muda de loja para loja', () => {
+    expect(idDeTesteDaAba({ tipo: 'cart' }, 2)).toBe('aba-cart');
+    expect(idDeTesteDaAba({ tipo: 'account' }, 3)).toBe('aba-account');
+  });
+
+  it('as páginas da loja pela posição, porque podem ser várias', () => {
+    expect(idDeTesteDaAba({ tipo: 'webview' }, 0)).toBe('aba-pagina-0');
+    expect(idDeTesteDaAba({ tipo: 'webview' }, 1)).toBe('aba-pagina-1');
   });
 });

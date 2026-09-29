@@ -10,7 +10,8 @@
     "lint": "eslint .",
     "start": "expo start --dev-client",
     "test": "vitest run",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "e2e": "maestro test .maestro"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.2",

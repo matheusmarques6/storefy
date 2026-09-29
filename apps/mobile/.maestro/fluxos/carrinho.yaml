@@ -1,0 +1,30 @@
+# O carrinho: um produto da loja de teste entra no carrinho, e o número
+# aparece na aba (o observador do /cart.js).
+appId: ${APP_ID}
+name: Pôr um produto no carrinho
+tags:
+  - carrinho
+env:
+  TERMO: ${TERMO || 'camiseta'}
+  PRODUTO: ${PRODUTO || 'Camiseta'}
+  BOTAO_COMPRAR: ${BOTAO_COMPRAR || 'Adicionar ao carrinho'}
+---
+- runFlow: ../comum/abrir.yaml
+- tapOn:
+    id: 'aba-search'
+- tapOn: 'Buscar produtos'
+- inputText: ${TERMO}
+- pressKey: Enter
+- extendedWaitUntil:
+    visible: ${PRODUTO}
+    timeout: 20000
+- tapOn: ${PRODUTO}
+- extendedWaitUntil:
+    visible: ${BOTAO_COMPRAR}
+    timeout: 20000
+- tapOn: ${BOTAO_COMPRAR}
+- extendedWaitUntil:
+    visible:
+      id: 'aba-cart'
+      text: '.*1 item no carrinho.*'
+    timeout: 20000

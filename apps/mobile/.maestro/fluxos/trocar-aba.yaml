@@ -1,0 +1,21 @@
+# Trocar de aba: cada aba guarda a sua página, e a busca tem o campo nativo.
+appId: ${APP_ID}
+name: Trocar de aba
+tags:
+  - abas
+---
+- runFlow: ../comum/abrir.yaml
+- tapOn:
+    id: 'aba-search'
+- assertVisible: 'Buscar produtos'
+- tapOn:
+    id: 'aba-cart'
+- assertNotVisible: 'Buscar produtos'
+- tapOn:
+    id: 'aba-account'
+- assertVisible: 'Ajustes do app'
+- tapOn:
+    id: 'aba-pagina-0'
+- assertVisible:
+    id: 'aba-pagina-0'
+    selected: true

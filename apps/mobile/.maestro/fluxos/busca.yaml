@@ -1,0 +1,18 @@
+# A busca nativa (M08): o termo digitado no campo do app abre a busca da loja.
+appId: ${APP_ID}
+name: Buscar pelo campo nativo
+tags:
+  - busca
+env:
+  TERMO: ${TERMO || 'camiseta'}
+---
+- runFlow: ../comum/abrir.yaml
+- tapOn:
+    id: 'aba-search'
+- tapOn: 'Buscar produtos'
+- inputText: ${TERMO}
+- pressKey: Enter
+# O campo guarda o termo, e a página da loja mostra o resultado dele.
+- assertVisible: ${TERMO}
+- tapOn: 'Limpar a busca'
+- assertNotVisible: 'Limpar a busca'

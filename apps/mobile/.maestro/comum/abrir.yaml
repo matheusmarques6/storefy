@@ -1,0 +1,22 @@
+# Abre o app do zero e chega à loja: pula as boas-vindas e o convite das
+# notificações, quando aparecem. A permissão do sistema vem de quem chama.
+appId: ${APP_ID}
+---
+- launchApp:
+    clearState: true
+    permissions:
+      notifications: ${PERMISSAO_DE_NOTIFICACAO || 'deny'}
+- runFlow:
+    when:
+      visible: 'Pular'
+    commands:
+      - tapOn: 'Pular'
+- runFlow:
+    when:
+      visible: 'Agora não'
+    commands:
+      - tapOn: 'Agora não'
+- extendedWaitUntil:
+    visible:
+      id: 'aba-pagina-0'
+    timeout: 30000

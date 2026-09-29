@@ -1,0 +1,18 @@
+# Sem internet: a tela nativa diz o que houve e volta com "Tentar de novo".
+# Só no Android — o Maestro não liga o modo avião do simulador do iOS.
+appId: ${APP_ID}
+name: Sem conexão e de volta
+tags:
+  - offline
+  - android
+---
+- runFlow: ../comum/abrir.yaml
+- setAirplaneMode: enabled
+- extendedWaitUntil:
+    visible: 'Sem conexão'
+    timeout: 20000
+- setAirplaneMode: disabled
+- tapOn: 'Tentar de novo'
+- extendedWaitUntil:
+    notVisible: 'Sem conexão'
+    timeout: 20000

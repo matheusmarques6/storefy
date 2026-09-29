@@ -1,0 +1,14 @@
+# A primeira abertura: boas-vindas, convite das notificações e a loja com a
+# barra de abas nativa.
+appId: ${APP_ID}
+name: Abrir o app pela primeira vez
+tags:
+  - abrir
+---
+- runFlow: ../comum/abrir.yaml
+- assertVisible:
+    id: 'aba-pagina-0'
+- assertVisible:
+    id: 'aba-cart'
+- assertVisible:
+    id: 'aba-account'

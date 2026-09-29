@@ -1,0 +1,28 @@
+# Desligar e religar as notificações DENTRO do app (M12) — a diretriz 4.5.4
+# da Apple. Precisa de um build com notificações (OneSignal) e da permissão
+# do sistema dada.
+appId: ${APP_ID}
+name: Desligar e religar as notificações
+tags:
+  - ajustes
+  - push
+---
+- runFlow:
+    file: ../comum/abrir.yaml
+    env:
+      PERMISSAO_DE_NOTIFICACAO: allow
+- tapOn:
+    id: 'aba-account'
+- tapOn: 'Ajustes do app'
+- extendedWaitUntil:
+    visible: 'Promoções, novidades e avisos .*'
+    timeout: 15000
+- tapOn:
+    id: 'ajustes-notificacoes'
+- assertVisible: 'Você não recebe as promoções .*'
+- tapOn:
+    id: 'ajustes-notificacoes'
+- extendedWaitUntil:
+    visible: 'Promoções, novidades e avisos .*'
+    timeout: 15000
+- tapOn: 'Fechar'

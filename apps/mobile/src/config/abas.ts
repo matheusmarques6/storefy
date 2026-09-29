@@ -171,3 +171,14 @@ export function caminhoDaBusca(urlDaAba: string, termo: string): string | null {
   url.searchParams.set('q', limpo);
   return `${url.pathname}${url.search}`;
 }
+
+/**
+ * O identificador de teste de cada aba (fluxos do Maestro, em `.maestro/`).
+ *
+ * Pelo TIPO quando ele é único na barra — o nome da aba muda de loja para
+ * loja, e um fluxo que tocasse em "Carrinho" quebraria na loja que escreveu
+ * "Sacola" —, e pela posição para as páginas da loja, que podem ser várias.
+ */
+export function idDeTesteDaAba(aba: Pick<AbaResolvida, 'tipo'>, indice: number): string {
+  return aba.tipo === 'webview' ? `aba-pagina-${String(indice)}` : `aba-${aba.tipo}`;
+}
