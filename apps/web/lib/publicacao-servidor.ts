@@ -12,6 +12,9 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { safeParseAppConfig, type AppConfig } from '@storefy/config-schema';
 import type { Database } from '@storefy/db';
 import type { EstadoDaPublicacao } from '@/lib/checklist-de-publicacao';
+import type { DadosDosLinks } from '@/lib/links-do-app';
+import { ESCOPO_DOS_LINKS } from '@/lib/links-do-app';
+import { escoposPedidos } from '@/lib/shopify-servidor';
 
 type Client = SupabaseClient<Database>;
 
@@ -55,6 +58,8 @@ export interface DadosDaPublicacao {
    * publicação, ou se a gravada não passar mais pelo contrato.
    */
   configPublicada: AppConfig | null;
+  /** Links da loja abrindo no app (Universal Links e App Links). */
+  links: DadosDosLinks & { erro: string | null; dominio: string };
 }
 
 /**
@@ -76,14 +81,14 @@ export async function dadosDaPublicacao(
 ): Promise<DadosDaPublicacao | null> {
   const { data: loja } = await supabase
     .from('stores')
-    .select('name, primary_url, support_email')
+    .select('name, primary_url, support_email, platform, shopify_scopes, shopify_conexao')
     .eq('id', storeId)
     .maybeSingle();
 
   const { data: app } = await supabase
     .from('apps')
     .select(
-      'id, display_name, icon_path, splash_path, bundle_id_ios, package_android, onesignal_app_id, current_config_version',
+      'id, display_name, icon_path, splash_path, bundle_id_ios, package_android, onesignal_app_id, current_config_version, apple_team_id, android_cert_fingerprints, ios_links_linked_at, android_links_linked_at, links_error',
     )
     .eq('store_id', storeId)
     .maybeSingle();
@@ -97,7 +102,10 @@ export async function dadosDaPublicacao(
       .eq('app_id', app.id)
       .eq('status', 'published')
       .maybeSingle(),
-    supabase.from('developer_accounts').select('platform, status').eq('org_id', orgId),
+    supabase
+      .from('developer_accounts')
+      .select('platform, status, apple_team_id')
+      .eq('org_id', orgId),
     supabase
       .from('builds')
       .select(
@@ -112,10 +120,31 @@ export async function dadosDaPublicacao(
     (contas ?? []).some((conta) => conta.platform === plataforma && conta.status === 'verified');
 
   const lida = publicada == null ? null : safeParseAppConfig(publicada.config);
+  const contaApple = (contas ?? []).find((conta) => conta.platform === 'apple');
 
   return {
     appId: app.id,
     configPublicada: lida?.success === true ? lida.data : null,
+    links: {
+      plataformaDaLoja: loja?.platform === 'other' ? 'other' : 'shopify',
+      // O sinal de "conectada" é a coluna de escopos: a do token é invisível
+      // para a sessão, e as duas andam juntas.
+      shopifyConectada: loja?.shopify_scopes != null,
+      escoposDaLoja: loja?.shopify_scopes ?? [],
+      storefyPedeOEscopo: escoposPedidos()
+        .split(',')
+        .map((escopo) => escopo.trim())
+        .includes(ESCOPO_DOS_LINKS),
+      conexao: loja?.shopify_conexao ?? null,
+      bundleIdIos: app.bundle_id_ios,
+      appleTeamId: app.apple_team_id ?? contaApple?.apple_team_id ?? null,
+      packageAndroid: app.package_android,
+      impressoesAndroid: app.android_cert_fingerprints,
+      iosVinculadoEm: app.ios_links_linked_at,
+      androidVinculadoEm: app.android_links_linked_at,
+      erro: app.links_error,
+      dominio: loja?.primary_url ?? '',
+    },
     loja: {
       nome: loja?.name ?? '',
       url: loja?.primary_url ?? '',

@@ -124,6 +124,10 @@ export type Database = {
           created_at: string;
           updated_at: string;
           device_secret_enc: string | null;
+          android_cert_fingerprints: string[];
+          ios_links_linked_at: string | null;
+          android_links_linked_at: string | null;
+          links_error: string | null;
         };
         Insert: {
           id?: string;
@@ -142,6 +146,10 @@ export type Database = {
           created_at?: string;
           updated_at?: string;
           device_secret_enc?: string | null;
+          android_cert_fingerprints?: string[];
+          ios_links_linked_at?: string | null;
+          android_links_linked_at?: string | null;
+          links_error?: string | null;
         };
         Update: {
           id?: string;
@@ -160,6 +168,10 @@ export type Database = {
           created_at?: string;
           updated_at?: string;
           device_secret_enc?: string | null;
+          android_cert_fingerprints?: string[];
+          ios_links_linked_at?: string | null;
+          android_links_linked_at?: string | null;
+          links_error?: string | null;
         };
         Relationships: [
           {
@@ -1684,6 +1696,10 @@ export type Database = {
       registrar_fatura: {
         Args: { p_provider: Database["public"]["Enums"]["billing_provider"]; p_fatura: string; p_assinatura: string; p_valor_centavos: number; p_status: Database["public"]["Enums"]["invoice_status"]; p_vencimento: string; p_evento?: string; p_tipo?: string; p_paga_em?: string; p_link?: string };
         Returns: string;
+      };
+      registrar_links_do_app: {
+        Args: { p_app_id: string; p_ator: string; p_ios?: string; p_android?: string; p_erro?: string };
+        Returns: unknown;
       };
       registrar_pedido: {
         Args: { p_app_id: string; p_shopify_order_id: string; p_source: Database["public"]["Enums"]["origem_do_pedido"]; p_total_cents: number; p_ordered_at: string; p_order_number?: string; p_currency?: string; p_cart_token?: string };

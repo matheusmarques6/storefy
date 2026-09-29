@@ -1092,7 +1092,11 @@ select tests.ok('segredo',
        and (c.relname, a.attname) not in (
          ('stores', 'shopify_conexao'),
          ('stores', 'shopify_client_id'),
-         ('stores', 'shopify_token_expires_at')
+         ('stores', 'shopify_token_expires_at'),
+         -- O vínculo dos links é gravado depois de a Shopify confirmar.
+         ('apps', 'ios_links_linked_at'),
+         ('apps', 'android_links_linked_at'),
+         ('apps', 'links_error')
        )
        and not (has_column_privilege('authenticated', c.oid, a.attnum, 'insert')
             and has_column_privilege('authenticated', c.oid, a.attnum, 'update'))
@@ -6252,6 +6256,151 @@ select tests.ok('cobrança',
   'a equipe vê faturas e avisos, para atender o cliente');
 
 reset role;
+
+-- ============================== grupo: links do app (Universal Links, C12)
+--
+-- A impressão digital do Android é do dono e do administrador; as datas de
+-- vínculo e o erro, só do servidor — se o painel pudesse gravá-las, "vinculado"
+-- viraria uma palavra que qualquer um escreve.
+
+reset role;
+drop table if exists tests.impressao;
+create table tests.impressao as
+select '14:6D:E9:83:C5:73:06:50:D8:EE:B9:95:2F:34:FC:64:16:A0:83:42:E6:1D:BE:A8:8A:04:96:B2:3F:CF:44:E5'::text as valor;
+grant select on tests.impressao to anon, authenticated, service_role;
+
+select tests.login('a-owner@teste.local');
+set role authenticated;
+
+select tests.ok('links do app',
+  tests.contar($q$select count(*) from public.apps
+                where id = (select app_a from tests.lojas)
+                  and android_cert_fingerprints = '{}'
+                  and ios_links_linked_at is null and links_error is null$q$) = 1,
+  'o dono lê as colunas dos links do próprio app');
+
+select tests.ok('links do app',
+  tests.permitido($q$update public.apps
+                     set android_cert_fingerprints = array[(select valor from tests.impressao)]
+                   where id = (select app_a from tests.lojas)$q$),
+  'o dono salva a impressão digital do Android');
+
+select tests.ok('links do app',
+  tests.erro($q$update public.apps set android_cert_fingerprints = array['nao-e-impressao']
+                where id = (select app_a from tests.lojas)$q$),
+  'impressão fora do formato é recusada pelo banco');
+
+select tests.ok('links do app',
+  tests.erro($q$update public.apps
+                   set android_cert_fingerprints = array_fill((select valor from tests.impressao), array[6])
+                 where id = (select app_a from tests.lojas)$q$),
+  'mais de cinco impressões é recusado');
+
+select tests.ok('links do app',
+  tests.erro($q$update public.apps set ios_links_linked_at = now()
+                where id = (select app_a from tests.lojas)$q$),
+  'o painel NÃO grava a data de vínculo: só o servidor, depois da Shopify');
+
+select tests.ok('links do app',
+  tests.erro($q$update public.apps set links_error = null
+                where id = (select app_a from tests.lojas)$q$),
+  'nem o erro da última tentativa');
+
+select tests.ok('links do app',
+  tests.erro($q$select public.registrar_links_do_app(
+                 (select app_a from tests.lojas), (select u_a_owner from tests.ids), 'vinculado')$q$),
+  'o dono NÃO chama o registro do vínculo por conta própria');
+
+select tests.ok('links do app',
+  tests.bloqueado($q$update public.apps set android_cert_fingerprints = '{}'
+                     where id = (select app_b from tests.lojas)$q$),
+  'nem mexe nos links do app de outra empresa');
+
+reset role;
+select tests.login('a-member@teste.local');
+set role authenticated;
+
+select tests.ok('links do app',
+  tests.bloqueado($q$update public.apps set android_cert_fingerprints = '{}'
+                     where id = (select app_a from tests.lojas)$q$),
+  'o membro vê, mas não troca a impressão');
+
+reset role;
+select tests.login('b-owner@teste.local');
+set role authenticated;
+
+select tests.ok('links do app',
+  tests.contar($q$select count(*) from public.apps
+                where id = (select app_a from tests.lojas)$q$) = 0,
+  'outra empresa não enxerga os links do app alheio');
+
+-- O servidor grava o resultado, com quem pediu na trilha.
+reset role;
+set role service_role;
+
+select public.registrar_links_do_app(
+  (select app_a from tests.lojas), (select u_a_owner from tests.ids), 'vinculado', 'vinculado');
+
+reset role;
+
+select tests.ok('links do app',
+  (select ios_links_linked_at is not null and android_links_linked_at is not null
+          and links_error is null
+     from public.apps where id = (select app_a from tests.lojas)),
+  'o vínculo que deu certo fica com a data');
+
+select tests.ok('links do app',
+  exists (select 1 from public.audit_logs
+           where entity = 'apps' and entity_id = (select app_a from tests.lojas)
+             and actor_id = (select u_a_owner from tests.ids)
+             and diff ? 'ios_links_linked_at'),
+  'e a trilha credita quem pediu, e não "o sistema"');
+
+set role service_role;
+select public.registrar_links_do_app(
+  (select app_a from tests.lojas), (select u_a_owner from tests.ids),
+  p_android => 'falhou', p_erro => 'A Shopify não respondeu agora.');
+reset role;
+
+select tests.ok('links do app',
+  (select android_links_linked_at is not null and links_error = 'A Shopify não respondeu agora.'
+     from public.apps where id = (select app_a from tests.lojas)),
+  'uma falha não apaga o vínculo anterior: mostra o erro ao lado da data');
+
+select tests.ok('links do app',
+  tests.erro($q$select public.registrar_links_do_app(
+                 (select app_a from tests.lojas), null, 'talvez')$q$),
+  'resultado desconhecido é recusado');
+
+select tests.login('a-owner@teste.local');
+set role authenticated;
+update public.apps set android_cert_fingerprints = '{}'
+ where id = (select app_a from tests.lojas);
+reset role;
+
+select tests.ok('links do app',
+  (select android_links_linked_at is null and ios_links_linked_at is not null
+     from public.apps where id = (select app_a from tests.lojas)),
+  'trocar a impressão desfaz o vínculo do Android, e só o dele');
+
+-- Desconectada a Shopify, o vínculo deixa de ser nosso para afirmar.
+update public.stores set shopify_scopes = array['read_orders']
+ where id = (select loja_a from tests.lojas);
+
+select tests.login('a-owner@teste.local');
+set role authenticated;
+
+select tests.ok('links do app',
+  tests.permitido($q$update public.stores set shopify_scopes = null
+                   where id = (select loja_a from tests.lojas)$q$),
+  'o dono desconecta a Shopify pelo painel');
+
+reset role;
+
+select tests.ok('links do app',
+  (select ios_links_linked_at is null and android_links_linked_at is null and links_error is null
+     from public.apps where id = (select app_a from tests.lojas)),
+  'e a data de vínculo sai junto, sem o dono poder gravar a coluna');
 
 \echo ''
 \echo 'Falhas:'

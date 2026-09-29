@@ -31,6 +31,9 @@ import {
   registrarFalha,
   type Plataforma,
 } from '@/lib/contas-de-desenvolvedor';
+import { appIdDaApple, lerImpressaoDigital, situacaoDosLinks } from '@/lib/links-do-app';
+import { tokenDaLoja } from '@/lib/shopify-conexao';
+import { vincularAppNoDominio } from '@/lib/shopify-servidor';
 
 export interface EstadoDaConta {
   ok?: boolean;
@@ -272,5 +275,152 @@ export async function desconectarConta(plataforma: Plataforma): Promise<EstadoDa
       plataforma === 'apple'
         ? 'Conta Apple desconectada. Os próximos builds vão falhar até conectar de novo.'
         : 'Conta Google desconectada. Os próximos builds vão falhar até conectar de novo.',
+  };
+}
+
+// ------------------------------------------ links da loja no app (C12)
+
+export interface EstadoDosLinks {
+  ok?: boolean;
+  mensagem?: string;
+}
+
+/** Tentativas de vincular por loja, por hora: cada uma fala com a Shopify. */
+const VINCULOS_POR_HORA = 10;
+
+const SO_QUEM_EDITA = 'Apenas proprietários e administradores mudam os links do app.';
+
+async function quemEditaOsLinks() {
+  const contexto = await exigirContextoCliente();
+  if (contexto.visita != null) {
+    return { ok: false as const, mensagem: 'Durante a visita ao painel de um cliente, nada muda.' };
+  }
+  if (contexto.lojaAtiva == null) {
+    return { ok: false as const, mensagem: 'Cadastre uma loja primeiro.' };
+  }
+  if (contexto.papel !== 'owner' && contexto.papel !== 'admin') {
+    return { ok: false as const, mensagem: SO_QUEM_EDITA };
+  }
+  return { ok: true as const, ...contexto, lojaAtiva: contexto.lojaAtiva };
+}
+
+/**
+ * A impressão digital do certificado do Android, colada do Play Console.
+ *
+ * Uma por linha, até cinco (a da chave de assinatura do app e a da chave de
+ * upload, para os testes internos). Em branco, remove. Trocar desfaz o vínculo
+ * do Android no banco — o que está publicado é a impressão antiga.
+ */
+export async function salvarImpressoesDoAndroid(texto: string): Promise<EstadoDosLinks> {
+  const quem = await quemEditaOsLinks();
+  if (!quem.ok) return { mensagem: quem.mensagem };
+
+  const linhas = texto
+    .split(/[\n,;]+/)
+    .map((linha) => linha.trim())
+    .filter((linha) => linha !== '');
+  if (linhas.length > 5) return { mensagem: 'Cole no máximo 5 impressões digitais.' };
+
+  const lidas: string[] = [];
+  for (const linha of linhas) {
+    const impressao = lerImpressaoDigital(linha);
+    if (impressao === null) {
+      return {
+        mensagem:
+          'Isso não parece a impressão digital SHA-256 do Play Console: são 32 pares de letras e números, separados por dois-pontos.',
+      };
+    }
+    if (!lidas.includes(impressao)) lidas.push(impressao);
+  }
+
+  const supabase = await criarClientServidor();
+  const { data, error } = await supabase
+    .from('apps')
+    .update({ android_cert_fingerprints: lidas })
+    .eq('store_id', quem.lojaAtiva.id)
+    .select('id');
+
+  if (error != null) {
+    return {
+      mensagem: mensagemDaFalha('publicacao', error, 'Não conseguimos salvar. Tente de novo.'),
+    };
+  }
+  if (data.length === 0) return { mensagem: 'Não encontramos o app desta loja.' };
+
+  revalidatePath('/publicacao');
+  return {
+    ok: true,
+    mensagem: lidas.length === 0 ? 'Impressão digital removida.' : 'Impressão digital salva.',
+  };
+}
+
+/**
+ * Pede à Shopify para publicar, no domínio da loja, que o app abre os links
+ * dela (Universal Links e App Links).
+ *
+ * A situação é REFEITA aqui, com o banco de agora: o que a tela sabia pode
+ * estar velho. O resultado é gravado pelo servidor, com quem pediu na trilha.
+ */
+export async function vincularLinksDaLoja(): Promise<EstadoDosLinks> {
+  const quem = await quemEditaOsLinks();
+  if (!quem.ok) return { mensagem: quem.mensagem };
+
+  const supabase = await criarClientServidor();
+  const dados = await dadosDaPublicacao(supabase, quem.lojaAtiva.id, quem.organizacao.id);
+  if (dados == null) return { mensagem: 'Não encontramos o app desta loja.' };
+
+  const situacao = situacaoDosLinks(dados.links);
+  if (situacao.bloqueio !== null) return { mensagem: situacao.bloqueio.motivo };
+  if (!situacao.podeVincular) {
+    return { mensagem: 'Ainda falta o que publicar. Veja o que falta em cada plataforma.' };
+  }
+
+  const servico = criarClientServiceRole();
+  const { data: dentro } = await servico.rpc('consumir_limite', {
+    p_chave: `links:${quem.lojaAtiva.id}`,
+    p_maximo: VINCULOS_POR_HORA,
+    p_janela_segundos: 3600,
+  });
+  if (dentro === false) {
+    return { mensagem: 'Foram muitas tentativas seguidas. Espere alguns minutos e tente de novo.' };
+  }
+
+  const token = await tokenDaLoja(servico, quem.lojaAtiva.id);
+  if (!token.ok) return { mensagem: token.motivo };
+
+  const appId = appIdDaApple(dados.links.appleTeamId, dados.links.bundleIdIos);
+  const pacote = dados.links.packageAndroid;
+  const resultado = await vincularAppNoDominio(token.dominio, token.token, {
+    apple: situacao.ios.estado === 'falta' || appId === null ? null : { appId },
+    android:
+      situacao.android.estado === 'falta' || pacote === null
+        ? null
+        : { applicationId: pacote, impressoes: dados.links.impressoesAndroid },
+  });
+
+  const { error } = await servico.rpc('registrar_links_do_app', {
+    p_app_id: dados.appId,
+    p_ator: quem.usuario.id,
+    ...(resultado.ios === null ? {} : { p_ios: resultado.ios }),
+    ...(resultado.android === null ? {} : { p_android: resultado.android }),
+    ...(resultado.erro === null ? {} : { p_erro: resultado.erro }),
+  });
+
+  revalidatePath('/publicacao');
+  if (error != null) {
+    return {
+      mensagem: mensagemDaFalha(
+        'publicacao',
+        error,
+        'A Shopify respondeu, mas não conseguimos guardar o resultado. Tente de novo.',
+      ),
+    };
+  }
+  if (resultado.erro !== null) return { mensagem: resultado.erro };
+
+  return {
+    ok: true,
+    mensagem:
+      'Pronto. A Shopify publica os links no domínio da loja, e em alguns minutos eles passam a abrir no app.',
   };
 }

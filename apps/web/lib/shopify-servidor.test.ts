@@ -13,6 +13,7 @@ import {
   registrarWebhooks,
   shopifyConfigurado,
   trocarCodePorToken,
+  vincularAppNoDominio,
 } from '@/lib/shopify-servidor';
 import { TOPICOS, VERSAO_DA_API } from '@/lib/shopify';
 
@@ -302,5 +303,187 @@ describe('apagarWebhooks', () => {
     const falso = vi.fn(async () => await Promise.resolve(resposta({ webhooks: 'nada disso' })));
 
     expect(await apagarWebhooks(LOJA, 'shpat_1', URL_DO_WEBHOOK, falso)).toBe(0);
+  });
+});
+
+describe('vincularAppNoDominio', () => {
+  const IMPRESSAO =
+    '14:6D:E9:83:C5:73:06:50:D8:EE:B9:95:2F:34:FC:64:16:A0:83:42:E6:1D:BE:A8:8A:04:96:B2:3F:CF:44:E5';
+  const ALVO = {
+    apple: { appId: 'A1B2C3D4E5.me.convertfy.oakvintage' },
+    android: { applicationId: 'me.convertfy.oakvintage', impressoes: [IMPRESSAO] },
+  };
+
+  interface Chamada {
+    url: string;
+    query: string;
+    variables: Record<string, unknown>;
+  }
+
+  /** Uma Admin API falsa: responde a lista e as mutações, e guarda tudo. */
+  function adminFalsa(opcoes: {
+    existentes?: unknown[];
+    respostaDaLista?: () => Response;
+    respostaDaMutacao?: (chamada: Chamada) => Response;
+  }) {
+    const chamadas: Chamada[] = [];
+    const falso = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+      const corpo = corpoDe(init) as { query: string; variables: Record<string, unknown> };
+      const chamada = { url: urlDe(url), query: corpo.query, variables: corpo.variables };
+      chamadas.push(chamada);
+      if (corpo.query.includes('mobilePlatformApplications(')) {
+        return await Promise.resolve(
+          opcoes.respostaDaLista?.() ??
+            resposta({ data: { mobilePlatformApplications: { nodes: opcoes.existentes ?? [] } } }),
+        );
+      }
+      const campo = corpo.query.includes('mobilePlatformApplicationCreate')
+        ? 'mobilePlatformApplicationCreate'
+        : 'mobilePlatformApplicationUpdate';
+      return await Promise.resolve(
+        opcoes.respostaDaMutacao?.(chamada) ??
+          resposta({
+            data: {
+              [campo]: { mobilePlatformApplication: { __typename: 'X' }, userErrors: [] },
+            },
+          }),
+      );
+    });
+    return { falso, chamadas };
+  }
+
+  it('cadastra as duas plataformas na loja que ainda não tem nada', async () => {
+    const { falso, chamadas } = adminFalsa({});
+
+    const resultado = await vincularAppNoDominio(LOJA, 'shpat_1', ALVO, falso);
+
+    expect(resultado).toEqual({ ios: 'vinculado', android: 'vinculado', erro: null });
+    expect(chamadas[0]?.url).toBe(`https://${LOJA}/admin/api/${VERSAO_DA_API}/graphql.json`);
+    const criacoes = chamadas.filter((c) => c.query.includes('mobilePlatformApplicationCreate'));
+    expect(criacoes.map((c) => c.variables)).toEqual([
+      {
+        input: {
+          apple: {
+            appId: 'A1B2C3D4E5.me.convertfy.oakvintage',
+            universalLinksEnabled: true,
+            sharedWebCredentialsEnabled: false,
+          },
+        },
+      },
+      {
+        input: {
+          android: {
+            applicationId: 'me.convertfy.oakvintage',
+            sha256CertFingerprints: [IMPRESSAO],
+            appLinksEnabled: true,
+          },
+        },
+      },
+    ]);
+  });
+
+  it('o que já existe é atualizado, e não duplicado; o de outro app fica como está', async () => {
+    const { falso, chamadas } = adminFalsa({
+      existentes: [
+        {
+          __typename: 'AppleApplication',
+          id: 'gid://1',
+          appId: 'A1B2C3D4E5.me.convertfy.oakvintage',
+        },
+        { __typename: 'AndroidApplication', id: 'gid://2', applicationId: 'com.outra.ferramenta' },
+      ],
+    });
+
+    const resultado = await vincularAppNoDominio(LOJA, 'shpat_1', ALVO, falso);
+
+    expect(resultado.ios).toBe('vinculado');
+    const atualizacoes = chamadas.filter((c) =>
+      c.query.includes('mobilePlatformApplicationUpdate'),
+    );
+    expect(atualizacoes).toHaveLength(1);
+    expect(atualizacoes[0]?.variables.id).toBe('gid://1');
+    // O Android da outra ferramenta não é tocado: o nosso é criado ao lado.
+    const criacoes = chamadas.filter((c) => c.query.includes('mobilePlatformApplicationCreate'));
+    expect(criacoes).toHaveLength(1);
+    expect(JSON.stringify(chamadas)).not.toContain('gid://2');
+  });
+
+  it('só a plataforma pedida: sem Android, nada de Android', async () => {
+    const { falso, chamadas } = adminFalsa({});
+
+    const resultado = await vincularAppNoDominio(
+      LOJA,
+      'shpat_1',
+      { apple: ALVO.apple, android: null },
+      falso,
+    );
+
+    expect(resultado).toEqual({ ios: 'vinculado', android: null, erro: null });
+    const mutacoes = chamadas.filter((c) => c.query.startsWith('mutation'));
+    expect(mutacoes).toHaveLength(1);
+    expect(mutacoes[0]?.variables).toEqual({ input: { apple: expect.any(Object) as object } });
+  });
+
+  /*
+   * A GraphQL da Shopify nega acesso com status 200 e `errors` no corpo. Olhar
+   * só o status faria uma permissão faltando parecer sucesso.
+   */
+  it('permissão negada com status 200 é falha, com a frase que o lojista entende', async () => {
+    const { falso } = adminFalsa({
+      respostaDaLista: () =>
+        resposta({
+          errors: [
+            {
+              message:
+                'Access denied for mobilePlatformApplications field. Required access: `read_mobile_platform_applications` access scope.',
+            },
+          ],
+        }),
+    });
+
+    const resultado = await vincularAppNoDominio(LOJA, 'shpat_1', ALVO, falso);
+
+    expect(resultado.ios).toBe('falhou');
+    expect(resultado.android).toBe('falhou');
+    expect(resultado.erro).toMatch(/permissão/);
+    expect(resultado.erro).not.toMatch(/Access denied|scope/);
+  });
+
+  it('userErrors da Shopify contam como falha daquela plataforma só', async () => {
+    const { falso } = adminFalsa({
+      respostaDaMutacao: (chamada) =>
+        JSON.stringify(chamada.variables).includes('android')
+          ? resposta({
+              data: {
+                mobilePlatformApplicationCreate: {
+                  mobilePlatformApplication: null,
+                  userErrors: [{ field: ['sha256CertFingerprints'], message: 'is invalid' }],
+                },
+              },
+            })
+          : resposta({
+              data: {
+                mobilePlatformApplicationCreate: {
+                  mobilePlatformApplication: { __typename: 'AppleApplication' },
+                  userErrors: [],
+                },
+              },
+            }),
+    });
+
+    const resultado = await vincularAppNoDominio(LOJA, 'shpat_1', ALVO, falso);
+
+    expect(resultado.ios).toBe('vinculado');
+    expect(resultado.android).toBe('falhou');
+    expect(resultado.erro).toMatch(/não aceitou/);
+    expect(resultado.erro).not.toContain('is invalid');
+  });
+
+  it('token revogado e rede fora do ar viram frase, e não exceção', async () => {
+    const revogado = vi.fn(async () => await Promise.resolve(resposta({ errors: '...' }, 401)));
+    expect((await vincularAppNoDominio(LOJA, 'x', ALVO, revogado)).erro).toMatch(/Reconecte/);
+
+    const semRede = vi.fn(async () => await Promise.reject(new Error('sem rede')));
+    expect((await vincularAppNoDominio(LOJA, 'x', ALVO, semRede)).erro).toMatch(/Tente de novo/);
   });
 });

@@ -78,6 +78,18 @@ describe('notas para a revisão da Apple', () => {
     expect(notas(com)).toContain('rating prompt after a completed purchase');
   });
 
+  it('Universal Links só quando a Shopify já publica os links', () => {
+    expect(notas(configInicial(LOJA))).not.toMatch(/Universal Links/);
+    const texto = montarNotasDaRevisao({
+      nomeDaLoja: LOJA.name,
+      urlDaLoja: LOJA.url,
+      pushLigado: false,
+      config: configInicial(LOJA),
+      linksNoApp: true,
+    });
+    expect(texto).toContain('Universal Links: links to oakvintage.com.br open directly in the app');
+  });
+
   it('o passo do carrinho cita a aba do badge', () => {
     expect(notas(configInicial(LOJA))).toContain('the badge on the "Carrinho" tab updates');
   });

@@ -290,7 +290,7 @@ Conferido contra o código na Fase 8a (ver "Fase 8a — Entregue").
 - [x] Haptics — ao entrar item no carrinho
 - [x] Face ID opcional — aba Conta, ligado em Recursos
 - [x] Pedido de avaliação do app — depois da compra, vista pela página de obrigado
-- [ ] Universal Links — o app declara o domínio; falta a Shopify servir o arquivo de associação (ver Fase 8a)
+- [x] Universal Links — o app declara o domínio, e a C12 manda a Shopify publicar a associação (ou entrega os arquivos, fora da Shopify). Ligar em produção depende da Shopify liberar a permissão (ver Fase 8a)
 
 ---
 
@@ -1295,7 +1295,9 @@ com um servidor no lugar da Asaas falando HTTP de verdade com o painel). A suít
 | Contas de cliente novas da Shopify (`shopify.com/<id>/account`) dentro do app | ✅ antes abriam no navegador |
 | Token do carrinho sem a chave secreta, em todas as camadas | ✅ trava no banco, 6 asserções de RLS |
 | Face ID num iPhone de verdade | ⬜ depende de aparelho físico (ver abaixo) |
-| Universal Links servidos no domínio da loja | ⬜ em andamento, ver o item seguinte |
+| Universal Links e App Links publicados no domínio da loja (C12) | ✅ pela API de Mobile Platform Applications da Shopify, idempotente; fora da Shopify, os dois arquivos prontos |
+| Impressão digital do Android (SHA-256) conferida e guardada | ✅ trava no banco; trocar desfaz o vínculo do Android |
+| Vínculo gravado só pelo servidor, com quem pediu na trilha | ✅ 13 asserções de RLS |
 
 **O que a auditoria achou, e por que importava**
 
@@ -1353,6 +1355,20 @@ com um servidor no lugar da Asaas falando HTTP de verdade com o painel). A suít
 - **Notas da revisão em inglês**, que é a língua da equipe de revisão, e da
   config no ar, que é a que o revisor abre. Prometer um recurso desligado é
   recusa na certa.
+- **Universal Links pela Shopify, e não por arquivo nosso.** Numa loja
+  Shopify, ninguém sobe arquivo em `/.well-known/` do domínio: quem publica o
+  `apple-app-site-association` e o `assetlinks.json` é a Shopify, a partir do
+  cadastro pela API de Mobile Platform Applications. O cadastro é
+  idempotente (atualiza o do mesmo app, não mexe no de outra ferramenta), e
+  a data de vínculo é gravada só pelo servidor, depois de a Shopify
+  confirmar — com quem pediu na trilha. Uma falha não apaga o vínculo
+  anterior: o que já está publicado continua publicado.
+- **A permissão fica fora dos escopos padrão.** A Shopify libera
+  `write_mobile_platform_applications` sob pedido; pedi-la na instalação
+  antes disso quebraria a conexão de todo lojista. A tela distingue os três
+  casos: a Shopify ainda não liberou para a Storefy, o lojista precisa
+  reconectar para conceder, ou o app que o próprio lojista criou precisa da
+  permissão.
 
 **Depende de ação humana**
 
@@ -1360,6 +1376,8 @@ com um servidor no lugar da Asaas falando HTTP de verdade com o painel). A suít
 |---|---|---|
 | Testar o Face ID num iPhone e a digital num Android de verdade | time | build de desenvolvimento via EAS |
 | Colar as notas na App Store Connect a cada envio | lojista | C12 › Notas para a revisão da Apple |
+| Pedir à Shopify a permissão `write_mobile_platform_applications` para o app da Storefy e, liberada, somá-la a `SHOPIFY_SCOPES` | time | suporte da Shopify (Partner Dashboard) e Vercel |
+| Colar a impressão digital SHA-256 do Play Console | lojista | C12 › Links da loja abrindo no app |
 
 **Estimativa total:** cerca de 7 a 9 semanas para uma pessoa com Claude Code em ritmo forte. O MVP vendável (Fases 0–4) leva cerca de 4 a 5 semanas.
 

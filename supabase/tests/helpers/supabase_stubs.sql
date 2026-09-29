@@ -45,18 +45,19 @@ create table if not exists auth.users (
   created_at timestamptz not null default now()
 );
 
--- Identidade do usuário da request. Igual à definição do Supabase.
+-- Identidade do usuário da request. Igual à definição do Supabase — conferida
+-- com `pg_get_functiondef('auth.uid'::regproc)` numa instância real: o
+-- `request.jwt.claim.sub` VAZIO não conta, e a identidade cai no
+-- `request.jwt.claims`. Vazio é o que sobra na sessão depois de um
+-- `set_config(..., true)` terminar a transação.
 create or replace function auth.uid()
 returns uuid
 language sql
 stable
 as $$
-  select nullif(
-    coalesce(
-      current_setting('request.jwt.claim.sub', true),
-      (nullif(current_setting('request.jwt.claims', true), '')::jsonb ->> 'sub')
-    ),
-    ''
+  select coalesce(
+    nullif(current_setting('request.jwt.claim.sub', true), ''),
+    (nullif(current_setting('request.jwt.claims', true), '')::jsonb ->> 'sub')
   )::uuid;
 $$;
 

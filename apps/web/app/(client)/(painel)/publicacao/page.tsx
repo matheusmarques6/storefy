@@ -8,6 +8,9 @@ import { dadosDaPublicacao, temBuildEmAndamento } from '@/lib/publicacao-servido
 import { montarChecklist } from '@/lib/checklist-de-publicacao';
 import { montarFicha } from '@/lib/ficha-da-loja';
 import { montarNotasDaRevisao } from '@/lib/notas-da-revisao';
+import { arquivosDeAssociacao, situacaoDosLinks } from '@/lib/links-do-app';
+import { dominioDe } from '@/lib/ficha-da-loja';
+import { formatarData } from '@/lib/fuso';
 import { urlDoSite } from '@/lib/env';
 import { EstadoVazio } from '@/components/estado-vazio';
 import { Button } from '@/components/ui/button';
@@ -15,6 +18,7 @@ import { ChecklistDaPlataforma } from './checklist';
 import { HistoricoDeBuilds } from './historico';
 import { BuildsAoVivo } from './ao-vivo';
 import { FichaDaLoja } from './ficha';
+import { LinksDaLoja } from './links-da-loja';
 
 export const metadata: Metadata = { title: 'Publicação' };
 
@@ -73,6 +77,28 @@ export default async function PaginaDePublicacao() {
         <ChecklistDaPlataforma plataforma="android" itens={itens} podeEscrever={podeEscrever} />
       </div>
 
+      <LinksDaLoja
+        situacao={situacaoDosLinks(dados.links)}
+        plataformaDaLoja={dados.links.plataformaDaLoja}
+        dominio={dados.links.dominio === '' ? '' : dominioDe(dados.links.dominio)}
+        impressoes={dados.links.impressoesAndroid}
+        erro={dados.links.erro}
+        arquivos={
+          dados.links.plataformaDaLoja === 'other' ? arquivosDeAssociacao(dados.links) : null
+        }
+        vinculadoEm={{
+          ios:
+            dados.links.iosVinculadoEm === null
+              ? null
+              : formatarData(dados.links.iosVinculadoEm, lojaAtiva.timezone),
+          android:
+            dados.links.androidVinculadoEm === null
+              ? null
+              : formatarData(dados.links.androidVinculadoEm, lojaAtiva.timezone),
+        }}
+        podeEscrever={podeEscrever}
+      />
+
       <FichaDaLoja
         campos={montarFicha({
           nomeDaLoja: dados.loja.nome,
@@ -87,6 +113,7 @@ export default async function PaginaDePublicacao() {
                 urlDaLoja: dados.loja.url,
                 pushLigado: dados.estado.pushLigado,
                 config: dados.configPublicada,
+                linksNoApp: dados.links.iosVinculadoEm !== null,
               })
         }
         urlDaPolitica={`${urlDoSite()}/privacy/${lojaAtiva.id}`}

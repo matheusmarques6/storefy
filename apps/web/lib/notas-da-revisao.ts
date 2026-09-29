@@ -26,6 +26,11 @@ export interface DadosDasNotas {
   pushLigado: boolean;
   /** A config publicada — a que o revisor abre. */
   config: AppConfig;
+  /**
+   * A Shopify já publica os Universal Links do app no domínio da loja. Sem
+   * isso, prometer "o link abre no app" é prometer o que o revisor não vê.
+   */
+  linksNoApp?: boolean;
 }
 
 /** As abas que o app mostra de fato: sem push, a caixa de avisos não aparece. */
@@ -79,6 +84,11 @@ export function montarNotasDaRevisao(dados: DadosDasNotas): string {
   recursos.push('Native share sheet: the store\'s "Share" buttons open the iOS share sheet.');
   if (shopify) recursos.push('Haptic feedback when a product is added to the cart.');
   recursos.push('Native offline screen with a retry button when there is no connection.');
+  if (dados.linksNoApp === true) {
+    recursos.push(
+      `Universal Links: links to ${dominio} open directly in the app, on the right page.`,
+    );
+  }
   if (config.features.rateAppPrompt) {
     recursos.push('Native App Store rating prompt after a completed purchase.');
   }
