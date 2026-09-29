@@ -9,14 +9,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import type { BuildStatus } from '@storefy/db';
-import {
-  DIAS_ATE_ESTRANHAR,
-  diasEsperando,
-  lerFiltro,
-  podeReexecutar,
-  revisaoParada,
-  statusDoFiltro,
-} from '@/lib/builds-admin';
+import { diasEsperando, lerFiltro, podeReexecutar, statusDoFiltro } from '@/lib/builds-admin';
 
 const TODOS: BuildStatus[] = [
   'queued',
@@ -104,33 +97,5 @@ describe('diasEsperando', () => {
   /* Relógio torto não vira "esperando há -1 dia" na tela. */
   it('data no futuro vira zero, nunca negativo', () => {
     expect(diasEsperando('2026-09-30T12:00:00Z', AGORA)).toBe(0);
-  });
-});
-
-describe('revisaoParada', () => {
-  const AGORA = Date.parse('2026-09-23T12:00:00Z');
-  const haDias = (dias: number) => new Date(AGORA - dias * 86_400_000).toISOString();
-
-  it('revisão recente não vira alerta', () => {
-    expect(revisaoParada('in_review', haDias(2), AGORA)).toBeNull();
-  });
-
-  it('revisão parada há tempo demais vira alerta com o número de dias', () => {
-    const aviso = revisaoParada('in_review', haDias(12), AGORA);
-    expect(aviso).toContain('12');
-  });
-
-  it('o alerta começa exatamente no limite, e não antes', () => {
-    expect(revisaoParada('submitted', haDias(DIAS_ATE_ESTRANHAR - 1), AGORA)).toBeNull();
-    expect(revisaoParada('submitted', haDias(DIAS_ATE_ESTRANHAR), AGORA)).not.toBeNull();
-  });
-
-  /*
-   * Rejeitado não está "parado": está esperando NÓS. Quem diz isso é o status,
-   * e um alerta de tempo ali mandaria cobrar a Apple por algo que é nosso.
-   */
-  it('build rejeitado não gera alerta de espera, por mais antigo que seja', () => {
-    expect(revisaoParada('rejected', haDias(90), AGORA)).toBeNull();
-    expect(revisaoParada('errored', haDias(90), AGORA)).toBeNull();
   });
 });

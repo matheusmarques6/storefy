@@ -1617,6 +1617,10 @@ export type Database = {
         Args: Record<string, never>;
         Returns: { user_id: string | null; email: string | null; role: Database["public"]["Enums"]["platform_admin_role"] | null; created_at: string | null; segundo_fator: boolean | null }[];
       };
+      admin_gravar_revalidacao: {
+        Args: { p_conta_id: string; p_valida: boolean; p_observacao: string };
+        Returns: unknown;
+      };
       admin_membros_da_org: {
         Args: { p_org_id: string };
         Returns: { user_id: string | null; email: string | null; role: Database["public"]["Enums"]["membership_role"] | null; created_at: string | null; ultimo_acesso: string | null }[];

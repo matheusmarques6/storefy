@@ -8222,6 +8222,89 @@ select tests.ok('A03 clientes',
 reset role;
 select tests.logout();
 
+-- ============================== grupo: A07 — a equipe revalida credenciais (migration 61)
+--
+-- O resultado da revalidação é gravado pela sessão da equipe, e a auditoria
+-- registra quem conferiu. Cliente não grava; a equipe só com o segundo fator.
+
+reset role;
+select tests.logout();
+
+insert into auth.users (email, raw_user_meta_data, email_confirmed_at) values
+  ('reval@teste.local', '{"company_name":"Reval"}'::jsonb, now());
+
+drop table if exists tests.reval;
+create table tests.reval as
+select
+  (select m.org_id from public.memberships m join auth.users u on u.id = m.user_id
+    where u.email = 'reval@teste.local') as org,
+  (select id from auth.users where email = 'equipe@teste.local') as u_equipe;
+
+insert into public.developer_accounts (org_id, platform, status, verified_at, notes)
+select org, 'google'::public.developer_platform, 'verified'::public.developer_account_status,
+       now(), 'conta@exemplo.iam.gserviceaccount.com' from tests.reval
+union all
+select org, 'apple'::public.developer_platform, 'pending'::public.developer_account_status,
+       null, null from tests.reval;
+
+alter table tests.reval add column google uuid, add column apple uuid;
+update tests.reval set
+  google = (select id from public.developer_accounts where org_id = tests.reval.org and platform = 'google'),
+  apple = (select id from public.developer_accounts where org_id = tests.reval.org and platform = 'apple');
+grant select on tests.reval to anon, authenticated, service_role;
+
+select tests.login('reval@teste.local');
+set role authenticated;
+
+select tests.ok('A07 revalidar',
+  tests.erro($q$select public.admin_gravar_revalidacao(
+    (select google from tests.reval), true, 'forjado')$q$),
+  'o dono da conta não grava o resultado de uma revalidação');
+
+reset role;
+select tests.login('equipe@teste.local', 'aal1');
+set role authenticated;
+
+select tests.ok('A07 revalidar',
+  tests.erro($q$select public.admin_gravar_revalidacao(
+    (select google from tests.reval), false, 'x')$q$),
+  'nem a equipe só com a senha (aal1)');
+
+reset role;
+select tests.login('equipe@teste.local');
+set role authenticated;
+
+select public.admin_gravar_revalidacao(
+  (select google from tests.reval), false, 'A Google recusou a conta de serviço.');
+
+reset role;
+
+select tests.ok('A07 revalidar',
+  (select status = 'error' and verified_at is null
+          and notes = 'A Google recusou a conta de serviço.'
+     from public.developer_accounts where id = (select google from tests.reval)),
+  'a equipe grava a recusa, com o motivo');
+
+select tests.ok('A07 revalidar',
+  exists (select 1 from public.audit_logs
+           where entity = 'developer_accounts'
+             and entity_id = (select google from tests.reval)
+             and action = 'update'
+             and actor_id = (select u_equipe from tests.reval)
+             and diff -> 'status' ->> 'para' = 'error'),
+  'e a auditoria registra quem da equipe conferiu');
+
+select tests.login('equipe@teste.local');
+set role authenticated;
+
+select tests.ok('A07 revalidar',
+  tests.erro_com($q$select public.admin_gravar_revalidacao(
+    (select apple from tests.reval), true, null)$q$, 'conta_nao_encontrada'),
+  'conta sem credencial (pendente) não vira verificada por aqui');
+
+reset role;
+select tests.logout();
+
 -- ============================== grupo: varredura de segurança (Fase 8)
 --
 -- Duas travas que valem para o schema inteiro, e não para uma tabela: uma

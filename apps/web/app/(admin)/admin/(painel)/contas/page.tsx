@@ -12,13 +12,18 @@
  * cliente sem nunca ter o segredo na tela nem no histórico do navegador.
  *
  * As que estão com erro vêm primeiro: são as únicas que exigem alguém.
+ *
+ * "Revalidar" confere de novo, com a mesma chamada do envio, se a credencial
+ * ainda abre a conta — e grava o resultado com quem conferiu.
  */
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { KeyRound } from 'lucide-react';
 import { exigirPlatformAdmin } from '@/lib/contexto';
+import { FUSO_PADRAO, formatarDataHora } from '@/lib/fuso';
 import { criarClientServidor } from '@/lib/supabase/server';
 import { Paginacao, lerParams } from '../paginacao';
+import { RevalidarConta } from './revalidar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -67,7 +72,7 @@ export default async function PaginaContas({
     .from('developer_accounts')
     // Sem nenhuma coluna `_enc`: o segredo não passa por aqui.
     .select(
-      'id, platform, status, apple_team_id, asc_key_id, verified_at, notes, created_at, org_id, organizations(name)',
+      'id, platform, status, apple_team_id, asc_key_id, verified_at, notes, created_at, updated_at, org_id, organizations(name)',
       { count: 'exact' },
     )
     /*
@@ -151,11 +156,24 @@ export default async function PaginaContas({
                           {conta.notes}
                         </span>
                       )}
+                      <span className="text-muted-foreground mt-1 block text-xs">
+                        {conta.verified_at == null
+                          ? `Conferida em ${formatarDataHora(conta.updated_at, FUSO_PADRAO)}`
+                          : `Validada em ${formatarDataHora(conta.verified_at, FUSO_PADRAO)}`}
+                      </span>
                     </TableCell>
                     <TableCell className="text-right">
-                      <Button variant="ghost" size="sm" asChild>
-                        <Link href={`/admin/organizacoes/${conta.org_id}`}>Ver cliente</Link>
-                      </Button>
+                      <div className="flex flex-wrap justify-end gap-2">
+                        {conta.status === 'verified' || conta.status === 'error' ? (
+                          <RevalidarConta
+                            contaId={conta.id}
+                            rotulo={`${PLATAFORMA[conta.platform]} de ${conta.organizations.name}`}
+                          />
+                        ) : null}
+                        <Button variant="ghost" size="sm" asChild>
+                          <Link href={`/admin/organizacoes/${conta.org_id}`}>Ver cliente</Link>
+                        </Button>
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}

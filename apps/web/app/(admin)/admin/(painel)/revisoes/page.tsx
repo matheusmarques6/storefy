@@ -6,17 +6,20 @@
  * tempo demais. Uma lista do mais novo para o mais velho empurra justamente
  * esses para a última página.
  *
- * O ALERTA É O PRODUTO. Dois dias esperando a Apple é normal, doze não é, e
- * ninguém descobre isso lendo datas numa tabela. `revisaoParada` faz a conta
- * e diz em palavras — e só para quem está mesmo esperando alguém de fora: um
- * build rejeitado não está parado, está esperando NÓS.
+ * O PRÓXIMO PASSO É O PRODUTO. Dois dias esperando a Apple é normal, doze
+ * não é, e ninguém descobre isso lendo datas numa tabela; uma recusa tem um
+ * conserto, e ninguém deveria precisar saber de cor qual. `proximoPassoDaRevisao`
+ * diz em palavras o que fazer e quem faz — e sabe que o Android na trilha
+ * interna não está esperando a Google, e sim o lojista promover a versão.
  */
 import type { Metadata } from 'next';
+import Link from 'next/link';
 import { ShieldCheck, TriangleAlert } from 'lucide-react';
 import { ROTULO_STATUS_BUILD } from '@storefy/db';
 import { exigirPlatformAdmin } from '@/lib/contexto';
 import { criarClientServidor } from '@/lib/supabase/server';
-import { diasEsperando, revisaoParada } from '@/lib/builds-admin';
+import { diasEsperando } from '@/lib/builds-admin';
+import { proximoPassoDaRevisao, situacaoNaRevisao } from '@/lib/proximo-passo-da-revisao';
 import { Paginacao, lerParams } from '../paginacao';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
@@ -50,7 +53,7 @@ export default async function PaginaRevisoes({
   } = await supabase
     .from('builds')
     .select(
-      'id, platform, status, version, error, submitted_at, updated_at, apps(display_name, stores(name, organizations(name)))',
+      'id, platform, status, version, error, submitted_at, updated_at, apps(display_name, stores(name, organizations(id, name)))',
       { count: 'exact' },
     )
     .in('status', ['submitted', 'in_review', 'rejected'])
@@ -67,7 +70,8 @@ export default async function PaginaRevisoes({
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Revisões</h1>
         <p className="text-muted-foreground mt-1 text-sm">
-          Apps esperando a Apple e a Google, e os que voltaram rejeitados.
+          Apps esperando a Apple e a Google, os que voltaram rejeitados — e o próximo passo de cada
+          um.
         </p>
       </div>
 
@@ -88,21 +92,26 @@ export default async function PaginaRevisoes({
                   <TableHead>Versão</TableHead>
                   <TableHead>Situação</TableHead>
                   <TableHead>Esperando</TableHead>
+                  <TableHead>Próximo passo</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {builds.map((build) => {
                   const loja = build.apps.stores;
                   const dias = diasEsperando(build.submitted_at);
-                  const alerta = revisaoParada(build.status, build.submitted_at);
+                  const passo = proximoPassoDaRevisao(build);
+                  const situacao = situacaoNaRevisao(build);
 
                   return (
                     <TableRow key={build.id}>
                       <TableCell>
                         <span className="font-medium">{loja.name}</span>
-                        <span className="text-muted-foreground mt-0.5 block text-xs">
+                        <Link
+                          href={`/admin/organizacoes/${loja.organizations.id}`}
+                          className="text-muted-foreground mt-0.5 block text-xs hover:underline"
+                        >
                           {loja.organizations.name}
-                        </span>
+                        </Link>
                         {build.status === 'rejected' &&
                         build.error != null &&
                         build.error !== '' ? (
@@ -122,7 +131,7 @@ export default async function PaginaRevisoes({
                       </TableCell>
                       <TableCell>
                         <Badge variant={build.status === 'rejected' ? 'destructive' : 'secondary'}>
-                          {ROTULO_STATUS_BUILD[build.status]}
+                          {situacao ?? ROTULO_STATUS_BUILD[build.status]}
                         </Badge>
                       </TableCell>
                       <TableCell>
@@ -133,12 +142,28 @@ export default async function PaginaRevisoes({
                             {dias === 0 ? 'hoje' : `${String(dias)} dia${dias === 1 ? '' : 's'}`}
                           </span>
                         )}
-                        {alerta == null ? null : (
-                          <span className="text-destructive mt-1 flex items-start gap-1 text-xs">
-                            <TriangleAlert className="mt-0.5 size-3 shrink-0" aria-hidden />
-                            {alerta}
-                          </span>
-                        )}
+                      </TableCell>
+                      <TableCell className="max-w-sm">
+                        <span
+                          className={
+                            passo.urgente
+                              ? 'text-destructive flex items-start gap-1 text-sm font-medium'
+                              : 'flex items-start gap-1 text-sm font-medium'
+                          }
+                        >
+                          {passo.urgente ? (
+                            <TriangleAlert className="mt-0.5 size-3.5 shrink-0" aria-hidden />
+                          ) : null}
+                          {passo.titulo}
+                        </span>
+                        <span className="text-muted-foreground mt-1 block text-xs">
+                          {passo.quem === 'lojista'
+                            ? 'Com o lojista: '
+                            : passo.quem === 'equipe'
+                              ? 'Com a equipe: '
+                              : ''}
+                          {passo.detalhe}
+                        </span>
                       </TableCell>
                     </TableRow>
                   );

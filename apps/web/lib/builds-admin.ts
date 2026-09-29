@@ -85,22 +85,3 @@ export function diasEsperando(enviadoEm: string | null, agora: number = Date.now
  * demais vira ruído, e um alerta que ninguém lê é o mesmo que não ter alerta.
  */
 export const DIAS_ATE_ESTRANHAR = 7;
-
-/**
- * O aviso de uma revisão parada, ou `null` quando não há o que avisar.
- *
- * Só `submitted` e `in_review` esperam alguém de fora. Um build rejeitado não
- * está parado: está esperando NÓS, e quem diz isso é o status, não o tempo.
- */
-export function revisaoParada(
-  status: BuildStatus,
-  enviadoEm: string | null,
-  agora: number = Date.now(),
-): string | null {
-  if (status !== 'submitted' && status !== 'in_review') return null;
-
-  const dias = diasEsperando(enviadoEm, agora);
-  if (dias == null || dias < DIAS_ATE_ESTRANHAR) return null;
-
-  return `Parado há ${String(dias)} dias. Vale abrir um chamado na loja.`;
-}
