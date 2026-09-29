@@ -11,11 +11,11 @@ import * as Haptics from 'expo-haptics';
 import * as Linking from 'expo-linking';
 import * as StoreReview from 'expo-store-review';
 import { StatusBar } from 'expo-status-bar';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { BackHandler, Platform, Share, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { AppConfig } from '@storefy/config-schema';
-import { abaParaCaminho, abasUsaveis, resolverAbas } from '../config/abas';
+import { abaDaConta, abaParaCaminho, abasUsaveis, resolverAbas } from '../config/abas';
 import { BarraDeAbas } from '../navegacao/barra-de-abas';
 import { AbaWebView, type ControleDaAba } from '../webview/aba-webview';
 import type { ContextoDoApp } from '../webview/scripts';
@@ -23,8 +23,17 @@ import type { AcaoNativa, ContextoDasAcoes } from '../bridge/acoes';
 import { usarPush } from '../push/usar-push';
 import type { DestinoDoPush } from '../push/deep-link';
 import type { Ambiente } from '../nucleo/ambiente';
+import { ehDadoDaConta } from '../nucleo/biometria';
+import {
+  compraConcluidaNaUrl,
+  entrouNoCheckout,
+  saiuDaConta,
+  vibrarNoCarrinho,
+} from '../webview/jornada';
+import { usarProtecaoDaConta } from '../nucleo/usar-biometria';
 import { PrePromptDePush } from './pre-prompt';
 import { CaixaDeAvisos } from './caixa-de-avisos';
+import { ContaProtegida } from './conta-protegida';
 
 interface Props {
   config: AppConfig;
@@ -47,6 +56,8 @@ export function Loja({
     [config, contextoDasAcoes.push],
   );
   const primeira = abas[0];
+  const conta = useMemo(() => abaDaConta(abas), [abas]);
+  const protecao = usarProtecaoDaConta(config.features.biometricLogin && conta !== null);
 
   const [ativa, setAtiva] = useState(primeira?.id ?? '');
   const [itensNoCarrinho, setItensNoCarrinho] = useState(0);
@@ -100,6 +111,9 @@ export function Loja({
     if (Platform.OS !== 'android') return;
 
     const inscricao = BackHandler.addEventListener('hardwareBackPress', () => {
+      // Com a trava na frente, a página da conta por baixo não é de quem está
+      // com o celular: o voltar não mexe nela.
+      if (ativa === conta?.id && protecao.situacao !== 'livre') return false;
       const controle = controles.get(ativa);
       if (controle?.podeVoltar() === true) {
         controle.voltar();
@@ -111,7 +125,7 @@ export function Loja({
     return () => {
       inscricao.remove();
     };
-  }, [ativa, controles]);
+  }, [ativa, controles, conta, protecao.situacao]);
 
   /* ------------------------------------------------------ deep links */
 
@@ -119,7 +133,11 @@ export function Loja({
     (url: string): void => {
       let caminho: string;
       try {
-        caminho = new URL(url, config.store.url).pathname;
+        // Query e fragmento vão junto: `destinoDoPush` os preserva de
+        // propósito, e cortá-los aqui levaria `/search?q=tenis` a uma busca
+        // vazia.
+        const alvo = new URL(url, config.store.url);
+        caminho = `${alvo.pathname}${alvo.search}${alvo.hash}`;
       } catch {
         return;
       }
@@ -129,6 +147,42 @@ export function Loja({
       setLinkPendente({ aba: destino.aba.id, caminho: destino.caminho });
     },
     [abas, config.store.url],
+  );
+
+  /**
+   * Com a conta protegida, os dados dela só abrem na aba Conta, onde a trava
+   * está. O ícone de conta do cabeçalho do tema, tocado na aba Início, cai
+   * aqui: a navegação é cancelada lá e refeita na aba Conta.
+   */
+  const prefixoDaConta = useMemo(() => {
+    if (conta?.url == null) return null;
+    try {
+      return new URL(conta.url).pathname;
+    } catch {
+      return null;
+    }
+  }, [conta]);
+
+  const desviarParaConta = useCallback(
+    (url: string): boolean => {
+      if (conta === null || prefixoDaConta === null || !protecao.protegida) return false;
+      let alvo: URL;
+      let loja: URL;
+      try {
+        alvo = new URL(url);
+        loja = new URL(config.store.url);
+      } catch {
+        return false;
+      }
+      const caminho = `${alvo.pathname}${alvo.search}${alvo.hash}`;
+      if (!ehDadoDaConta(caminho, prefixoDaConta)) return false;
+      setAtiva(conta.id);
+      // A conta nova da Shopify mora em `shopify.com`: fora do host da loja,
+      // a aba Conta precisa do endereço inteiro, e não só do caminho.
+      setLinkPendente({ aba: conta.id, caminho: alvo.host === loja.host ? caminho : alvo.href });
+      return true;
+    },
+    [conta, config.store.url, prefixoDaConta, protecao.protegida],
   );
 
   /**
@@ -183,10 +237,25 @@ export function Loja({
 
   /* -------------------------------------------- o que a página pediu */
 
+  /*
+   * A última leitura do carrinho, fora do estado: cada aba lê o carrinho ao
+   * abrir, e a comparação precisa do valor da mensagem anterior, não do que já
+   * foi desenhado. O token é o que liga o checkout ao carrinho.
+   */
+  const ultimaContagem = useRef<number | null>(null);
+  const tokenDoCarrinho = useRef<string | null>(null);
+  const clienteIdentificado = useRef<string | null>(null);
+
   const aoAgir = useCallback(
     (acao: AcaoNativa): void => {
       switch (acao.tipo) {
         case 'carrinho':
+          // Item entrou no carrinho: a confirmação que o dedo sente.
+          if (vibrarNoCarrinho(ultimaContagem.current, acao.count)) {
+            void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+          }
+          ultimaContagem.current = acao.count;
+          if (acao.token !== undefined) tokenDoCarrinho.current = acao.token;
           setItensNoCarrinho(acao.count);
           /*
            * O badge é o efeito visível; o resto é o que faz o carrinho
@@ -233,6 +302,7 @@ export function Loja({
            * `requestReview` é o tipo de chamada que pode demorar.
            */
           push.aoConcluirPedido({ totalCents: acao.totalCents });
+          ultimaContagem.current = 0;
           if (!acao.pedirAvaliacao) return;
           void StoreReview.isAvailableAsync().then(async (disponivel) => {
             if (disponivel) await StoreReview.requestReview();
@@ -244,6 +314,12 @@ export function Loja({
           return;
 
         case 'identificar-cliente':
+          // Toda página da loja repete quem está logado; o SDK só precisa
+          // saber quando MUDA.
+          if (acao.customerId === undefined || acao.customerId === clienteIdentificado.current) {
+            return;
+          }
+          clienteIdentificado.current = acao.customerId;
           push.aoIdentificarCliente(acao.customerId);
           return;
 
@@ -258,6 +334,54 @@ export function Loja({
     [itensNoCarrinho, push],
   );
 
+  /* ------------------------------------------- o que o endereço conta */
+
+  /*
+   * O checkout da Shopify não é do tema e não avisa ninguém; o endereço de
+   * cada página, sim (`webview/jornada.ts`). Cada compra e cada checkout contam
+   * uma vez por sessão: a página de obrigado recarrega e o mesmo endereço
+   * chega de mais de um jeito.
+   */
+  const comprasVistas = useRef(new Set<string>());
+  const checkoutsVistos = useRef(new Set<string>());
+
+  const aoVerEndereco = useCallback(
+    (url: string): void => {
+      const compra = compraConcluidaNaUrl(url);
+      if (compra !== null) {
+        if (comprasVistas.current.has(compra)) return;
+        comprasVistas.current.add(compra);
+        aoAgir({
+          tipo: 'pedido-concluido',
+          orderId: compra,
+          pedirAvaliacao: contextoDasAcoes.pedirAvaliacao,
+        });
+        return;
+      }
+
+      if (entrouNoCheckout(url)) {
+        const token = tokenDoCarrinho.current;
+        if (!contextoDasAcoes.eventos || token === null) return;
+        if (checkoutsVistos.current.has(token)) return;
+        checkoutsVistos.current.add(token);
+        aoAgir({ tipo: 'checkout-iniciado', token });
+        return;
+      }
+
+      if (saiuDaConta(url) && contextoDasAcoes.push && clienteIdentificado.current !== null) {
+        clienteIdentificado.current = null;
+        push.aoIdentificarCliente(undefined);
+      }
+    },
+    [
+      aoAgir,
+      contextoDasAcoes.eventos,
+      contextoDasAcoes.pedirAvaliacao,
+      contextoDasAcoes.push,
+      push,
+    ],
+  );
+
   /* ------------------------------------------------------ primeira carga */
 
   const jaAvisou = useRef(false);
@@ -266,6 +390,13 @@ export function Loja({
     jaAvisou.current = true;
     aoFicarPronto();
   }, [aoFicarPronto]);
+
+  // A aba Conta trancada pode ser a primeira: a página dela só carrega depois
+  // do desbloqueio, e a splash não pode ficar esperando por isso.
+  const contaEhPrimeira = conta !== null && conta.id === primeira?.id;
+  useEffect(() => {
+    if (contaEhPrimeira && protecao.situacao === 'trancada') aoCarregar();
+  }, [contaEhPrimeira, protecao.situacao, aoCarregar]);
 
   if (primeira === undefined) return null;
 
@@ -280,7 +411,51 @@ export function Loja({
          * no lugar, porque tela vazia com barra de abas é pior.
          */}
         {abas.map((aba) =>
-          aba.webview ? (
+          aba.id === conta?.id ? (
+            /*
+             * M06: a conta com Face ID. Antes do primeiro desbloqueio a página
+             * nem é carregada; depois, fica montada por baixo da trava quando
+             * ela volta, para o cliente reencontrar a conta onde a deixou.
+             */
+            <Fragment key={aba.id}>
+              {protecao.situacao === 'livre' || protecao.jaAbriu ? (
+                <AbaWebView
+                  aba={aba}
+                  config={config}
+                  contextoDoApp={contextoDoApp}
+                  contextoDasAcoes={contextoDasAcoes}
+                  visivel={aba.id === ativa && protecao.situacao === 'livre'}
+                  semConexao={semConexao}
+                  aoAgir={aoAgir}
+                  registrarControle={registrarControle}
+                  aoCarregar={aba.id === primeira.id ? aoCarregar : undefined}
+                  aoVerEndereco={aoVerEndereco}
+                />
+              ) : null}
+              {protecao.situacao === 'livre' ? null : (
+                <View
+                  style={[
+                    estilos.cobertura,
+                    { backgroundColor: config.theme.background },
+                    aba.id === ativa ? null : estilos.escondida,
+                  ]}
+                  pointerEvents={aba.id === ativa ? 'auto' : 'none'}
+                  accessibilityElementsHidden={aba.id !== ativa}
+                  importantForAccessibility={aba.id === ativa ? 'auto' : 'no-hide-descendants'}
+                >
+                  {protecao.situacao === 'trancada' ? (
+                    <ContaProtegida
+                      visivel={aba.id === ativa}
+                      tema={config.theme}
+                      pedindo={protecao.pedindo}
+                      aviso={protecao.aviso}
+                      aoDesbloquear={protecao.desbloquear}
+                    />
+                  ) : null}
+                </View>
+              )}
+            </Fragment>
+          ) : aba.webview ? (
             <AbaWebView
               key={aba.id}
               aba={aba}
@@ -292,6 +467,8 @@ export function Loja({
               aoAgir={aoAgir}
               registrarControle={registrarControle}
               aoCarregar={aba.id === primeira.id ? aoCarregar : undefined}
+              desviar={desviarParaConta}
+              aoVerEndereco={aoVerEndereco}
             />
           ) : (
             /*
@@ -345,6 +522,8 @@ export function Loja({
 const estilos = StyleSheet.create({
   tela: { flex: 1 },
   area: { flex: 1 },
+  // Por cima da página da conta, do mesmo tamanho que ela.
+  cobertura: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 },
   // Fora da tela em vez de `display: none`: a lista guarda a posição de
   // rolagem, e o `display` a reconstrói do zero a cada volta.
   escondida: { position: 'absolute', left: -10_000, width: 1, height: 1, opacity: 0 },

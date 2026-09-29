@@ -206,7 +206,7 @@ export async function checkoutIniciado(
 export async function pedidoConcluido(
   dependencias: DependenciasDaSessao,
   inscricao: string | null,
-  pedido: { totalCents: number; currency?: string },
+  pedido: { totalCents?: number; currency?: string },
 ): Promise<boolean> {
   try {
     dependencias.notificador.marcar(tagsDaCompra());
@@ -217,12 +217,15 @@ export async function pedidoConcluido(
   const { credenciais } = dependencias;
   if (credenciais === null || inscricao === null) return false;
 
+  // Sem valor dito pela página, o evento vai sem valor: um número estimado
+  // gravado como valor do pedido seria dado falso (regra 1 do CLAUDE.md).
   const resposta = await enviarEventoDeCarrinho(credenciais, {
     subscriptionId: inscricao,
     event: 'purchased',
     itemCount: 0,
-    valueCents: Math.max(0, Math.trunc(pedido.totalCents)),
-    currency: pedido.currency,
+    ...(pedido.totalCents === undefined
+      ? {}
+      : { valueCents: Math.max(0, Math.trunc(pedido.totalCents)), currency: pedido.currency }),
   });
 
   return resposta.ok;

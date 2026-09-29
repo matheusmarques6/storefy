@@ -200,3 +200,20 @@ export const ATRIBUTO_DO_CARRINHO = '_storefy';
 
 /** O valor gravado no atributo. Só `'1'` conta como pedido do app. */
 export const VALOR_DO_ATRIBUTO = '1';
+
+/**
+ * O token do carrinho SEM a chave secreta.
+ *
+ * O `/cart.js` da Shopify devolve `<token>?key=<segredo>`, e a chave dá acesso
+ * aos dados particulares do comprador — a Shopify manda tratá-la como senha.
+ * O token puro é o que o pedido carrega em `cart_token`, e é por ele que o
+ * pedido encontra o aparelho que montou o carrinho.
+ *
+ * Contrato dos dois lados: o app limpa antes de mandar, o servidor limpa de
+ * novo ao receber (um app antigo ainda manda com a chave), e o banco tem a
+ * mesma trava. `undefined` quando não sobra token nenhum.
+ */
+export function tokenDoCarrinhoSemChave(token: string): string | undefined {
+  const puro = token.split('?', 1)[0]?.trim() ?? '';
+  return puro === '' ? undefined : puro;
+}

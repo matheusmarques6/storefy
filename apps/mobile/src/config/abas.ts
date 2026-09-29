@@ -98,18 +98,33 @@ export function abaParaCaminho(
   if (primeira === undefined) return null;
 
   const alvo = caminho.startsWith('/') ? caminho : `/${caminho}`;
+  // A escolha da aba olha só o caminho; a query e o fragmento seguem junto
+  // para a WebView (`/search?q=tenis` é a busca, e com o termo).
+  const soCaminho = alvo.split(/[?#]/, 1)[0] ?? alvo;
 
   const comWebview = abas.filter((aba) => aba.webview && aba.url !== null);
 
   // A aba mais específica que cobre o caminho vence: `/account/orders` deve
-  // abrir na aba de conta, não na inicial.
+  // abrir na aba de conta, não na inicial. Cobrir é por segmento inteiro:
+  // `/cartao-presente` não é o carrinho só por começar com as mesmas letras.
   const candidatas = comWebview
-    .map((aba) => ({ aba, prefixo: new URL(aba.url ?? '').pathname }))
-    .filter(({ prefixo }) => prefixo !== '/' && alvo.startsWith(prefixo))
+    .map((aba) => ({ aba, prefixo: new URL(aba.url ?? '').pathname.replace(/\/+$/, '') }))
+    .filter(
+      ({ prefixo }) =>
+        prefixo !== '' && (soCaminho === prefixo || soCaminho.startsWith(`${prefixo}/`)),
+    )
     .sort((a, b) => b.prefixo.length - a.prefixo.length);
 
   const escolhida = candidatas[0]?.aba ?? comWebview[0] ?? primeira;
   return { aba: escolhida, caminho: alvo };
+}
+
+/**
+ * A aba Conta, quando existe: é nela que mora a trava do Face ID (M06).
+ * Só conta se abre uma página — sem URL, não há conta para proteger.
+ */
+export function abaDaConta(abas: readonly AbaResolvida[]): AbaResolvida | null {
+  return abas.find((aba) => aba.tipo === 'account' && aba.webview && aba.url !== null) ?? null;
 }
 
 /**

@@ -15,6 +15,13 @@ export type PluginExpo = string | [string, Record<string, unknown>];
 
 export const PLUGIN_ONESIGNAL = 'onesignal-expo-plugin';
 export const PLUGIN_CAMERA = 'expo-camera';
+export const PLUGIN_BIOMETRIA = 'expo-local-authentication';
+
+/**
+ * A frase que o iOS mostra ao pedir o Face ID pela primeira vez. Sem ela, o
+ * plugin põe uma em inglês — e é o cliente final da loja quem lê.
+ */
+export const MOTIVO_DO_FACE_ID = 'Para desbloquear a sua conta na loja com o Face ID.';
 
 export interface OpcoesDePlugins {
   /**
@@ -63,7 +70,8 @@ export function montarPlugins(opcoes: OpcoesDePlugins): PluginExpo[] {
             imageWidth: 200,
           },
         ],
-    'expo-local-authentication',
+    // Face ID ou digital na aba Conta, quando o lojista liga (M06).
+    [PLUGIN_BIOMETRIA, { faceIDPermission: MOTIVO_DO_FACE_ID }],
     'expo-updates',
   ];
 

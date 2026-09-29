@@ -7,6 +7,7 @@ const BASE: DadosDaPolitica = {
   emailDeContato: 'atendimento@lojadaana.com.br',
   pushLigado: true,
   eventosDeCarrinho: true,
+  protecaoDaConta: false,
   atualizadaEm: '2026-09-19T12:00:00.000Z',
 };
 
@@ -42,6 +43,21 @@ describe('montarPolitica', () => {
 
     const semPush = montarPolitica({ ...BASE, pushLigado: false });
     expect(semPush.secoes.some((s) => s.titulo === 'Notificações')).toBe(false);
+  });
+
+  it('com push, conta tudo o que a OneSignal recebe, inclusive o cliente logado', () => {
+    const corpo = texto({ ...BASE, pushLigado: true });
+    expect(corpo).toContain('código de cliente');
+    expect(corpo).toContain('se você já comprou pelo app');
+    expect(corpo).not.toContain('recebe apenas');
+    expect(texto({ ...BASE, pushLigado: false })).not.toContain('código de cliente');
+  });
+
+  it('Face ID só aparece quando a conta é protegida, e diz que a biometria não sai do celular', () => {
+    expect(texto({ ...BASE, protecaoDaConta: false })).not.toContain('Face ID');
+    const corpo = texto({ ...BASE, protecaoDaConta: true });
+    expect(corpo).toContain('Face ID');
+    expect(corpo).toContain('nunca sai do aparelho');
   });
 
   it('o carrinho só é descrito quando o app registra eventos', () => {
@@ -100,6 +116,7 @@ describe('montarPolitica', () => {
           ...BASE,
           pushLigado: push,
           eventosDeCarrinho: carrinho,
+          protecaoDaConta: push,
         });
         for (const secao of politica.secoes) {
           expect(secao.titulo.length, secao.titulo).toBeGreaterThan(3);

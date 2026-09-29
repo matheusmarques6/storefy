@@ -291,6 +291,22 @@ describe('o corpo do evento', () => {
   it('recusa um evento que não existe no banco', () => {
     expect(CorpoDoEvento.safeParse({ ...base, event: 'refunded' }).success).toBe(false);
   });
+
+  it('guarda o token do carrinho SEM a chave secreta que o /cart.js devolve', () => {
+    // A chave dá acesso aos dados do comprador; app antigo ainda a manda.
+    const lido = CorpoDoEvento.parse({ ...base, cartToken: 'Z2NwLXVzLWVhc3Q?key=segredo' });
+    expect(lido.cartToken).toBe('Z2NwLXVzLWVhc3Q');
+  });
+
+  it('token que é só a chave vira ausente, e não token vazio', () => {
+    expect(CorpoDoEvento.parse({ ...base, cartToken: '?key=segredo' }).cartToken).toBeUndefined();
+  });
+
+  it('não recusa o evento porque a Shopify alongou o token', () => {
+    // Ela avisa que o formato e o tamanho mudam sem aviso.
+    const longo = 'Z'.repeat(200);
+    expect(CorpoDoEvento.parse({ ...base, cartToken: `${longo}?key=x` }).cartToken).toBe(longo);
+  });
 });
 
 describe('as respostas', () => {

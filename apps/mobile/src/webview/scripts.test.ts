@@ -74,6 +74,11 @@ describe('scriptAntesDoConteudo', () => {
     expect(scriptAntesDoConteudo(config(), CONTEXTO)).toContain('user-scalable=no');
   });
 
+  it('o botão de compartilhar do tema abre a folha nativa', () => {
+    // Instalado ANTES do conteúdo: o tema decide o botão ao montar a página.
+    expect(scriptAntesDoConteudo(config(), CONTEXTO)).toContain('n.share=function');
+  });
+
   it('NÃO leva o JavaScript do lojista junto', () => {
     // Um erro de sintaxe ali derrubaria o CSS e o contexto no mesmo parse.
     const script = scriptAntesDoConteudo(
@@ -95,16 +100,42 @@ describe('scriptDepoisDoConteudo', () => {
     expect(script.trimEnd().endsWith('true;')).toBe(true);
   });
 
-  it('dispensa o observador quando nenhuma aba mostra a contagem', () => {
-    // Observar custaria uma leitura de `/cart.js` em toda página para
-    // alimentar um número que ninguém veria.
+  it('loja Shopify observa o carrinho mesmo sem badge na barra', () => {
+    // O carrinho abandonado e o token do checkout dependem dos eventos de
+    // carrinho, não do número na aba: tirar o badge não pode desligar a
+    // automação que o lojista ligou.
     const script = scriptDepoisDoConteudo(config({ tabs: ABAS_SEM_CARRINHO }));
+    expect(script).toContain(MARCA_DE_INJECAO);
+    expect(() => {
+      compila(script);
+    }).not.toThrow();
+  });
+
+  it('fora da Shopify e sem badge, dispensa o observador', () => {
+    // `/cart.js` não existe ali: seria uma leitura perdida em toda página.
+    const script = scriptDepoisDoConteudo(
+      config({
+        tabs: ABAS_SEM_CARRINHO,
+        store: { name: 'Fora', url: 'https://fora.com.br', domains: [], platform: 'other' },
+      }),
+    );
     expect(script).toContain('window.Storefy=');
     expect(script).not.toContain(MARCA_DE_INJECAO);
     expect(script).not.toContain("fetchOriginal('/cart.js'");
     expect(() => {
       compila(script);
     }).not.toThrow();
+  });
+
+  it('loja Shopify diz ao app quem é o cliente logado', () => {
+    expect(scriptDepoisDoConteudo(config())).toContain('CUSTOMER_IDENTIFIED');
+    expect(
+      scriptDepoisDoConteudo(
+        config({
+          store: { name: 'Fora', url: 'https://fora.com.br', domains: [], platform: 'other' },
+        }),
+      ),
+    ).not.toContain('CUSTOMER_IDENTIFIED');
   });
 
   /*
@@ -158,16 +189,24 @@ describe('scriptDepoisDoConteudo', () => {
     ).toBe(false);
   });
 
-  it('observaCarrinho responde pelo badge, não pelo tipo da aba', () => {
+  it('observaCarrinho: sempre na Shopify; fora dela, pelo badge', () => {
+    const fora = {
+      name: 'Fora',
+      url: 'https://fora.com.br',
+      domains: [],
+      platform: 'other' as const,
+    };
     expect(observaCarrinho(config({ tabs: ABAS_COM_CARRINHO }))).toBe(true);
-    expect(observaCarrinho(config({ tabs: ABAS_SEM_CARRINHO }))).toBe(false);
+    expect(observaCarrinho(config({ tabs: ABAS_SEM_CARRINHO }))).toBe(true);
+    expect(observaCarrinho(config({ tabs: ABAS_COM_CARRINHO, store: fora }))).toBe(true);
+    expect(observaCarrinho(config({ tabs: ABAS_SEM_CARRINHO, store: fora }))).toBe(false);
 
-    // Aba de carrinho sem badge: a tela existe, a contagem não aparece.
+    // Aba de carrinho sem badge, fora da Shopify: a contagem não aparece.
     const semBadge: AppConfigInput['tabs'] = [
       { id: 'home', label: 'Início', icon: 'house', type: 'webview', url: '/' },
       { id: 'carrinho', label: 'Carrinho', icon: 'bag', type: 'cart', badge: 'none' },
     ];
-    expect(observaCarrinho(config({ tabs: semBadge }))).toBe(false);
+    expect(observaCarrinho(config({ tabs: semBadge, store: fora }))).toBe(false);
   });
 });
 

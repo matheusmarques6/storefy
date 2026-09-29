@@ -25,6 +25,8 @@ export interface DadosDaPolitica {
   pushLigado: boolean;
   /** O app registra eventos de carrinho para o abandono? */
   eventosDeCarrinho: boolean;
+  /** A aba Conta pede Face ID ou digital (`features.biometricLogin` no ar). */
+  protecaoDaConta: boolean;
   /** Data da última alteração, em ISO. */
   atualizadaEm: string;
 }
@@ -73,6 +75,7 @@ export function montarPolitica(dados: DadosDaPolitica): Politica {
   if (dados.pushLigado) {
     coletados.push(
       'Um código de inscrição em notificações, criado quando você aceita recebê-las, para o envio das mensagens.',
+      'Quando você entra na sua conta da loja, o código de cliente que a loja atribuiu a você, para os avisos dos seus pedidos chegarem ao seu aparelho.',
     );
   }
   if (dados.eventosDeCarrinho) {
@@ -95,8 +98,23 @@ export function montarPolitica(dados: DadosDaPolitica): Politica {
       titulo: 'Notificações',
       paragrafos: [
         `A ${loja} pode enviar notificações sobre pedidos, novidades e promoções. Elas só chegam se você aceitar quando o app perguntar.`,
-        'O envio é feito pela OneSignal, que recebe apenas o código de inscrição do aparelho e o conteúdo da mensagem.',
+        /*
+         * O que a OneSignal recebe, sem enfeite: as marcações existem para
+         * escolher quem recebe cada aviso, e esconder qualquer uma delas
+         * faria a política prometer menos do que o app faz.
+         */
+        'O envio é feito pela OneSignal. Ela recebe o código de inscrição do aparelho, o conteúdo das mensagens e as marcações que servem para escolher quem recebe cada aviso: quantos itens e qual valor há no carrinho, se você já comprou pelo app, a versão do app e, quando você entra na sua conta da loja, o seu código de cliente da loja.',
         'Para parar de receber, desligue as notificações do app nos ajustes do seu celular. Isso não afeta suas compras.',
+      ],
+    });
+  }
+
+  if (dados.protecaoDaConta) {
+    secoes.push({
+      titulo: 'Face ID e digital',
+      paragrafos: [
+        'A área da sua conta pede o Face ID, a digital ou a senha do celular antes de abrir.',
+        'Quem confere é o próprio celular: o app recebe só a resposta, confirmado ou não. A sua biometria nunca sai do aparelho, e nem a loja nem a Storefy têm acesso a ela.',
       ],
     });
   }

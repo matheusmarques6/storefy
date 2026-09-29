@@ -9,6 +9,7 @@ import 'server-only';
  * que falha.
  */
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { safeParseAppConfig, type AppConfig } from '@storefy/config-schema';
 import type { Database } from '@storefy/db';
 import type { EstadoDaPublicacao } from '@/lib/checklist-de-publicacao';
 
@@ -49,6 +50,11 @@ export interface DadosDaPublicacao {
   builds: BuildNaLista[];
   /** O que a ficha do app e a política de privacidade precisam saber da loja. */
   loja: { nome: string; url: string; temContato: boolean };
+  /**
+   * A config no ar — a que o revisor da Apple abre. Nula antes da primeira
+   * publicação, ou se a gravada não passar mais pelo contrato.
+   */
+  configPublicada: AppConfig | null;
 }
 
 /**
@@ -87,7 +93,7 @@ export async function dadosDaPublicacao(
   const [{ data: publicada }, { data: contas }, { data: builds }] = await Promise.all([
     supabase
       .from('app_configs')
-      .select('version')
+      .select('version, config')
       .eq('app_id', app.id)
       .eq('status', 'published')
       .maybeSingle(),
@@ -105,8 +111,11 @@ export async function dadosDaPublicacao(
   const verificada = (plataforma: 'apple' | 'google'): boolean =>
     (contas ?? []).some((conta) => conta.platform === plataforma && conta.status === 'verified');
 
+  const lida = publicada == null ? null : safeParseAppConfig(publicada.config);
+
   return {
     appId: app.id,
+    configPublicada: lida?.success === true ? lida.data : null,
     loja: {
       nome: loja?.name ?? '',
       url: loja?.primary_url ?? '',

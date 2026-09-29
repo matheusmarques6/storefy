@@ -12,6 +12,7 @@
  */
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
+import { safeParseAppConfig } from '@storefy/config-schema';
 import { criarClientServiceRole } from '@/lib/supabase/admin';
 import { serviceRoleConfigurada, supabaseConfigurado } from '@/lib/env';
 import { montarPolitica } from '@/lib/politica-de-privacidade';
@@ -28,6 +29,7 @@ interface Loja {
   updated_at: string;
   pushLigado: boolean;
   eventosDeCarrinho: boolean;
+  protecaoDaConta: boolean;
 }
 
 async function buscarLoja(id: string): Promise<Loja | null> {
@@ -52,17 +54,46 @@ async function buscarLoja(id: string): Promise<Loja | null> {
    */
   const { data: app } = await servico
     .from('apps')
-    .select('onesignal_app_id, device_secret_enc')
+    .select('id, onesignal_app_id, device_secret_enc')
     .eq('store_id', id)
     .maybeSingle();
 
+  /*
+   * O Face ID é da config NO AR — a que está nos celulares. Um rascunho com o
+   * recurso ligado ainda não protege conta de ninguém.
+   */
+  const { data: publicada } =
+    app == null
+      ? { data: null }
+      : await servico
+          .from('app_configs')
+          .select('config, published_at')
+          .eq('app_id', app.id)
+          .eq('status', 'published')
+          .maybeSingle();
+  const lida = publicada == null ? null : safeParseAppConfig(publicada.config);
+  const config = lida?.success === true ? lida.data : null;
+
   return {
     ...loja,
+    // O texto muda também quando a config no ar muda (o Face ID vem dela).
+    updated_at: maisRecente(loja.updated_at, publicada?.published_at ?? null),
+    protecaoDaConta:
+      config !== null &&
+      config.features.biometricLogin &&
+      config.tabs.some((aba) => aba.type === 'account'),
     pushLigado: app?.onesignal_app_id != null && app.onesignal_app_id !== '',
     // Sem o segredo do aparelho o app não consegue assinar o que manda, então
     // não há evento de carrinho nenhum chegando.
     eventosDeCarrinho: app?.device_secret_enc != null && app.device_secret_enc !== '',
   };
+}
+
+/** A mais recente de duas datas ISO; a inválida não conta. */
+function maisRecente(uma: string, outra: string | null): string {
+  if (outra === null || Number.isNaN(Date.parse(outra))) return uma;
+  if (Number.isNaN(Date.parse(uma))) return outra;
+  return Date.parse(outra) > Date.parse(uma) ? outra : uma;
 }
 
 export async function generateMetadata({
@@ -92,6 +123,7 @@ export default async function PaginaDaPolitica({ params }: { params: Promise<{ l
     emailDeContato: loja.support_email,
     pushLigado: loja.pushLigado,
     eventosDeCarrinho: loja.eventosDeCarrinho,
+    protecaoDaConta: loja.protecaoDaConta,
     atualizadaEm: loja.updated_at,
   });
 

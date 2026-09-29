@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { parseAppConfig, type AppConfigInput } from '@storefy/config-schema';
-import { abaDoCarrinho, abaParaCaminho, abasUsaveis, resolverAbas, urlDaAba } from './abas';
+import {
+  abaDaConta,
+  abaDoCarrinho,
+  abaParaCaminho,
+  abasUsaveis,
+  resolverAbas,
+  urlDaAba,
+} from './abas';
 
 function config(tabs: AppConfigInput['tabs']) {
   return parseAppConfig({
@@ -159,6 +166,32 @@ describe('abaParaCaminho — destino do deep link de push', () => {
 
   it('devolve null sem nenhuma aba', () => {
     expect(abaParaCaminho([], '/x')).toBeNull();
+  });
+
+  it('leva a query e o fragmento junto, e escolhe a aba só pelo caminho', () => {
+    // Cortar a query levaria o push "procure por tênis" a uma busca vazia.
+    const busca = abaParaCaminho(abas, '/search?q=tenis');
+    expect(busca?.aba.id).toBe('busca');
+    expect(busca?.caminho).toBe('/search?q=tenis');
+    expect(abaParaCaminho(abas, '/account#pedidos')?.aba.id).toBe('conta');
+    expect(abaParaCaminho(abas, '/products/x?variant=1')?.caminho).toBe('/products/x?variant=1');
+  });
+
+  it('cobre por segmento inteiro, não por letras em comum', () => {
+    expect(abaParaCaminho(abas, '/cartao-presente')?.aba.id).toBe('home');
+    expect(abaParaCaminho(abas, '/accounting')?.aba.id).toBe('home');
+    expect(abaParaCaminho(abas, '/cart/')?.aba.id).toBe('carrinho');
+  });
+});
+
+describe('abaDaConta', () => {
+  it('acha a aba Conta', () => {
+    expect(abaDaConta(resolverAbas(config(QUATRO_ABAS)))?.id).toBe('conta');
+  });
+
+  it('sem aba Conta, não há o que proteger', () => {
+    const semConta = QUATRO_ABAS.filter((aba) => aba.type !== 'account');
+    expect(abaDaConta(resolverAbas(config(semConta)))).toBeNull();
   });
 });
 

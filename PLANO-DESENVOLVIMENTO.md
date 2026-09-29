@@ -280,16 +280,17 @@ O site do lojista também pode chamar `window.Storefy.share()` e as demais funç
 - **Inbox nativo** (aba opcional "Notificações"): lista as campanhas enviadas pela API da Storefy e controla lidas/não lidas localmente. Esse recurso conta muito na revisão da Apple.
 
 ### 5.7 Recursos nativos mínimos (checklist Apple 4.2)
-- [ ] Tab bar nativa
-- [ ] Push com deep link
-- [ ] Inbox de notificações
-- [ ] Tela offline nativa
-- [ ] Onboarding nativo
-- [ ] Compartilhamento nativo
-- [ ] Haptics
-- [ ] Face ID opcional
-- [ ] Pedido de avaliação do app
-- [ ] Universal Links
+Conferido contra o código na Fase 8a (ver "Fase 8a — Entregue").
+- [x] Tab bar nativa
+- [x] Push com deep link
+- [x] Inbox de notificações
+- [x] Tela offline nativa
+- [x] Onboarding nativo
+- [x] Compartilhamento nativo — o botão "Compartilhar" dos temas abre a folha do sistema
+- [x] Haptics — ao entrar item no carrinho
+- [x] Face ID opcional — aba Conta, ligado em Recursos
+- [x] Pedido de avaliação do app — depois da compra, vista pela página de obrigado
+- [ ] Universal Links — o app declara o domínio; falta a Shopify servir o arquivo de associação (ver Fase 8a)
 
 ---
 
@@ -565,7 +566,7 @@ Um app interno, publicado uma única vez na conta da Storefy, que o lojista usa 
 | Haptics, compartilhar e pedido de avaliação | ✅ |
 | Empacotamento (`expo export`) no `pnpm build` | ✅ Android e iOS |
 | Caixa de avisos nativa (M07) | ⬜ Fase 3, junto com o push |
-| Face ID opcional (`features.biometricLogin`) | ⬜ Fase 2, com a área de conta |
+| Face ID opcional (`features.biometricLogin`) | ✅ Fase 8a, na aba Conta |
 | Presets de `hideSelectors` por tema | ⬜ exige renderizar lojas reais |
 | Testar em 3 lojas reais | ⬜ depende de aparelho físico e de rede até as lojas |
 | `eas.json`, `owner` e variáveis de build por loja | ✅ 5 testes, `BUILD.md` com os comandos |
@@ -706,7 +707,8 @@ Um app interno, publicado uma única vez na conta da Storefy, que o lojista usa 
   existem.
 - `features.biometricLogin` continua sem tela no editor: nada no app o consome
   ainda, e um botão que não faz nada é o que a regra 3 proíbe. Entra junto com a
-  área de conta.
+  área de conta. **(Entrou na Fase 8a: a chave está em Recursos, e o app tranca
+  a aba Conta.)**
 
 ### Fase 3 — Push notifications (5–7 dias)
 **Tarefas**
@@ -1276,6 +1278,88 @@ com um servidor no lugar da Asaas falando HTTP de verdade com o painel). A suít
 - Revisão de segurança: RLS, segredos, rate limit, HMAC.
 - **Checklist App Store** (seção 5.7) + notas de revisão padrão explicando os recursos nativos.
 - Três lojas piloto (clientes Convertfy) até ficarem live nas duas lojas.
+
+#### Fase 8a — Entregue (29/09/2026): o app nativo contra o checklist 5.7
+
+| Item | Estado |
+|---|---|
+| Identidade obrigatória no build de loja (`APP_NAME`, `APP_SLUG`, bundle, package) | ✅ build de loja sem elas falha com o nome da variável; sem `STORE_DOMAIN`, nada de `associatedDomains` vazio |
+| Face ID ou digital na aba Conta (M06) | ✅ trava, desbloqueio automático ao abrir a aba, volta a trancar depois de 5 min fora |
+| Chave "Proteger a conta com Face ID ou digital" (C06e) | ✅ explica sem a aba Conta, e continua podendo ser desligada |
+| Links da conta abertos de outra aba vão para a aba Conta | ✅ com as portas (login, cadastro, senha) livres |
+| Notas para a revisão da Apple (C12) | ✅ da config no ar, em inglês, só com o que está ligado |
+| Política de privacidade | ✅ conta o Face ID e tudo o que a OneSignal recebe |
+| Compra, checkout e saída da conta vistos pelo endereço | ✅ `webview/jornada.ts`, 13 testes |
+| Cliente logado identificado no OneSignal | ✅ pelo `__st.cid` que a Shopify põe na página |
+| Compartilhar e vibrar sem código do lojista | ✅ `navigator.share` pela ponte; vibração ao entrar item no carrinho |
+| Contas de cliente novas da Shopify (`shopify.com/<id>/account`) dentro do app | ✅ antes abriam no navegador |
+| Token do carrinho sem a chave secreta, em todas as camadas | ✅ trava no banco, 6 asserções de RLS |
+| Face ID num iPhone de verdade | ⬜ depende de aparelho físico (ver abaixo) |
+| Universal Links servidos no domínio da loja | ⬜ em andamento, ver o item seguinte |
+
+**O que a auditoria achou, e por que importava**
+
+- **Três mensagens do contrato nunca eram enviadas.** `ORDER_COMPLETED`,
+  `CHECKOUT_STARTED` e `CUSTOMER_IDENTIFIED` existiam no bridge e no app, mas
+  nada na página as mandava — o checkout da Shopify não é do tema, e o
+  lojista não tem como pôr código lá. Resultado: a chave "Pedir avaliação"
+  do editor não fazia nada, o evento de compra que cancela o push de carrinho
+  abandonado nunca saía, o token do carrinho não chegava no checkout e o
+  OneSignal nunca soube quem era o cliente. Agora o app lê o que a URL conta
+  (página de obrigado, entrada no checkout, saída da conta) e o id do cliente
+  que a própria Shopify publica na página.
+- **O carrinho só era observado com o número na aba.** Tirar o badge da barra
+  desligava em silêncio o carrinho abandonado que o lojista ligou em outra
+  tela. Numa loja Shopify, o observador agora roda sempre.
+- **O deep link perdia a query.** `destinoDoPush` preservava `?q=tenis` de
+  propósito, e a casca cortava na hora de abrir: o push "procure por tênis"
+  caía numa busca vazia. E a aba era escolhida por letras em comum
+  (`/cartao-presente` abria no carrinho); agora é por segmento inteiro.
+- **A aba Conta mandava o cliente para o navegador** nas lojas com as contas
+  de cliente novas da Shopify, que moram em `shopify.com/<id>/account` — o
+  padrão depois que as antigas foram aposentadas.
+- **O token do carrinho ia com a chave secreta.** Desde julho de 2025, o
+  `/cart.js` devolve `<token>?key=<segredo>`; a chave dá acesso aos dados do
+  comprador, e a Shopify manda tratá-la como senha. Ela ia inteira para
+  `cart_events` — e, como o pedido do webhook traz o token SEM a chave, o
+  pedido nunca casava com o aparelho, e o push de "seu pedido saiu" não tinha
+  para quem ir. Agora a chave é tirada na página, de novo no app, de novo no
+  servidor, e o banco tem trava (migration 45, com a limpeza do que já estava
+  gravado).
+
+**Decisões**
+
+- **Nunca tranca quem não tem como abrir.** Sem sensor, sem biometria
+  cadastrada, num binário sem a permissão de Face ID ou se o aparelho perde o
+  cadastro no meio da sessão, a aba abre normalmente. A senha do celular vale
+  como alternativa, oferecida pelo próprio sistema.
+- **A página da conta só carrega depois do primeiro desbloqueio**, e fica
+  montada por baixo da trava quando ela volta — o cliente reencontra a conta
+  onde deixou. Só o `background` conta como sair: o próprio Face ID deixa o
+  app `inactive` no iOS.
+- **Com a conta protegida, os dados dela só abrem na aba Conta.** Sem isso, o
+  ícone de conta do cabeçalho do tema, tocado na aba Início, mostraria os
+  pedidos sem Face ID nenhum. Login, cadastro e recuperação de senha ficam
+  livres: o "Entrar" do checkout passa por eles.
+- **A compra vista pela URL vai sem valor.** O app sabe QUE comprou, não
+  QUANTO; o valor de verdade chega pelo webhook `orders/create`. Um total
+  estimado gravado como valor do pedido seria dado falso.
+- **Identificação só de quem está logado.** Página sem cliente não manda
+  "ninguém": o checkout novo não tem o objeto da Shopify, e isso desligaria a
+  identificação no meio da compra. Quem desfaz é a saída explícita da conta.
+- **`navigator.share` só onde o sistema não tem o seu** (a WebView do
+  Android). Instalado antes do conteúdo, porque o tema decide o botão ao
+  montar a página.
+- **Notas da revisão em inglês**, que é a língua da equipe de revisão, e da
+  config no ar, que é a que o revisor abre. Prometer um recurso desligado é
+  recusa na certa.
+
+**Depende de ação humana**
+
+| O quê | Quem | Onde |
+|---|---|---|
+| Testar o Face ID num iPhone e a digital num Android de verdade | time | build de desenvolvimento via EAS |
+| Colar as notas na App Store Connect a cada envio | lojista | C12 › Notas para a revisão da Apple |
 
 **Estimativa total:** cerca de 7 a 9 semanas para uma pessoa com Claude Code em ritmo forte. O MVP vendável (Fases 0–4) leva cerca de 4 a 5 semanas.
 

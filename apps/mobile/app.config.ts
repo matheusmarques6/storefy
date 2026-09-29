@@ -37,6 +37,16 @@ function opcional(nome: string, padrao: string): string {
   return valor == null || valor === '' ? padrao : valor;
 }
 
+/*
+ * Os padrões abaixo são do DESENVOLVIMENTO LOCAL (`expo start`, sem `STORE_ID`)
+ * e não são de loja nenhuma. Num build de loja, a identidade do app vem do
+ * workflow, sempre: um padrão aqui faria um build mal configurado sair com o
+ * nome, o bundle ou o domínio de OUTRA loja — e o domínio nos links
+ * universais faria o app reclamar o site de um cliente que não é o dele.
+ */
+// A pasta de marca que vem no repositório: é dela que o `expo start` local
+// tira a config embutida para abrir alguma loja. Só a config — nome, bundle
+// e domínio do app de desenvolvimento são neutros (abaixo).
 const storeId = opcional('STORE_ID', 'oakvintage');
 
 /*
@@ -71,8 +81,31 @@ function arteDaLoja(arquivo: string): string | undefined {
 
 const icone = arteDaLoja('icon.png');
 const splash = arteDaLoja('splash.png');
-const nomeDoApp = modoPrevia ? 'Storefy Preview' : opcional('APP_NAME', 'Oak Vintage');
-const slug = modoPrevia ? 'storefy-preview' : opcional('APP_SLUG', 'storefy-oakvintage');
+/** No build de loja, obrigatória; no desenvolvimento, com o padrão neutro. */
+function daLoja(nome: string, padraoLocal: string): string {
+  return buildDeLoja ? exigir(nome) : opcional(nome, padraoLocal);
+}
+
+/**
+ * Identificador que a loja pode não ter (um app só Android não tem bundle
+ * iOS). Ausente, o campo fica de fora — e o EAS recusa o build da plataforma
+ * que precisar dele, dizendo qual é. Nunca o de outra loja.
+ */
+function identificador(nome: string, padraoLocal: string): string | undefined {
+  const valor = ambiente[nome];
+  if (valor != null && valor !== '') return valor;
+  return buildDeLoja ? undefined : padraoLocal;
+}
+
+const nomeDoApp = modoPrevia ? 'Storefy Preview' : daLoja('APP_NAME', 'Storefy Dev');
+const slug = modoPrevia ? 'storefy-preview' : daLoja('APP_SLUG', 'storefy-desenvolvimento');
+
+/*
+ * O domínio da loja: links universais (iOS) e App Links (Android). Sem ele,
+ * nenhum domínio é reclamado — que é o certo para quem não tem site próprio,
+ * e para o desenvolvimento local.
+ */
+const dominioDaLoja = (ambiente['STORE_DOMAIN'] ?? '').trim();
 
 /*
  * `development` usa o sandbox de push da Apple. Um build de produção com
@@ -116,11 +149,11 @@ const config: ExpoConfig = {
   icon: icone,
 
   ios: {
-    bundleIdentifier: opcional('IOS_BUNDLE_ID', 'me.convertfy.storefy.oakvintage'),
+    bundleIdentifier: identificador('IOS_BUNDLE_ID', 'me.convertfy.storefy.desenvolvimento'),
     buildNumber: opcional('IOS_BUILD', '1'),
     supportsTablet: false,
     // Universal Links: faz o link da loja abrir no app em vez do navegador.
-    associatedDomains: [`applinks:${opcional('STORE_DOMAIN', 'oakvintage.com.br')}`],
+    associatedDomains: dominioDaLoja === '' ? [] : [`applinks:${dominioDaLoja}`],
     infoPlist: {
       // A WebView carrega o site do lojista, que pode ter recurso em http.
       NSAppTransportSecurity: { NSAllowsArbitraryLoads: true },
@@ -128,20 +161,23 @@ const config: ExpoConfig = {
   },
 
   android: {
-    package: opcional('ANDROID_PACKAGE', 'me.convertfy.storefy.oakvintage'),
+    package: identificador('ANDROID_PACKAGE', 'me.convertfy.storefy.desenvolvimento'),
     versionCode: Number.parseInt(opcional('ANDROID_VC', '1'), 10),
     adaptiveIcon:
       icone === undefined
         ? undefined
         : { foregroundImage: icone, backgroundColor: opcional('SPLASH_BG', '#ffffff') },
-    intentFilters: [
-      {
-        action: 'VIEW',
-        autoVerify: true,
-        data: [{ scheme: 'https', host: opcional('STORE_DOMAIN', 'oakvintage.com.br') }],
-        category: ['BROWSABLE', 'DEFAULT'],
-      },
-    ],
+    intentFilters:
+      dominioDaLoja === ''
+        ? []
+        : [
+            {
+              action: 'VIEW',
+              autoVerify: true,
+              data: [{ scheme: 'https', host: dominioDaLoja }],
+              category: ['BROWSABLE', 'DEFAULT'],
+            },
+          ],
   },
 
   // A ordem importa: o OneSignal precisa ser o primeiro. Ver `src/config/plugins.ts`.

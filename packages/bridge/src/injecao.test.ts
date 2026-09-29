@@ -1,6 +1,7 @@
-import { Script } from 'node:vm';
+import { Script, createContext, runInContext } from 'node:vm';
 import { describe, expect, it } from 'vitest';
 import { ID_DO_ESTILO, comoLiteralJs, gerarCss, gerarInjecao } from './injecao';
+import { lerMensagemDaWeb } from './mensagens';
 
 /**
  * O código é sintaticamente válido?
@@ -166,10 +167,107 @@ describe('gerarInjecao', () => {
       { hideSelectors: ['header', '.x'], customCss: 'body{margin:0}', contexto },
       { hideSelectors: ['header'], customCss: '', contexto, bloquearZoom: true },
       { hideSelectors: [], customCss: '', contexto, customJs: 'console.info(1)' },
+      { hideSelectors: [], customCss: '', contexto, compartilharNativo: true, customJs: 'x()' },
     ]) {
       expect(() => {
         compila(gerarInjecao(opcoes));
       }).not.toThrow();
     }
+  });
+});
+
+/*
+ * O compartilhar RODA aqui, num contexto do `node:vm`: o que importa é o que
+ * o botão do tema recebe de volta e a mensagem que chega ao app.
+ */
+describe('navigator.share pela ponte', () => {
+  const PAGINA = 'https://oakvintage.com.br/products/jaqueta';
+
+  interface Navegador {
+    share?: (dados?: unknown) => Promise<void>;
+    canShare?: (dados?: unknown) => boolean;
+  }
+
+  function montar(opcoes: { navegador?: Navegador; semCanal?: boolean } = {}) {
+    const mensagens: unknown[] = [];
+    const navegador: Navegador = opcoes.navegador ?? {};
+    const janela: Record<string, unknown> = {
+      navigator: navegador,
+      location: { href: PAGINA },
+      URL,
+    };
+    if (opcoes.semCanal !== true) {
+      janela.ReactNativeWebView = {
+        postMessage: (texto: string): void => {
+          const lida = lerMensagemDaWeb(texto);
+          if (!lida.ok) throw new Error(`o contrato recusou: ${lida.motivo}`);
+          mensagens.push(lida.mensagem);
+        },
+      };
+    }
+    janela.window = janela;
+    runInContext(
+      gerarInjecao({ hideSelectors: [], customCss: '', contexto, compartilharNativo: true }),
+      createContext(janela),
+    );
+    return { navegador, mensagens };
+  }
+
+  it('instala share e canShare onde o sistema não tem', () => {
+    const { navegador } = montar();
+    expect(typeof navegador.share).toBe('function');
+    expect(typeof navegador.canShare).toBe('function');
+  });
+
+  it('o botão do tema compartilha o produto pela folha nativa', async () => {
+    const { navegador, mensagens } = montar();
+    await expect(
+      navegador.share?.({ url: '/products/jaqueta?variant=1', title: ' Jaqueta jeans ' }),
+    ).resolves.toBeUndefined();
+    expect(mensagens).toEqual([
+      {
+        type: 'SHARE',
+        url: 'https://oakvintage.com.br/products/jaqueta?variant=1',
+        title: 'Jaqueta jeans',
+      },
+    ]);
+  });
+
+  it('sem endereço, compartilha a página atual; o texto vira título', async () => {
+    const { navegador, mensagens } = montar();
+    await navegador.share?.({ text: 'Olha isto' });
+    expect(mensagens).toEqual([{ type: 'SHARE', url: PAGINA, title: 'Olha isto' }]);
+  });
+
+  it('recusa endereço que não é http(s), como a especificação manda', async () => {
+    const { navegador, mensagens } = montar();
+    await expect(navegador.share?.({ url: 'javascript:alert(1)' })).rejects.toHaveProperty(
+      'name',
+      'TypeError',
+    );
+    expect(mensagens).toEqual([]);
+  });
+
+  it('não finge ter compartilhado fora do app', async () => {
+    const { navegador } = montar({ semCanal: true });
+    await expect(navegador.share?.({ url: PAGINA })).rejects.toHaveProperty('name', 'Error');
+  });
+
+  it('deixa a do sistema quando ela existe', () => {
+    const doSistema = (): Promise<void> => Promise.resolve();
+    const { navegador } = montar({ navegador: { share: doSistema } });
+    expect(navegador.share).toBe(doSistema);
+    expect(navegador.canShare).toBeUndefined();
+  });
+
+  it('canShare diz não a arquivo, que a ponte não carrega', () => {
+    const { navegador } = montar();
+    expect(navegador.canShare?.({ url: PAGINA })).toBe(true);
+    expect(navegador.canShare?.({ files: [{}] })).toBe(false);
+    expect(navegador.canShare?.()).toBe(true);
+  });
+
+  it('só entra quando pedido', () => {
+    expect(gerarInjecao({ hideSelectors: [], customCss: '', contexto })).not.toContain('share');
   });
 });

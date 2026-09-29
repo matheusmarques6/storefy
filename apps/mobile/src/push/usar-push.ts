@@ -59,7 +59,7 @@ export interface UsoDoPush {
   /** Eventos que a página dispara. */
   aoMudarCarrinho: (carrinho: CarrinhoParaTag & { token?: string; currency?: string }) => void;
   aoIniciarCheckout: (token: string, itens: number) => void;
-  aoConcluirPedido: (pedido: { totalCents: number; currency?: string }) => void;
+  aoConcluirPedido: (pedido: { totalCents?: number; currency?: string }) => void;
   aoIdentificarCliente: (customerId: string | undefined) => void;
 }
 
@@ -303,7 +303,7 @@ export function usarPush({ ambiente, config, ativo, navegar }: Opcoes): UsoDoPus
   );
 
   const aoConcluirPedido = useCallback(
-    (pedido: { totalCents: number; currency?: string }): void => {
+    (pedido: { totalCents?: number; currency?: string }): void => {
       void pedidoConcluido(dependencias, inscricao, pedido);
     },
     [dependencias, inscricao],

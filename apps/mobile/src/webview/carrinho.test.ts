@@ -578,6 +578,33 @@ describe('observador diante de /cart.js incompleto', () => {
     expect(mensagem).toEqual({ type: 'CART_UPDATED', count: 1 });
   });
 
+  it('o token sai da página SEM a chave secreta', async () => {
+    // A chave dá acesso aos dados do comprador; a Shopify manda tratá-la como
+    // senha. O pedido carrega só o token, e é por ele que acha o aparelho.
+    const ambiente = criarAmbiente({
+      cartJs: () =>
+        Promise.resolve(
+          respostaCom({ item_count: 1, token: 'Z2NwLXVzLWVhc3Q?key=0d9909213054e22d' }),
+        ),
+    });
+    ambiente.injetar();
+    await ambiente.escoar();
+
+    const mensagem = comoCartUpdated(unica(ambiente.mensagens));
+    expect(mensagem.token).toBe('Z2NwLXVzLWVhc3Q');
+    expect(JSON.stringify(ambiente.mensagens)).not.toContain('0d9909213054e22d');
+  });
+
+  it('token que é só a chave não vira token', async () => {
+    const ambiente = criarAmbiente({
+      cartJs: () => Promise.resolve(respostaCom({ item_count: 1, token: '?key=segredo' })),
+    });
+    ambiente.injetar();
+    await ambiente.escoar();
+
+    expect(comoCartUpdated(unica(ambiente.mensagens))).toEqual({ type: 'CART_UPDATED', count: 1 });
+  });
+
   it('aceita carrinho vazio com token', async () => {
     const ambiente = criarAmbiente({
       cartJs: () =>

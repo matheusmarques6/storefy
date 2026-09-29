@@ -5,7 +5,12 @@
  * fictício no produto, e a exceção vale apenas para testes automatizados.
  */
 import { describe, expect, it } from 'vitest';
-import { AppConfigSchema, parseAppConfig, safeParseAppConfig } from './index';
+import {
+  AppConfigSchema,
+  parseAppConfig,
+  safeParseAppConfig,
+  tokenDoCarrinhoSemChave,
+} from './index';
 import type { AppConfigInput } from './index';
 
 /** Config mínima e válida: só os campos obrigatórios, sem nenhum default. */
@@ -371,3 +376,23 @@ function configComTema(parcial: Record<string, string>) {
 function configComAbas(abas: unknown[]) {
   return { ...configBase(), tabs: abas };
 }
+
+describe('tokenDoCarrinhoSemChave', () => {
+  it('tira a chave secreta que o /cart.js devolve junto', () => {
+    // A chave dá acesso aos dados do comprador; o pedido carrega só o token.
+    expect(
+      tokenDoCarrinhoSemChave('Z2NwLXVzLXdlc3QxOjAxSjBQTVk1?key=0d9909213054e22d092152de385763f0'),
+    ).toBe('Z2NwLXVzLXdlc3QxOjAxSjBQTVk1');
+  });
+
+  it('o token no formato antigo passa como está', () => {
+    expect(tokenDoCarrinhoSemChave('c1-7a2abe82733a34e84aa472d57fb5c3c1')).toBe(
+      'c1-7a2abe82733a34e84aa472d57fb5c3c1',
+    );
+  });
+
+  it('sem token de sobra, não inventa um', () => {
+    expect(tokenDoCarrinhoSemChave('?key=so-a-chave')).toBeUndefined();
+    expect(tokenDoCarrinhoSemChave('   ')).toBeUndefined();
+  });
+});

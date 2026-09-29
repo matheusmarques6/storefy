@@ -12,8 +12,10 @@
  * público que o revisor abre. A Storefy hospeda o dela, montado a partir do
  * que o app realmente faz.
  */
-import { ExternalLink, Image as Imagem } from 'lucide-react';
+import Link from 'next/link';
+import { ExternalLink, Image as Imagem, ScanFace } from 'lucide-react';
 import type { CampoDaFicha } from '@/lib/ficha-da-loja';
+import { LIMITE_DAS_NOTAS } from '@/lib/notas-da-revisao';
 import { CAPTURAS, ondeTirar } from '@/lib/capturas-da-loja';
 import { Button } from '@/components/ui/button';
 import { LinhaCopiavel } from '@/components/linha-copiavel';
@@ -21,11 +23,14 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 
 export function FichaDaLoja({
   campos,
+  notasDaRevisao,
   urlDaPolitica,
   temContato,
   jaPublicado,
 }: {
   campos: readonly CampoDaFicha[];
+  /** Montadas da config no ar; nulas antes da primeira publicação. */
+  notasDaRevisao: string | null;
   urlDaPolitica: string;
   /** A loja preencheu o e-mail de atendimento? */
   temContato: boolean;
@@ -96,6 +101,53 @@ export function FichaDaLoja({
               <LinhaCopiavel valor={campo.valor} />
             </div>
           ))}
+        </CardContent>
+      </Card>
+
+      {/*
+        A recusa mais comum de app de loja é a 4.2 ("é só um site"). O revisor
+        decide pelo que VÊ de nativo, e vê mais depressa quando alguém diz onde
+        olhar — por isso as notas saem da config no ar, a que ele abre.
+      */}
+      <Card role="region" aria-labelledby="notas-da-revisao">
+        <CardHeader>
+          <CardTitle id="notas-da-revisao" className="flex items-center gap-2 text-base">
+            <ScanFace className="size-4" aria-hidden />
+            Notas para a revisão da Apple
+          </CardTitle>
+          <CardDescription>
+            Mostram ao revisor os recursos nativos do seu app, que é o que evita a recusa por “app
+            que é só um site”. Ficam em inglês, a língua da equipe de revisão.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {notasDaRevisao === null ? (
+            <p className="text-muted-foreground text-sm">
+              Publique o app no{' '}
+              <Link href="/app" className="text-foreground underline underline-offset-4">
+                editor
+              </Link>{' '}
+              para montar as notas. Elas descrevem o que está no ar, que é o que o revisor abre.
+            </p>
+          ) : (
+            <>
+              <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                <span className="text-sm font-medium">Notes</span>
+                <span className="text-muted-foreground text-xs">
+                  App Store Connect › App Review Information
+                </span>
+                <span className="text-muted-foreground ml-auto text-xs tabular-nums">
+                  {notasDaRevisao.length}/{LIMITE_DAS_NOTAS}
+                </span>
+              </div>
+              <LinhaCopiavel valor={notasDaRevisao} />
+              <p className="text-muted-foreground text-xs">
+                Mudou algo no editor? Publique de novo antes de enviar o app: as notas acompanham o
+                que está no ar. Se a sua loja deixa comprar sem conta, marque também que o app não
+                exige login (Sign-in required).
+              </p>
+            </>
+          )}
         </CardContent>
       </Card>
 

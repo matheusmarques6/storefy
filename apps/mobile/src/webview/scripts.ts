@@ -17,6 +17,7 @@ import { gerarApiDaPagina, gerarInjecao } from '@storefy/bridge';
 import type { AppConfig } from '@storefy/config-schema';
 import { gerarObservadorDeCarrinho } from './carrinho';
 import { gerarMarcaDoApp } from './atribuicao';
+import { gerarIdentificacaoDoCliente } from './cliente';
 
 export interface ContextoDoApp {
   platform: 'ios' | 'android';
@@ -32,17 +33,27 @@ export function scriptAntesDoConteudo(config: AppConfig, contexto: ContextoDoApp
     contexto,
     // O zoom por pinça é o que mais entrega que ali dentro tem um site.
     bloquearZoom: true,
+    // O botão "Compartilhar" dos temas da Shopify abre a folha do sistema.
+    compartilharNativo: true,
   });
 }
 
 /**
  * O carrinho precisa ser observado nesta config?
  *
- * Sem nenhuma aba mostrando a contagem, observar custaria uma leitura de
- * `/cart.js` em toda página, para alimentar um número que ninguém vê.
+ * Numa loja Shopify, SEMPRE. O badge é só o efeito visível: o carrinho
+ * abandonado nasce dos eventos de carrinho, o token que liga o pedido ao
+ * aparelho vem da leitura de `/cart.js`, e nada disso depende de uma aba
+ * mostrar a contagem. Condicionar ao badge desligaria em silêncio a automação
+ * que o lojista ligou no painel, só porque ele tirou o número da barra.
+ *
+ * Fora da Shopify, `/cart.js` não existe: só vale observar se alguma aba
+ * mostra a contagem, e o tema responder no mesmo formato.
  */
 export function observaCarrinho(config: AppConfig): boolean {
-  return config.tabs.some((aba) => aba.badge === 'cart_count');
+  return (
+    config.store.platform === 'shopify' || config.tabs.some((aba) => aba.badge === 'cart_count')
+  );
 }
 
 /**
@@ -70,6 +81,8 @@ export function scriptDepoisDoConteudo(config: AppConfig): string {
    */
   if (marcaOCarrinho(config)) partes.push(gerarMarcaDoApp());
   if (observaCarrinho(config)) partes.push(gerarObservadorDeCarrinho());
+  // Quem é o cliente: só a Shopify põe o id dele na página.
+  if (config.store.platform === 'shopify') partes.push(gerarIdentificacaoDoCliente());
   // Termina em `true;`: no iOS, um retorno não serializável derruba a injeção
   // com um aviso que não aparece em lugar nenhum.
   return `${partes.join('\n')}\ntrue;`;

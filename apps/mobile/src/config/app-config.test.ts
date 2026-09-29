@@ -7,7 +7,9 @@
  * domínio da loja de desenvolvimento nos links universais, e o runtime do OTA
  * acompanhava a versão da loja.
  */
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { ExpoConfig } from 'expo/config';
 
 const ORIGINAL = { ...process.env };
@@ -61,5 +63,76 @@ describe('app.config.ts', () => {
 
     expect(config.scheme).toBe('storefy-8f2c1a3e');
     expect((config.extra as { apiBase: string }).apiBase).toBe('https://painel.exemplo.com');
+  });
+});
+
+/*
+ * O build de loja nunca herda identidade de outra loja. Os padrões do
+ * `app.config.ts` são do desenvolvimento local; antes eram os de uma loja de
+ * verdade, e um workflow que esquecesse uma variável geraria o app com o nome,
+ * o bundle ou o domínio dela.
+ */
+describe('build de loja', () => {
+  const PASTA = join(import.meta.dirname, '../../brands/teste-identidade');
+
+  beforeAll(() => {
+    mkdirSync(PASTA, { recursive: true });
+    writeFileSync(join(PASTA, 'icon.png'), '');
+    writeFileSync(join(PASTA, 'splash.png'), '');
+  });
+
+  afterAll(() => {
+    rmSync(PASTA, { recursive: true, force: true });
+  });
+
+  const LOJA = {
+    STORE_ID: 'teste-identidade',
+    APP_NAME: 'Loja Aurora',
+    APP_SLUG: 'storefy-aurora',
+    IOS_BUNDLE_ID: 'me.convertfy.storefy.aurora',
+    ANDROID_PACKAGE: 'me.convertfy.storefy.aurora',
+    STORE_DOMAIN: 'www.aurora.com.br',
+  };
+
+  it('usa a identidade que o workflow mandou', async () => {
+    const config = await avaliar(LOJA);
+    expect(config.name).toBe('Loja Aurora');
+    expect(config.slug).toBe('storefy-aurora');
+    expect(config.ios?.bundleIdentifier).toBe('me.convertfy.storefy.aurora');
+    expect(config.android?.package).toBe('me.convertfy.storefy.aurora');
+  });
+
+  it('sem nome ou slug, o build para dizendo qual falta', async () => {
+    await expect(avaliar({ ...LOJA, APP_NAME: '' })).rejects.toThrow('falta a variável APP_NAME');
+    await expect(avaliar({ ...LOJA, APP_SLUG: '' })).rejects.toThrow('falta a variável APP_SLUG');
+  });
+
+  it('sem bundle ou package, o campo fica de fora, e nunca é o de outra loja', async () => {
+    const config = await avaliar({ ...LOJA, IOS_BUNDLE_ID: '', ANDROID_PACKAGE: '' });
+    expect(config.ios?.bundleIdentifier).toBeUndefined();
+    expect(config.android?.package).toBeUndefined();
+  });
+
+  it('sem domínio, não reclama site nenhum', async () => {
+    const config = await avaliar({ ...LOJA, STORE_DOMAIN: '' });
+    expect(config.ios?.associatedDomains).toEqual([]);
+    expect(config.android?.intentFilters).toEqual([]);
+  });
+});
+
+describe('desenvolvimento local', () => {
+  it('os padrões não são de loja nenhuma', async () => {
+    const config = await avaliar({
+      STORE_ID: '',
+      APP_NAME: '',
+      APP_SLUG: '',
+      IOS_BUNDLE_ID: '',
+      ANDROID_PACKAGE: '',
+      STORE_DOMAIN: '',
+    });
+    expect(config.name).toBe('Storefy Dev');
+    expect(config.slug).toBe('storefy-desenvolvimento');
+    expect(config.ios?.bundleIdentifier).toBe('me.convertfy.storefy.desenvolvimento');
+    expect(config.ios?.associatedDomains).toEqual([]);
   });
 });

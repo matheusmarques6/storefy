@@ -22,6 +22,7 @@ import {
 import { Linking, Platform, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 import { WebView, type WebViewMessageEvent, type WebViewNavigation } from 'react-native-webview';
 import type {
+  ShouldStartLoadRequest,
   WebViewErrorEvent,
   WebViewHttpErrorEvent,
   WebViewProgressEvent,
@@ -62,6 +63,18 @@ interface Props {
   registrarControle: (id: string, controle: ControleDaAba | null) => void;
   /** Chamado quando a página termina de carregar. Serve para sumir a splash. */
   aoCarregar?: () => void;
+  /**
+   * Consultado antes de cada navegação dentro da loja. `true` cancela a
+   * navegação NESTA aba: a casca levou o cliente para outro lugar — a aba
+   * Conta, quando ela está protegida pelo Face ID.
+   */
+  desviar?: (url: string) => boolean;
+  /**
+   * Cada endereço por onde a aba passa, para a casca ler o que ele conta: o
+   * checkout, a página de obrigado, a saída da conta (`webview/jornada.ts`).
+   * Chega mais de uma vez para o mesmo endereço — quem ouve não conta duas.
+   */
+  aoVerEndereco?: (url: string) => void;
 }
 
 type Falha = 'rede' | 'servidor' | null;
@@ -76,6 +89,8 @@ export function AbaWebView({
   aoAgir,
   registrarControle,
   aoCarregar,
+  desviar,
+  aoVerEndereco,
 }: Props): React.ReactNode {
   // `ComponentRef<typeof WebView>` e não `WebView`: a classe é genérica, e
   // `useRef<WebView>` fixa um parâmetro que não bate com o que o `ref` espera.
@@ -156,10 +171,18 @@ export function AbaWebView({
   );
 
   const aoPedirNavegacao = useCallback(
-    (pedido: WebViewNavigation): boolean => {
+    (pedido: ShouldStartLoadRequest): boolean => {
       const destino = decidirNavegacao(pedido.url, urlAtual.current, config.store.domains);
 
-      if (destino.destino === 'webview') return true;
+      if (destino.destino === 'webview') {
+        // Só a página inteira: um iframe do tema não é o cliente navegando.
+        if (!pedido.isTopFrame) return true;
+        if (desviar?.(pedido.url) === true) return false;
+        // Aqui passam os redirecionamentos do servidor (sair da conta volta
+        // para a home), que a mudança de estado abaixo às vezes nem mostra.
+        aoVerEndereco?.(pedido.url);
+        return true;
+      }
       if (destino.destino === 'externo') {
         void Linking.openURL(destino.url).catch(() => {
           // App não instalado ou esquema sem quem atenda. Nada a fazer aqui:
@@ -168,7 +191,7 @@ export function AbaWebView({
       }
       return false;
     },
-    [config.store.domains],
+    [config.store.domains, desviar, aoVerEndereco],
   );
 
   const aoTerminar = useCallback((): void => {
@@ -231,6 +254,9 @@ export function AbaWebView({
       onNavigationStateChange={(estado: WebViewNavigation): void => {
         podeVoltar.current = estado.canGoBack;
         urlAtual.current = estado.url;
+        // E aqui as trocas de endereço sem página nova, como a do checkout
+        // novo da Shopify, que chega ao obrigado sem recarregar.
+        aoVerEndereco?.(estado.url);
       }}
       onLoadProgress={(evento: WebViewProgressEvent): void => {
         setProgresso(evento.nativeEvent.progress);

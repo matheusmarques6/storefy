@@ -22,6 +22,7 @@ import 'server-only';
  * de um ataque de repetição. O motivo vai para o nosso log; o app recebe 401.
  */
 import { z } from 'zod';
+import { tokenDoCarrinhoSemChave } from '@storefy/config-schema';
 import { conferirAssinatura, CABECALHO_DA_ASSINATURA } from '@/lib/assinatura';
 import { descriptografar, criptografiaConfigurada } from '@/lib/cripto';
 
@@ -57,7 +58,18 @@ export const CorpoDoEvento = z.object({
   subscriptionId: inscricao,
   event: z.enum(['add', 'update', 'checkout_started', 'purchased']),
   itemCount: z.int().min(0).max(100_000),
-  cartToken: z.string().trim().min(1).max(128).optional(),
+  /*
+   * Sem a chave secreta (`?key=`): um app antigo ainda manda o token como o
+   * `/cart.js` devolve, e a chave dá acesso aos dados do comprador. O tamanho é
+   * conferido depois de limpar — a Shopify avisa que o formato e o tamanho do
+   * token mudam sem aviso, e recusar o evento por isso desligaria o carrinho
+   * abandonado.
+   */
+  cartToken: z
+    .string()
+    .transform((token) => tokenDoCarrinhoSemChave(token))
+    .pipe(z.string().max(256).optional())
+    .optional(),
   valueCents: z.int().min(0).optional(),
   currency: z.string().trim().length(3).optional(),
 });

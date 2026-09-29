@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { destinoDoLink, ehCheckout, mesmoDominio, type ContextoDoLink } from './links';
+import {
+  destinoDoLink,
+  ehCheckout,
+  ehContaDaShopify,
+  mesmoDominio,
+  type ContextoDoLink,
+} from './links';
 
 const contexto: ContextoDoLink = {
   urlAtual: 'https://minha-loja.com.br/produtos/camiseta',
@@ -95,6 +101,43 @@ describe('destinoDoLink — checkout NUNCA sai da WebView', () => {
     expect(destinoDoLink('https://outra-marca.com/checkouts/abc', contexto)).toEqual({
       destino: 'webview',
     });
+  });
+});
+
+describe('destinoDoLink — a conta de cliente da Shopify fica no app', () => {
+  // O `/account` da loja redireciona para `shopify.com/<id>/account`. Fora do
+  // app, o toque na aba Conta abriria o navegador, e o login de lá não valeria
+  // aqui dentro.
+  it('as páginas da conta e o login delas', () => {
+    for (const url of [
+      'https://shopify.com/12345/account',
+      'https://shopify.com/12345/account/orders/678?locale=pt-BR',
+      'https://shopify.com/authentication/12345/login?client_id=abc&locale=pt-BR',
+      'https://www.shopify.com/12345/account/profile',
+    ]) {
+      expect(destinoDoLink(url, contexto), url).toEqual({ destino: 'webview' });
+    }
+  });
+
+  it('o resto de shopify.com continua saindo', () => {
+    for (const url of [
+      'https://shopify.com/',
+      'https://shopify.com/br/precos',
+      'https://shopify.com/12345/outra-coisa',
+      'https://shopify.com/authentication/login',
+    ]) {
+      expect(destinoDoLink(url, contexto), url).toEqual({ destino: 'externo', url });
+    }
+  });
+
+  it('não se deixa enganar por host parecido', () => {
+    for (const url of [
+      'https://shopify.com.evil.com/12345/account',
+      'https://evilshopify.com/12345/account',
+      'https://evil.com/12345/account',
+    ]) {
+      expect(ehContaDaShopify(new URL(url)), url).toBe(false);
+    }
   });
 });
 

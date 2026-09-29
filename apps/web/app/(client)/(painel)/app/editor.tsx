@@ -47,7 +47,7 @@ const SECOES: { id: Secao; rotulo: string; descricao: string }[] = [
   { id: 'aparencia', rotulo: 'Aparência', descricao: 'Cores do app e barra de status.' },
   { id: 'abas', rotulo: 'Abas', descricao: 'O que aparece na barra de baixo, e em que ordem.' },
   { id: 'loja', rotulo: 'Loja', descricao: 'O que esconder do site dentro do app.' },
-  { id: 'recursos', rotulo: 'Recursos', descricao: 'Boas-vindas, banner e notificações.' },
+  { id: 'recursos', rotulo: 'Recursos', descricao: 'Boas-vindas, banner, notificações e Face ID.' },
   { id: 'versoes', rotulo: 'Versões', descricao: 'O que já foi publicado, e como voltar atrás.' },
 ];
 

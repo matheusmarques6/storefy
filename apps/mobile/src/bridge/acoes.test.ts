@@ -152,6 +152,25 @@ describe('acaoParaMensagem — recurso que este build não tem', () => {
     });
   });
 
+  it('o token do carrinho segue SEM a chave secreta, venha de onde vier', () => {
+    // O nosso observador já limpa; um script do tema, não se sabe.
+    expect(
+      acaoParaMensagem(
+        comoPostMessage({ type: 'CART_UPDATED', count: 1, token: 'Z2Nw?key=segredo' }),
+        COMPLETO,
+      ),
+    ).toMatchObject({ tipo: 'carrinho', token: 'Z2Nw' });
+    expect(
+      acaoParaMensagem(
+        comoPostMessage({ type: 'CHECKOUT_STARTED', token: 'Z2Nw?key=segredo' }),
+        COMPLETO,
+      ),
+    ).toEqual({ tipo: 'checkout-iniciado', token: 'Z2Nw' });
+    expect(
+      acaoParaMensagem(comoPostMessage({ type: 'CHECKOUT_STARTED', token: '?key=x' }), COMPLETO),
+    ).toMatchObject({ tipo: 'ignorar' });
+  });
+
   it('todo motivo de ignorar é uma frase, nunca vazio', () => {
     const casos: unknown[] = [
       comoPostMessage({ type: 'REQUEST_PUSH_PERMISSION' }),

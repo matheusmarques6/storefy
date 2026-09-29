@@ -25,6 +25,11 @@
  * `totalCents: 0` para um carrinho cheio seria dado falso gravado em
  * `cart_events` (regra 1 do CLAUDE.md). Sem `item_count` não há mensagem: é o
  * número do badge, e é a única coisa que `CART_UPDATED` exige.
+ *
+ * O TOKEN SAI SEM A CHAVE. O `/cart.js` devolve `<token>?key=<segredo>`, e a
+ * chave dá acesso aos dados do comprador — a Shopify manda tratá-la como
+ * senha. O que liga o pedido ao aparelho é só o token (é o que o pedido
+ * carrega), então a chave nem sai da página.
  */
 
 /** Caminhos que mudam o carrinho na Shopify. */
@@ -116,7 +121,7 @@ fetchOriginal('/cart.js',{credentials:'same-origin',headers:{'Accept':'applicati
 .then(function(c){
 if(!c||!inteiro(c.item_count))return;
 var carga={type:'CART_UPDATED',count:c.item_count};
-if(typeof c.token==='string'&&c.token)carga.token=c.token;
+if(typeof c.token==='string'){var t=c.token.split('?')[0].trim();if(t)carga.token=t;}
 if(inteiro(c.total_price))carga.totalCents=c.total_price;
 if(typeof c.currency==='string'&&c.currency.length===3)carga.currency=c.currency;
 postar(carga);

@@ -2724,6 +2724,51 @@ select tests.ok('shopify',
   'e ele fica ligado ao aparelho que montou aquele carrinho');
 
 /*
+ * O `/cart.js` devolve `<token>?key=<segredo>`, e a chave dá acesso aos dados
+ * do comprador: a Shopify manda tratá-la como senha. O pedido do webhook vem
+ * com o token SEM a chave — gravada de um lado só, o pedido nunca casaria com
+ * o aparelho.
+ */
+insert into public.cart_events (app_id, device_id, cart_token, event, item_count)
+select app_a, (select id from public.devices where app_id = (select app_a from tests.lojas) limit 1),
+       'Z2NwLXVzLWVhc3Q?key=segredo-do-comprador', 'add', 1
+  from tests.lojas;
+
+select tests.ok('carrinho sem chave',
+  tests.contar($q$select count(*) from public.cart_events where cart_token like '%segredo%'$q$) = 0,
+  'a chave secreta do carrinho nunca fica guardada');
+
+select tests.ok('carrinho sem chave',
+  tests.contar($q$select count(*) from public.cart_events where cart_token = 'Z2NwLXVzLWVhc3Q'$q$) = 1,
+  'o token fica, sem a chave');
+
+select tests.ok('carrinho sem chave',
+  (select public.registrar_pedido(
+     (select app_a from tests.lojas), '99998', 'app', 7000, now(), '#1003', 'BRL',
+     'Z2NwLXVzLWVhc3Q')),
+  'o pedido do webhook, com o token sem a chave, é gravado');
+
+select tests.ok('carrinho sem chave',
+  (select device_id is not null from public.shop_orders where shopify_order_id = '99998')
+  or not exists (select 1 from public.devices where app_id = (select app_a from tests.lojas)),
+  'e casa com o aparelho que montou o carrinho');
+
+update public.cart_events set cart_token = 'outro?key=mais-um-segredo'
+ where cart_token = 'Z2NwLXVzLWVhc3Q';
+
+select tests.ok('carrinho sem chave',
+  tests.contar($q$select count(*) from public.cart_events where cart_token = 'outro'$q$) = 1,
+  'nem numa atualização a chave entra');
+
+insert into public.cart_events (app_id, cart_token, event, item_count)
+select app_a, '?key=so-a-chave', 'add', 1 from tests.lojas;
+
+select tests.ok('carrinho sem chave',
+  tests.contar($q$select count(*) from public.cart_events
+                where cart_token = '' or cart_token like '%so-a-chave%'$q$) = 0,
+  'token que só tem a chave vira nulo, e não texto vazio');
+
+/*
  * `shop/redact` chega 48 horas depois da desinstalação e é OBRIGATÓRIO: é o que
  * a lei de privacidade exige e o que a revisão do app da Shopify confere.
  */

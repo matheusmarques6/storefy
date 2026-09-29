@@ -30,6 +30,7 @@ export function SecaoRecursos({
   numeroExigivel: number | null;
 }) {
   const { features } = config;
+  const temAbaConta = config.tabs.some((aba) => aba.type === 'account');
 
   function trocarSlide(
     indice: number,
@@ -251,6 +252,30 @@ export function SecaoRecursos({
             disabled={somenteLeitura}
             onCheckedChange={(proximo) => {
               aoMudar(editarRecursos(config, { rateAppPrompt: proximo }));
+            }}
+          />
+        </div>
+
+        {/*
+          M06: a trava fica na aba Conta. Sem ela não há o que proteger — a
+          chave desliga, mas continua podendo ser desligada, para ninguém ficar
+          com um recurso ligado que não consegue mais desligar.
+        */}
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h3 className="text-sm font-medium">Proteger a conta com Face ID ou digital</h3>
+            <p className="text-muted-foreground mt-1 text-sm">
+              {temAbaConta
+                ? 'Para ver os pedidos e os dados na aba Conta, o cliente confirma com o rosto, a digital ou a senha do celular. Em celular sem nada disso cadastrado, a aba abre normalmente.'
+                : 'Precisa da aba Conta, que é a parte protegida. Adicione-a em Abas para usar.'}
+            </p>
+          </div>
+          <Switch
+            aria-label="Proteger a conta com Face ID ou digital"
+            checked={features.biometricLogin}
+            disabled={somenteLeitura || (!temAbaConta && !features.biometricLogin)}
+            onCheckedChange={(proximo) => {
+              aoMudar(editarRecursos(config, { biometricLogin: proximo }));
             }}
           />
         </div>

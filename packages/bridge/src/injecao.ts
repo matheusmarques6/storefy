@@ -29,6 +29,17 @@ export interface OpcoesDeInjecao {
   };
   /** Desativa o zoom por pinça, via meta viewport (seção 5.4). */
   bloquearZoom?: boolean;
+  /**
+   * `navigator.share` passa a abrir a folha de compartilhar do sistema.
+   *
+   * Os temas da Shopify já têm botão de compartilhar, e ele usa
+   * `navigator.share` quando existe. A WebView do Android não tem essa função
+   * — o botão cai em "copiar link" — e nenhum tema chama `window.Storefy`.
+   * Com a função instalada ANTES do conteúdo, o botão do tema vê que ela
+   * existe e passa a abrir a folha nativa, sem o lojista mexer em nada.
+   * Onde o sistema já tem a sua (o iOS), a dele fica.
+   */
+  compartilharNativo?: boolean;
 }
 
 /** Identificador do nosso `<style>`, para não duplicar em nova navegação. */
@@ -75,6 +86,38 @@ export function comoLiteralJs(valor: string): string {
 }
 
 /**
+ * `navigator.share` pela ponte, onde o sistema não tem o seu.
+ *
+ * Segue a especificação no que o tema percebe: devolve uma promessa, recusa
+ * com `TypeError` o endereço que não é http(s) e não finge ter compartilhado
+ * quando não há app do outro lado (a mesma página abre no navegador).
+ * `canShare` diz não a arquivo, que a ponte não carrega.
+ */
+function gerarCompartilhar(): string {
+  return [
+    `var n=window.navigator;`,
+    `if(n&&typeof n.share!=='function'){`,
+    `n.share=function(dados){`,
+    `try{`,
+    `var d=dados||{};`,
+    `var u=new URL(typeof d.url==='string'&&d.url.trim()?d.url.trim():String(location.href),String(location.href));`,
+    `if(u.protocol!=='http:'&&u.protocol!=='https:')return Promise.reject(new TypeError('URL inválida'));`,
+    `var carga={type:'SHARE',url:u.toString()};`,
+    `var t=typeof d.title==='string'&&d.title.trim()?d.title.trim():typeof d.text==='string'?d.text.trim():'';`,
+    `if(t)carga.title=t.slice(0,200);`,
+    `var ponte=window.ReactNativeWebView;`,
+    `if(ponte&&ponte.postMessage){ponte.postMessage(JSON.stringify(carga));return Promise.resolve();}`,
+    `}catch(erro){return Promise.reject(new TypeError('URL inválida'));}`,
+    `return Promise.reject(new Error('Compartilhar indisponível.'));`,
+    `};`,
+    `if(typeof n.canShare!=='function'){`,
+    `n.canShare=function(dados){return !(dados&&dados.files&&dados.files.length);};`,
+    `}`,
+    `}`,
+  ].join('');
+}
+
+/**
  * O script completo para `injectedJavaScriptBeforeContentLoaded`.
  *
  * Termina em `true;`: sem isso, o valor da última expressão volta para a ponte
@@ -110,6 +153,10 @@ export function gerarInjecao(opcoes: OpcoesDeInjecao): string {
       `(document.head||document.documentElement).appendChild(v);}`,
       `v.content='width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover';`,
     );
+  }
+
+  if (opcoes.compartilharNativo === true) {
+    partes.push(`}catch(erro){}try{`, gerarCompartilhar());
   }
 
   const custom = opcoes.customJs?.trim() ?? '';

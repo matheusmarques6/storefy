@@ -124,6 +124,8 @@ export function destinoDoLink(url: string, contexto: ContextoDoLink): DestinoDoL
   // O checkout vem antes da lista de domínios: ele roda em host da Shopify,
   // que o lojista não teria por que listar, e precisa ficar na mesma WebView.
   if (ehCheckout(resolvida)) return { destino: 'webview' };
+  // A conta do cliente também, pelo mesmo motivo (ver `ehContaDaShopify`).
+  if (ehContaDaShopify(resolvida)) return { destino: 'webview' };
 
   const permitidos = [
     hostDaEntrada(contexto.urlAtual),
@@ -135,6 +137,23 @@ export function destinoDoLink(url: string, contexto: ContextoDoLink): DestinoDoL
   }
 
   return { destino: 'externo', url: resolvida.toString() };
+}
+
+/**
+ * A URL é da conta de cliente da Shopify?
+ *
+ * As contas de cliente novas — o padrão das lojas Shopify, depois que as
+ * antigas foram aposentadas — moram em `shopify.com/<id da loja>/account`, e o
+ * login delas em `shopify.com/authentication/<id da loja>/...`. O `/account` da
+ * loja redireciona para lá. Tratadas como link externo, o toque na aba Conta
+ * jogaria o cliente no navegador, e o login feito lá não valeria no app.
+ *
+ * SÓ esses caminhos: o resto de `shopify.com` — o site da própria Shopify —
+ * não é da loja e continua saindo do app.
+ */
+export function ehContaDaShopify(url: URL): boolean {
+  if (normalizarHost(url.hostname) !== 'shopify.com') return false;
+  return /^\/(?:\d+\/account|authentication\/\d+)(?:\/|$)/i.test(url.pathname);
 }
 
 /** A URL é uma etapa do checkout? */

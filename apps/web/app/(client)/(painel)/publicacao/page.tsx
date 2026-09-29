@@ -7,6 +7,7 @@ import { criarClientServidor } from '@/lib/supabase/server';
 import { dadosDaPublicacao, temBuildEmAndamento } from '@/lib/publicacao-servidor';
 import { montarChecklist } from '@/lib/checklist-de-publicacao';
 import { montarFicha } from '@/lib/ficha-da-loja';
+import { montarNotasDaRevisao } from '@/lib/notas-da-revisao';
 import { urlDoSite } from '@/lib/env';
 import { EstadoVazio } from '@/components/estado-vazio';
 import { Button } from '@/components/ui/button';
@@ -78,6 +79,16 @@ export default async function PaginaDePublicacao() {
           urlDaLoja: dados.loja.url,
           pushLigado: dados.estado.pushLigado,
         })}
+        notasDaRevisao={
+          dados.configPublicada === null
+            ? null
+            : montarNotasDaRevisao({
+                nomeDaLoja: dados.loja.nome,
+                urlDaLoja: dados.loja.url,
+                pushLigado: dados.estado.pushLigado,
+                config: dados.configPublicada,
+              })
+        }
         urlDaPolitica={`${urlDoSite()}/privacy/${lojaAtiva.id}`}
         temContato={dados.loja.temContato}
         jaPublicado={dados.builds.some(

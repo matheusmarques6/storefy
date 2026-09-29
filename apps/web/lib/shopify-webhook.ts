@@ -12,7 +12,11 @@ import 'server-only';
  */
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '@storefy/db';
-import { ATRIBUTO_DO_CARRINHO, VALOR_DO_ATRIBUTO } from '@storefy/config-schema';
+import {
+  ATRIBUTO_DO_CARRINHO,
+  VALOR_DO_ATRIBUTO,
+  tokenDoCarrinhoSemChave,
+} from '@storefy/config-schema';
 import type { Topico } from '@/lib/shopify';
 
 type Client = SupabaseClient<Database>;
@@ -296,7 +300,8 @@ async function gravarPedido(
     // e a função usa o próprio default dela.
     p_order_number: texto(pedido, 'name') ?? texto(pedido, 'order_number') ?? undefined,
     p_currency: texto(pedido, 'currency') ?? undefined,
-    p_cart_token: texto(pedido, 'cart_token') ?? undefined,
+    // Casado com o token que o app reportou, que chega sem a chave secreta.
+    p_cart_token: tokenDoCarrinhoSemChave(texto(pedido, 'cart_token') ?? ''),
   });
   if (error != null) throw new Error(error.message);
 

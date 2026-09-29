@@ -389,6 +389,20 @@ describe('pedidoConcluido', () => {
     vi.unstubAllGlobals();
   });
 
+  it('sem valor dito pela página, o evento vai sem valor, e não com um estimado', async () => {
+    // Visto pelo endereço da página de obrigado, o app sabe QUE comprou.
+    const { notificador } = fingirNotificador();
+    const { buscador, enviados } = fingirRede();
+    vi.stubGlobal('fetch', buscador);
+
+    await expect(pedidoConcluido(dependencias(notificador), 'sub-1', {})).resolves.toBe(true);
+    expect(enviados[0]?.corpo).toMatchObject({ event: 'purchased', itemCount: 0 });
+    expect(enviados[0]?.corpo).not.toHaveProperty('valueCents');
+    expect(enviados[0]?.corpo).not.toHaveProperty('currency');
+
+    vi.unstubAllGlobals();
+  });
+
   it('diz que NÃO deu certo quando o servidor recusa', async () => {
     const { notificador } = fingirNotificador();
     const { buscador } = fingirRede(503);

@@ -12,6 +12,7 @@
  * estado, não um erro engolido (regras 1 e 3 do CLAUDE.md).
  */
 import { lerMensagemDaWeb } from '@storefy/bridge';
+import { tokenDoCarrinhoSemChave } from '@storefy/config-schema';
 
 export type AcaoNativa =
   /** Alimenta o badge da aba do carrinho. */
@@ -22,7 +23,12 @@ export type AcaoNativa =
   | { tipo: 'pedir-push' }
   | { tipo: 'identificar-cliente'; customerId?: string; emailHash?: string }
   | { tipo: 'checkout-iniciado'; token: string }
-  | { tipo: 'pedido-concluido'; orderId: string; totalCents: number; pedirAvaliacao: boolean }
+  /**
+   * `totalCents` só quando a página disse o valor. Visto pelo endereço da
+   * página de obrigado, o app sabe QUE comprou, não QUANTO — e o valor de
+   * verdade chega pelo webhook de pedidos da Shopify.
+   */
+  | { tipo: 'pedido-concluido'; orderId: string; totalCents?: number; pedirAvaliacao: boolean }
   /** "Me avise quando voltar": o botão da página do produto foi tocado. */
   | { tipo: 'avisar-de-volta'; variantId: string; path?: string }
   | { tipo: 'ignorar'; motivo: string };
@@ -52,7 +58,8 @@ export function acaoParaMensagem(bruta: unknown, contexto: ContextoDasAcoes): Ac
       return {
         tipo: 'carrinho',
         count: mensagem.count,
-        token: mensagem.token,
+        // O nosso observador já manda limpo; um script do tema, não se sabe.
+        token: mensagem.token === undefined ? undefined : tokenDoCarrinhoSemChave(mensagem.token),
         totalCents: mensagem.totalCents,
         currency: mensagem.currency,
       };
@@ -82,10 +89,15 @@ export function acaoParaMensagem(bruta: unknown, contexto: ContextoDasAcoes): Ac
           }
         : { tipo: 'ignorar', motivo: 'Push ainda não configurado neste app.' };
 
-    case 'CHECKOUT_STARTED':
-      return contexto.eventos
-        ? { tipo: 'checkout-iniciado', token: mensagem.token }
-        : { tipo: 'ignorar', motivo: 'Eventos de carrinho ainda não configurados.' };
+    case 'CHECKOUT_STARTED': {
+      if (!contexto.eventos) {
+        return { tipo: 'ignorar', motivo: 'Eventos de carrinho ainda não configurados.' };
+      }
+      const token = tokenDoCarrinhoSemChave(mensagem.token);
+      return token === undefined
+        ? { tipo: 'ignorar', motivo: 'Checkout sem token de carrinho.' }
+        : { tipo: 'checkout-iniciado', token };
+    }
 
     case 'ORDER_COMPLETED':
       // A avaliação não depende do backend: `expo-store-review` é local, e

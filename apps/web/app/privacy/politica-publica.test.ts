@@ -14,6 +14,7 @@ const LOJA = '11111111-1111-4111-8111-111111111111';
 /** O que o banco falso devolve para cada tabela. */
 let linhaDaLoja: Record<string, unknown> | null = null;
 let linhaDoApp: Record<string, unknown> | null = null;
+let linhaDaConfig: Record<string, unknown> | null = null;
 /** As consultas feitas, com as colunas pedidas e o filtro. */
 let consultas: { tabela: string; colunas: string; valor: unknown }[] = [];
 
@@ -24,21 +25,28 @@ vi.mock('@/lib/env', () => ({
   chaveServiceRole: () => 'chave',
 }));
 
+/** Uma consulta encadeada: `.eq()` quantas vezes for, e `.maybeSingle()`. */
+function consulta(tabela: string, colunas: string) {
+  const filtros: unknown[] = [];
+  const cadeia = {
+    eq: (_coluna: string, valor: unknown) => {
+      if (filtros.length === 0) consultas.push({ tabela, colunas, valor });
+      filtros.push(valor);
+      return cadeia;
+    },
+    maybeSingle: () =>
+      Promise.resolve({
+        data: tabela === 'stores' ? linhaDaLoja : tabela === 'apps' ? linhaDoApp : linhaDaConfig,
+        error: null,
+      }),
+  };
+  return cadeia;
+}
+
 vi.mock('@/lib/supabase/admin', () => ({
   criarClientServiceRole: () => ({
     from: (tabela: string) => ({
-      select: (colunas: string) => ({
-        eq: (_coluna: string, valor: unknown) => {
-          consultas.push({ tabela, colunas, valor });
-          return {
-            maybeSingle: () =>
-              Promise.resolve({
-                data: tabela === 'stores' ? linhaDaLoja : linhaDoApp,
-                error: null,
-              }),
-          };
-        },
-      }),
+      select: (colunas: string) => consulta(tabela, colunas),
     }),
   }),
 }));
@@ -53,7 +61,8 @@ beforeEach(() => {
     support_email: 'atendimento@lojadaana.com.br',
     updated_at: '2026-09-19T12:00:00.000Z',
   };
-  linhaDoApp = { onesignal_app_id: 'os-1', device_secret_enc: 'cifrado' };
+  linhaDoApp = { id: 'app-1', onesignal_app_id: 'os-1', device_secret_enc: 'cifrado' };
+  linhaDaConfig = null;
 });
 
 afterEach(() => {
@@ -119,6 +128,28 @@ describe('GET /privacy/[loja]', () => {
 
     linhaDoApp = { onesignal_app_id: null, device_secret_enc: 'cifrado' };
     expect(await renderizar(LOJA)).not.toContain('OneSignal');
+  });
+
+  /*
+   * O Face ID vem da config NO AR: um rascunho com o recurso ligado ainda não
+   * protege a conta de ninguém, e a política não pode dizer que protege.
+   */
+  it('descreve o Face ID só quando a config no ar protege a conta', async () => {
+    const { configInicial } = await import('@storefy/config-schema');
+    const config = configInicial({ name: 'Loja da Ana', url: 'https://lojadaana.com.br' });
+
+    expect(await renderizar(LOJA)).not.toContain('Face ID');
+
+    linhaDaConfig = { config, published_at: '2026-09-20T12:00:00.000Z' };
+    expect(await renderizar(LOJA)).not.toContain('Face ID');
+
+    config.features.biometricLogin = true;
+    linhaDaConfig = { config, published_at: '2026-09-25T12:00:00.000Z' };
+    const html = await renderizar(LOJA);
+    expect(html).toContain('Face ID');
+    // A data acompanha a publicação que mudou o texto.
+    expect(html).toContain('25 de setembro de 2026');
+    expect(consultas.find((c) => c.tabela === 'app_configs')?.valor).toBe('app-1');
   });
 
   it('descreve o carrinho só quando o app consegue reportá-lo', async () => {
