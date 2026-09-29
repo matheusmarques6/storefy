@@ -1278,7 +1278,7 @@ com um servidor no lugar da Asaas falando HTTP de verdade com o painel). A suít
 
 ### Fase 8 — Polimento, QA e lançamento (5+ dias)
 - Trocar os layouts provisórios pelos do Claude Design (tela por tela, usando os IDs C/A/M).
-- Testes E2E com Playwright (onboarding → editor → publicar config → campanha).
+- Testes E2E com Playwright (onboarding → editor → publicar config → campanha). ✅ `e2e/jornada.spec.ts` faz a jornada inteira só pela tela (cadastro → loja → editor → publicar → campanha agendada), e a suíte tem 42 testes
 - Maestro para fluxos do app (abrir, trocar aba, carrinho, offline).
 - Sentry (web + mobile), logs estruturados, status page. ✅ Fase 8b
 - Revisão de segurança: RLS, segredos, rate limit, HMAC. ✅ Fase 8b
