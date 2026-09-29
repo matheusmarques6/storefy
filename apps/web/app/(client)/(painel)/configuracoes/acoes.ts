@@ -2,6 +2,7 @@
 
 /** Configurações da organização e da conta do usuário. */
 import { revalidatePath } from 'next/cache';
+import { podeEscrever } from '@storefy/db';
 import {
   contaSchema,
   extrairErros,
@@ -178,4 +179,71 @@ export async function trocarSenha(_anterior: EstadoConfig, dados: FormData): Pro
   }
 
   return { sucesso: true, mensagem: 'Senha alterada.' };
+}
+
+export interface EstadoDosAvisos {
+  ok?: boolean;
+  mensagem?: string;
+  /** O que foi ENVIADO nas caixas de marcar, para elas não voltarem atrás. */
+  revisaoDoApp?: boolean;
+  respostaDoSuporte?: boolean;
+}
+
+/**
+ * C16 — os avisos por e-mail de QUEM PEDE, nesta empresa. Cada um só mexe na
+ * própria escolha (a RLS garante), e sem linha o padrão é receber tudo.
+ *
+ * Grava lendo antes em vez de `upsert`: o `upsert` do PostgREST reescreve as
+ * colunas da chave no conflito, e a pessoa só tem permissão de mudar as duas
+ * escolhas — não a empresa nem o dono da linha.
+ */
+export async function salvarAvisos(
+  _anterior: EstadoDosAvisos,
+  dados: FormData,
+): Promise<EstadoDosAvisos> {
+  const { organizacao, usuario, papel, visita } = await exigirContextoCliente();
+  // A caixa da revisão chega DESLIGADA para quem não recebe esse aviso, e o
+  // navegador não envia caixa desligada: lê-la como "desmarcada" gravaria uma
+  // escolha que a pessoa nunca fez — e que valeria no dia em que ela virasse
+  // administradora. Para essa pessoa, a escolha da revisão fica como está.
+  const revisaoDoApp = podeEscrever(papel) ? dados.get('revisaoDoApp') === 'on' : undefined;
+  const respostaDoSuporte = dados.get('respostaDoSuporte') === 'on';
+  const devolvido = { revisaoDoApp, respostaDoSuporte };
+
+  if (visita != null) {
+    return { mensagem: 'Durante a visita ao painel de um cliente, nada muda.', ...devolvido };
+  }
+
+  const supabase = await criarClientServidor();
+  const { data: atual } = await supabase
+    .from('email_preferences')
+    .select('user_id')
+    .eq('org_id', organizacao.id)
+    .eq('user_id', usuario.id)
+    .maybeSingle();
+
+  const campos = {
+    resposta_do_suporte: respostaDoSuporte,
+    ...(revisaoDoApp === undefined ? {} : { revisao_do_app: revisaoDoApp }),
+  };
+  const { error } =
+    atual == null
+      ? await supabase
+          .from('email_preferences')
+          .insert({ org_id: organizacao.id, user_id: usuario.id, ...campos })
+      : await supabase
+          .from('email_preferences')
+          .update(campos)
+          .eq('org_id', organizacao.id)
+          .eq('user_id', usuario.id);
+
+  if (error != null) {
+    return {
+      mensagem: mensagemDaFalha('configuracoes', error, 'Não conseguimos salvar. Tente de novo.'),
+      ...devolvido,
+    };
+  }
+
+  revalidatePath('/configuracoes');
+  return { ok: true, mensagem: 'Avisos salvos.', ...devolvido };
 }

@@ -79,9 +79,10 @@ describe('resumo', () => {
    */
   it('opcional desligada não falta, nem pesa na conta', () => {
     const presentes = tudoPresente();
-    presentes.NEXT_PUBLIC_GOOGLE_OAUTH_ENABLED = false;
-    presentes.NEXT_PUBLIC_CLIENT_HOST = false;
-    presentes.NEXT_PUBLIC_ADMIN_HOST = false;
+    // Todas as opcionais, da própria lista: uma opcional nova entra sozinha.
+    for (const integracao of INTEGRACOES.filter((item) => item.nivel === 'opcional')) {
+      for (const variavel of integracao.variaveis) presentes[variavel] = false;
+    }
 
     const r = resumo(conferir(presentes));
 

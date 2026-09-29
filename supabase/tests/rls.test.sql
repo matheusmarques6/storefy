@@ -5245,6 +5245,271 @@ select tests.ok('excluir conta',
      from public.invitations where email = 'conv-novo@teste.local'),
   'e o convite continua dizendo que foi aceito, sem apontar para quem já saiu');
 
+-- ============================== grupo: C16 avisos por e-mail e C17 chamados
+--
+-- Cada um escolhe os próprios avisos; o aviso da revisão respeita a escolha.
+-- O chamado é da empresa: ela lê e escreve como empresa, a equipe como
+-- equipe, e ninguém de fora lê nada.
+
+reset role;
+select tests.logout();
+
+insert into auth.users (email, raw_user_meta_data, email_confirmed_at) values
+  ('ch-dono@teste.local',    '{"company_name":"Empresa do Chamado"}'::jsonb, now()),
+  ('ch-admin@teste.local',   '{"company_name":"Ch Admin"}'::jsonb,           now()),
+  ('ch-membro@teste.local',  '{"full_name":"Membro Que Pergunta","company_name":"Ch Membro"}'::jsonb, now()),
+  ('ch-fora@teste.local',    '{"company_name":"Empresa de Fora"}'::jsonb,    now()),
+  ('ch-suporte@teste.local', '{"full_name":"Pessoa do Suporte","company_name":"Ch Suporte"}'::jsonb, now());
+
+drop table if exists tests.ch;
+create table tests.ch as
+select
+  (select id from auth.users where email = 'ch-dono@teste.local')    as u_dono,
+  (select id from auth.users where email = 'ch-admin@teste.local')   as u_admin,
+  (select id from auth.users where email = 'ch-membro@teste.local')  as u_membro,
+  (select id from auth.users where email = 'ch-suporte@teste.local') as u_suporte,
+  (select m.org_id from public.memberships m join auth.users u on u.id = m.user_id
+    where u.email = 'ch-dono@teste.local') as org,
+  (select m.org_id from public.memberships m join auth.users u on u.id = m.user_id
+    where u.email = 'ch-fora@teste.local') as org_fora;
+
+insert into public.memberships (org_id, user_id, role)
+select org, u_admin, 'admin' from tests.ch;
+insert into public.memberships (org_id, user_id, role)
+select org, u_membro, 'member' from tests.ch;
+insert into public.platform_admins (user_id, role)
+select u_suporte, 'support' from tests.ch;
+insert into public.stores (org_id, name, primary_url)
+select org, 'Loja do Chamado', 'https://loja-do-chamado.com.br' from tests.ch;
+insert into public.stores (org_id, name, primary_url)
+select org_fora, 'Loja de Fora', 'https://loja-de-fora.com.br' from tests.ch;
+
+alter table tests.ch add column loja uuid, add column loja_fora uuid, add column build uuid;
+update tests.ch set
+  loja = (select id from public.stores where name = 'Loja do Chamado'),
+  loja_fora = (select id from public.stores where name = 'Loja de Fora');
+insert into public.builds (app_id, platform, status)
+select a.id, 'ios', 'approved' from public.apps a where a.store_id = (select loja from tests.ch);
+update tests.ch set build = (select b.id from public.builds b
+  join public.apps a on a.id = b.app_id where a.store_id = (select loja from tests.ch));
+grant select on tests.ch to authenticated, anon, service_role;
+
+-- ---------------------------------------------------------------- avisos
+
+select tests.login('ch-dono@teste.local');
+set role authenticated;
+
+select tests.ok('avisos e chamados',
+  tests.permitido($q$insert into public.email_preferences (org_id, user_id, revisao_do_app)
+    select org, u_dono, false from tests.ch$q$),
+  'o dono desliga o aviso da revisão só para si');
+
+select tests.ok('avisos e chamados',
+  tests.bloqueado($q$insert into public.email_preferences (org_id, user_id, revisao_do_app)
+    select org, u_admin, false from tests.ch$q$),
+  'ninguém desliga o aviso dos outros');
+
+reset role;
+select tests.login('ch-fora@teste.local');
+set role authenticated;
+
+select tests.ok('avisos e chamados',
+  tests.bloqueado($q$insert into public.email_preferences (org_id, user_id, revisao_do_app)
+    select org, (select auth.uid()), false from tests.ch$q$),
+  'nem cria preferência numa empresa de que não faz parte');
+
+reset role;
+select tests.login('ch-admin@teste.local');
+set role authenticated;
+
+select tests.ok('avisos e chamados',
+  tests.contar('select count(*) from public.email_preferences') = 0,
+  'a escolha de um não aparece para o outro');
+
+reset role;
+set role service_role;
+
+select tests.ok('avisos e chamados',
+  (select array_agg(email order by email) from public.emails_do_build((select build from tests.ch)))
+    = array['ch-admin@teste.local'],
+  'o aviso da revisão vai para quem quer: o dono desligou, o administrador recebe');
+
+reset role;
+select tests.login('ch-dono@teste.local');
+set role authenticated;
+
+select tests.ok('avisos e chamados',
+  tests.permitido($q$update public.email_preferences set revisao_do_app = true
+    where user_id = (select auth.uid())$q$),
+  'e liga de novo quando quer');
+
+-- -------------------------------------------------------------- chamados
+
+reset role;
+select tests.login('ch-membro@teste.local');
+set role authenticated;
+
+select tests.ok('avisos e chamados',
+  (select public.abrir_chamado((select org from tests.ch), 'publicacao',
+    'O app não aparece na loja', 'Enviei faz três dias e ainda não aprovaram.',
+    (select loja from tests.ch))) is not null,
+  'qualquer pessoa da empresa abre um chamado, até quem só vê');
+
+drop table if exists tests.chamado;
+reset role;
+create table tests.chamado as select id from public.support_tickets where titulo = 'O app não aparece na loja';
+grant select on tests.chamado to authenticated, anon, service_role;
+select tests.login('ch-membro@teste.local');
+set role authenticated;
+
+select tests.ok('avisos e chamados',
+  tests.erro($q$select public.abrir_chamado((select org_fora from tests.ch), 'outro',
+    'Chamado alheio', 'Tentando abrir em nome de outra empresa.')$q$),
+  'ninguém abre chamado em nome de outra empresa');
+
+select tests.ok('avisos e chamados',
+  tests.erro($q$select public.abrir_chamado((select org from tests.ch), 'app',
+    'Loja alheia', 'Pendurando a loja de outra empresa no chamado.',
+    (select loja_fora from tests.ch))$q$),
+  'nem pendura a loja de outra empresa no próprio chamado');
+
+select tests.ok('avisos e chamados',
+  tests.bloqueado($q$insert into public.support_messages (ticket_id, author_id, da_equipe, texto)
+    select id, (select auth.uid()), true, 'Resposta falsa da equipe' from tests.chamado$q$),
+  'o lojista não fala como se fosse a equipe da Storefy');
+
+select tests.ok('avisos e chamados',
+  tests.bloqueado($q$insert into public.support_messages (ticket_id, author_id, da_equipe, texto)
+    select id, (select u_dono from tests.ch), false, 'Em nome do dono' from tests.chamado$q$),
+  'nem escreve em nome de outra pessoa');
+
+reset role;
+select tests.login('ch-fora@teste.local');
+set role authenticated;
+
+select tests.ok('avisos e chamados',
+  tests.contar('select count(*) from public.support_tickets') = 0
+  and tests.contar('select count(*) from public.support_messages') = 0,
+  'outra empresa não lê os chamados nem as mensagens');
+
+select tests.ok('avisos e chamados',
+  tests.erro($q$select * from public.mensagens_do_chamado((select id from tests.chamado))$q$),
+  'nem pela função das mensagens');
+
+select tests.ok('avisos e chamados',
+  tests.bloqueado($q$insert into public.support_messages (ticket_id, author_id, da_equipe, texto)
+    select id, (select auth.uid()), false, 'Me intrometendo' from tests.chamado$q$),
+  'nem escreve no chamado dos outros');
+
+reset role;
+select tests.login('ch-suporte@teste.local');
+set role authenticated;
+
+select tests.ok('avisos e chamados',
+  tests.permitido($q$insert into public.support_messages (ticket_id, author_id, da_equipe, texto)
+    select id, (select auth.uid()), true, 'A Apple costuma levar até cinco dias úteis.' from tests.chamado$q$),
+  'a equipe responde como equipe');
+
+select tests.ok('avisos e chamados',
+  (select status from public.support_tickets where id = (select id from tests.chamado)) = 'respondido',
+  'e o chamado passa a esperar a empresa');
+
+reset role;
+select tests.login('ch-membro@teste.local');
+set role authenticated;
+
+select tests.ok('avisos e chamados',
+  (select autor from public.mensagens_do_chamado((select id from tests.chamado)) where da_equipe)
+    = 'Equipe Storefy'
+  and (select autor from public.mensagens_do_chamado((select id from tests.chamado)) where not da_equipe)
+    = 'Membro Que Pergunta',
+  'o lojista vê "Equipe Storefy", e não o e-mail pessoal de quem atendeu');
+
+select tests.ok('avisos e chamados',
+  tests.permitido($q$insert into public.support_messages (ticket_id, author_id, da_equipe, texto)
+    select id, (select auth.uid()), false, 'Obrigado! E se passar de cinco dias?' from tests.chamado$q$),
+  'a empresa responde');
+
+select tests.ok('avisos e chamados',
+  (select status from public.support_tickets where id = (select id from tests.chamado)) = 'aberto',
+  'e o chamado volta para a equipe');
+
+select tests.ok('avisos e chamados',
+  tests.bloqueado($q$update public.support_tickets set status = 'respondido'
+    where id = (select id from tests.chamado)$q$),
+  'a empresa não marca o próprio chamado como respondido');
+
+select tests.ok('avisos e chamados',
+  tests.bloqueado($q$update public.support_tickets set titulo = 'Outro assunto'
+    where id = (select id from tests.chamado)$q$),
+  'nem troca o título depois de aberto');
+
+select tests.ok('avisos e chamados',
+  tests.permitido($q$update public.support_tickets set status = 'fechado'
+    where id = (select id from tests.chamado)$q$),
+  'mas fecha quando resolveu');
+
+reset role;
+set role service_role;
+
+select tests.ok('avisos e chamados',
+  public.email_do_autor_do_chamado((select id from tests.chamado)) = 'ch-membro@teste.local',
+  'a resposta vai por e-mail para quem abriu');
+
+reset role;
+update public.email_preferences set resposta_do_suporte = true;  -- nada muda para quem não escolheu
+insert into public.email_preferences (org_id, user_id, resposta_do_suporte)
+select org, u_membro, false from tests.ch;
+set role service_role;
+
+select tests.ok('avisos e chamados',
+  public.email_do_autor_do_chamado((select id from tests.chamado)) is null,
+  'menos para quem desligou esse aviso');
+
+reset role;
+select tests.login('ch-suporte@teste.local');
+set role authenticated;
+
+select tests.ok('avisos e chamados',
+  tests.permitido($q$update public.support_tickets set status = 'aberto'
+    where id = (select id from tests.chamado)$q$),
+  'a equipe reabre um chamado');
+
+reset role;
+select tests.login('ch-dono@teste.local');
+set role authenticated;
+
+select tests.ok('avisos e chamados',
+  tests.contar($q$select count(*) from public.audit_logs
+    where entity = 'support_tickets' and org_id = (select org from tests.ch)
+      and actor_id = (select u_suporte from tests.ch)$q$) > 0
+  and tests.contar($q$select count(*) from public.audit_logs
+    where entity = 'support_tickets' and diff::text like '%cinco dias%'$q$) = 0,
+  'a mudança de situação pela equipe vai para a trilha da empresa, sem o texto da conversa');
+
+reset role;
+drop table if exists tests.chamados_abertos;
+create table tests.chamados_abertos as
+select count(*)::integer as n from public.support_tickets where status = 'aberto';
+grant select on tests.chamados_abertos to authenticated;
+select tests.login('equipe@teste.local');
+set role authenticated;
+
+select tests.ok('avisos e chamados',
+  (select chamados_esperando from public.resumo_do_admin()) = (select n from tests.chamados_abertos)
+  and (select n from tests.chamados_abertos) > 0,
+  'a visão geral do admin conta os chamados esperando a equipe');
+
+reset role;
+select tests.logout();
+set role anon;
+
+select tests.ok('avisos e chamados',
+  tests.erro('select count(*) from public.support_tickets'),
+  'sem conta, nada de chamados');
+
+reset role;
+
 \echo ''
 \echo 'Falhas:'
 select grupo, descricao from tests.resultados where not passou order by id;

@@ -288,6 +288,10 @@ async function main(): Promise<void> {
     'criar_minha_organizacao',
     // Minha conta — o que acontece com cada empresa ao excluir a conta.
     'consequencias_de_excluir_minha_conta',
+    // C17 — chamados do lojista para a equipe.
+    'abrir_chamado',
+    'mensagens_do_chamado',
+    'email_do_autor_do_chamado',
   ];
 
   const { rows: funcoes } = await client.query<FuncaoSql>(

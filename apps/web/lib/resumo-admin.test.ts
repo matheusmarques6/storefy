@@ -20,6 +20,7 @@ const ZERADO: ResumoBruto = {
   builds_com_erro_7d: 0,
   builds_rejeitados_7d: 0,
   contas_dev_com_erro: 0,
+  chamados_esperando: 0,
 };
 
 describe('pendencias', () => {
@@ -48,6 +49,7 @@ describe('pendencias', () => {
       orgs_inadimplentes: 1,
       trials_vencendo_7d: 1,
       builds_rejeitados_7d: 1,
+      chamados_esperando: 1,
     });
 
     expect(lista.map((item) => item.chave)).toEqual([
@@ -55,6 +57,7 @@ describe('pendencias', () => {
       'trials_vencendo',
       'builds_com_erro',
       'builds_rejeitados',
+      'chamados',
       'contas_dev',
     ]);
   });

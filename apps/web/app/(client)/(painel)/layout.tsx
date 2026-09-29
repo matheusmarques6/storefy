@@ -63,9 +63,12 @@ export default async function LayoutPainel({ children }: { children: React.React
       <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-8">{children}</main>
 
       <footer className="border-t py-6">
-        <p className="text-muted-foreground mx-auto max-w-6xl px-4 text-xs">
-          Storefy by Convertfy · {contexto.organizacao.name}
-        </p>
+        <div className="text-muted-foreground mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-2 px-4 text-xs">
+          <p>Storefy by Convertfy · {contexto.organizacao.name}</p>
+          <Link href="/ajuda" className="hover:text-foreground underline-offset-4 hover:underline">
+            Ajuda e suporte
+          </Link>
+        </div>
       </footer>
     </div>
   );

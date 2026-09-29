@@ -37,6 +37,7 @@ const GRUPOS = [
     itens: [
       { href: '/admin/organizacoes', rotulo: 'Organizações' },
       { href: '/admin/lojas', rotulo: 'Lojas' },
+      { href: '/admin/chamados', rotulo: 'Chamados' },
     ],
   },
   {

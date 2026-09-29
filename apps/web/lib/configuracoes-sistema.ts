@@ -108,6 +108,14 @@ export const INTEGRACOES: Integracao[] = [
     nivel: 'recurso',
   },
   {
+    chave: 'suporte',
+    nome: 'Caixa do suporte',
+    variaveis: ['EMAIL_SUPORTE'],
+    oQueQuebra:
+      'Nada quebra: os chamados continuam chegando na tela Chamados do admin. Só o aviso por e-mail de chamado novo não sai.',
+    nivel: 'opcional',
+  },
+  {
     chave: 'google',
     nome: 'Entrar com o Google',
     variaveis: ['NEXT_PUBLIC_GOOGLE_OAUTH_ENABLED'],

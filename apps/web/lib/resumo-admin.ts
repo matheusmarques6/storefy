@@ -25,6 +25,7 @@ export interface ResumoBruto {
   builds_com_erro_7d: number | null;
   builds_rejeitados_7d: number | null;
   contas_dev_com_erro: number | null;
+  chamados_esperando: number | null;
 }
 
 export interface NumeroDoResumo {
@@ -85,6 +86,13 @@ export function pendencias(bruto: ResumoBruto): NumeroDoResumo[] {
       valor: numero(bruto.builds_rejeitados_7d),
       ajuda: 'Apple ou Google recusaram nos últimos 7 dias.',
       href: '/admin/revisoes',
+    },
+    {
+      chave: 'chamados',
+      rotulo: 'Chamados esperando resposta',
+      valor: numero(bruto.chamados_esperando),
+      ajuda: 'O cliente escreveu por último: a vez é da equipe.',
+      href: '/admin/chamados',
     },
     {
       chave: 'contas_dev',

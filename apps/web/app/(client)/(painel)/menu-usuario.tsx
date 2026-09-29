@@ -16,7 +16,15 @@
  * achando que o primeiro clique se perdeu.
  */
 import { useTransition } from 'react';
-import { Loader2, LogOut, Settings, ShieldCheck, User as IconeUsuario } from 'lucide-react';
+import Link from 'next/link';
+import {
+  LifeBuoy,
+  Loader2,
+  LogOut,
+  Settings,
+  ShieldCheck,
+  User as IconeUsuario,
+} from 'lucide-react';
 import { sair } from '../(publico)/acoes';
 import { ID_DO_FORMULARIO_DE_ENCERRAR } from './faixa-da-visita';
 import { Button } from '@/components/ui/button';
@@ -58,26 +66,32 @@ export function MenuUsuario({
         <DropdownMenuSeparator />
         {emVisita ? null : (
           <DropdownMenuItem asChild>
-            <a href="/configuracoes/conta">
+            <Link href="/configuracoes/conta">
               <IconeUsuario className="size-4" aria-hidden />
               Minha conta
-            </a>
+            </Link>
           </DropdownMenuItem>
         )}
         <DropdownMenuItem asChild>
-          <a href="/configuracoes">
+          <Link href="/configuracoes">
             <Settings className="size-4" aria-hidden />
             Configurações da empresa
-          </a>
+          </Link>
+        </DropdownMenuItem>
+        <DropdownMenuItem asChild>
+          <Link href="/ajuda">
+            <LifeBuoy className="size-4" aria-hidden />
+            Ajuda e suporte
+          </Link>
         </DropdownMenuItem>
         {ehAdmin ? (
           <>
             <DropdownMenuSeparator />
             <DropdownMenuItem asChild>
-              <a href="/admin">
+              <Link href="/admin">
                 <ShieldCheck className="size-4" aria-hidden />
                 Painel Storefy
-              </a>
+              </Link>
             </DropdownMenuItem>
           </>
         ) : null}

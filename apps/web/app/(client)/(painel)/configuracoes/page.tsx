@@ -5,6 +5,8 @@ import { ROTULO_PAPEL, ROTULO_STATUS_ORG, podeEscrever } from '@storefy/db';
 import { exigirContextoCliente } from '@/lib/contexto';
 import { FUSO_PADRAO, formatarData } from '@/lib/fuso';
 import { FormularioOrganizacao } from './formularios';
+import { FormularioDeAvisos } from './avisos';
+import { criarClientServidor } from '@/lib/supabase/server';
 import { NavegacaoConfiguracoes } from './navegacao-configuracoes';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -12,7 +14,14 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 export const metadata: Metadata = { title: 'Configurações' };
 
 export default async function PaginaConfiguracoes() {
-  const { organizacao, papel, lojas } = await exigirContextoCliente();
+  const { organizacao, papel, lojas, usuario, visita } = await exigirContextoCliente();
+  const supabase = await criarClientServidor();
+  const { data: avisos } = await supabase
+    .from('email_preferences')
+    .select('revisao_do_app, resposta_do_suporte')
+    .eq('org_id', organizacao.id)
+    .eq('user_id', usuario.id)
+    .maybeSingle();
 
   return (
     <div className="mx-auto max-w-2xl space-y-6">
@@ -45,6 +54,24 @@ export default async function PaginaConfiguracoes() {
           />
         </CardContent>
       </Card>
+
+      {visita == null ? (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Seus avisos por e-mail</CardTitle>
+            <CardDescription>
+              Só para você, nesta empresa. Convites e avisos de segurança chegam sempre.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <FormularioDeAvisos
+              revisaoDoApp={avisos?.revisao_do_app ?? true}
+              respostaDoSuporte={avisos?.resposta_do_suporte ?? true}
+              recebeRevisao={podeEscrever(papel)}
+            />
+          </CardContent>
+        </Card>
+      ) : null}
 
       <Card>
         <CardHeader>

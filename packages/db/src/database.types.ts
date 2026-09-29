@@ -606,6 +606,37 @@ export type Database = {
           },
         ];
       };
+      email_preferences: {
+        Row: {
+          org_id: string;
+          user_id: string;
+          revisao_do_app: boolean;
+          resposta_do_suporte: boolean;
+          updated_at: string;
+        };
+        Insert: {
+          org_id: string;
+          user_id: string;
+          revisao_do_app?: boolean;
+          resposta_do_suporte?: boolean;
+          updated_at?: string;
+        };
+        Update: {
+          org_id?: string;
+          user_id?: string;
+          revisao_do_app?: boolean;
+          resposta_do_suporte?: boolean;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "email_preferences_org_id_fkey";
+            columns: ["org_id"];
+            referencedRelation: "organizations";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       invitations: {
         Row: {
           id: string;
@@ -1133,9 +1164,96 @@ export type Database = {
           },
         ];
       };
+      support_messages: {
+        Row: {
+          id: string;
+          ticket_id: string;
+          author_id: string | null;
+          da_equipe: boolean;
+          texto: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          ticket_id: string;
+          author_id?: string | null;
+          da_equipe: boolean;
+          texto: string;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          ticket_id?: string;
+          author_id?: string | null;
+          da_equipe?: boolean;
+          texto?: string;
+          created_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "support_messages_ticket_id_fkey";
+            columns: ["ticket_id"];
+            referencedRelation: "support_tickets";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      support_tickets: {
+        Row: {
+          id: string;
+          org_id: string;
+          store_id: string | null;
+          author_id: string | null;
+          assunto: Database["public"]["Enums"]["ticket_topic"];
+          titulo: string;
+          status: Database["public"]["Enums"]["ticket_status"];
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          org_id: string;
+          store_id?: string | null;
+          author_id?: string | null;
+          assunto: Database["public"]["Enums"]["ticket_topic"];
+          titulo: string;
+          status?: Database["public"]["Enums"]["ticket_status"];
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          org_id?: string;
+          store_id?: string | null;
+          author_id?: string | null;
+          assunto?: Database["public"]["Enums"]["ticket_topic"];
+          titulo?: string;
+          status?: Database["public"]["Enums"]["ticket_status"];
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "support_tickets_org_id_fkey";
+            columns: ["org_id"];
+            referencedRelation: "organizations";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "support_tickets_store_id_fkey";
+            columns: ["store_id"];
+            referencedRelation: "stores";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
     };
     Views: Record<never, never>;
     Functions: {
+      abrir_chamado: {
+        Args: { p_org_id: string; p_assunto: Database["public"]["Enums"]["ticket_topic"]; p_titulo: string; p_texto: string; p_store_id?: string };
+        Returns: string;
+      };
       abrir_previa: {
         Args: { p_app_id: string; p_minutos?: number };
         Returns: { token: string | null; expira_em: string | null }[];
@@ -1260,6 +1378,10 @@ export type Database = {
         Args: { p_app_id: string; p_momento?: string };
         Returns: string;
       };
+      email_do_autor_do_chamado: {
+        Args: { p_ticket_id: string };
+        Returns: string;
+      };
       emails_do_build: {
         Args: { p_id: string };
         Returns: { email: string | null; nome_da_loja: string | null }[];
@@ -1291,6 +1413,10 @@ export type Database = {
       membros_da_organizacao: {
         Args: { p_org_id: string };
         Returns: { user_id: string | null; email: string | null; nome: string | null; role: Database["public"]["Enums"]["membership_role"] | null; created_at: string | null; ultimo_acesso: string | null }[];
+      };
+      mensagens_do_chamado: {
+        Args: { p_ticket_id: string };
+        Returns: { id: string | null; da_equipe: boolean | null; texto: string | null; autor: string | null; created_at: string | null }[];
       };
       meus_convites: {
         Args: Record<string, never>;
@@ -1342,7 +1468,7 @@ export type Database = {
       };
       resumo_do_admin: {
         Args: Record<string, never>;
-        Returns: { orgs_ativas: number | null; orgs_em_trial: number | null; trials_vencendo_7d: number | null; orgs_inadimplentes: number | null; lojas_live: number | null; lojas_em_revisao: number | null; builds_na_fila: number | null; builds_com_erro_7d: number | null; builds_rejeitados_7d: number | null; contas_dev_com_erro: number | null }[];
+        Returns: { orgs_ativas: number | null; orgs_em_trial: number | null; trials_vencendo_7d: number | null; orgs_inadimplentes: number | null; lojas_live: number | null; lojas_em_revisao: number | null; builds_na_fila: number | null; builds_com_erro_7d: number | null; builds_rejeitados_7d: number | null; contas_dev_com_erro: number | null; chamados_esperando: number | null }[];
       };
       ver_convite: {
         Args: { p_token: string };
@@ -1370,6 +1496,8 @@ export type Database = {
       shopify_conexao: "oauth" | "manual";
       store_platform: "shopify" | "other";
       store_status: "draft" | "building" | "in_review" | "live" | "paused";
+      ticket_status: "aberto" | "respondido" | "fechado";
+      ticket_topic: "publicacao" | "notificacoes" | "shopify" | "app" | "cobranca" | "outro";
     };
     CompositeTypes: Record<never, never>;
   };

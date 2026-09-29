@@ -399,6 +399,7 @@ Quando o lojista conclui a conexão da conta Apple (chave APNs .p8) e da conta G
 | A11 | Equipe interna | Admins e papéis |
 | A12 | Logs de auditoria | Quem fez o quê |
 | A13 | Configurações do sistema | Chaves, feature flags, versão mínima do app |
+| A14 | Chamados | Fila dos chamados abertos pela Ajuda do painel (C17): quem espera resposta, conversa, responder, fechar e reabrir |
 
 ### 9.3 App Mobile (telas nativas)
 | ID | Tela |
@@ -1014,6 +1015,41 @@ pelo vetor do SHA-256) e `e2e/convites.spec.ts` (3 cenários, com várias sessõ
 | Confirmação de e-mail no Supabase | Deixar ligada em produção (Authentication → Email → Confirm email). Aceitar convite pela lista "convites para você" confia que a conta é dona do e-mail — é a confirmação que garante isso |
 | Criar conta pelo painel do Supabase | Com o cadastro fechado, o "Create user" do painel do Supabase é barrado (ele não marca a conta como da equipe). Use um convite (A03/A11), o `pnpm bootstrap:admin` ou o "Invite user" do Supabase |
 
+### C16 (avisos por e-mail), C17 — Central de ajuda e A14 — Chamados (29/09/2026)
+
+A revisão das telas achou mais duas lacunas do inventário: a C17 ("artigos e contato com o
+suporte") **não existia** — o lojista não tinha onde ler como publicar nem como falar com a
+Storefy pelo painel — e a C16 prevê "notificações por e-mail", mas o aviso da revisão do app ia
+para todo proprietário e administrador, sem como desligar.
+
+| Entrega | Situação |
+|---|---|
+| **Central de ajuda** (`/ajuda`) | ✅ sete guias, um por parte do painel (primeiros passos, publicar nas lojas, Shopify, notificações, analytics, atualização obrigatória, equipe e papéis), escritos a partir das telas que existem, com o nome que elas têm e atalhos para elas. Moram no código (`lib/ajuda.ts`), versionados junto com as telas: `ajuda.test.ts` falha se um atalho apontar para uma página que não existe. Pelo menu da conta e pelo rodapé do painel |
+| **Chamados do lojista** (C17) | ✅ abrir (assunto, título, loja opcional — a ativa já vem escolhida — e mensagem), acompanhar a conversa, responder e fechar (com confirmação; escrever num fechado o reabre). A empresa inteira vê os chamados da empresa. A resposta aparece como "Equipe Storefy", sem o e-mail de quem atendeu. Limite por empresa de 10 chamados e 30 mensagens por hora (cada um avisa a caixa do suporte). Em "Ver como cliente", só leitura |
+| **A14 — Chamados** (admin) | ✅ fila em três recortes com contagem — esperando resposta (do mais antigo para o mais novo), aguardando o cliente e fechados —; conversa com empresa, loja, assunto e quem abriu; responder, fechar e reabrir. "Chamados esperando resposta" entrou no "precisa de você" da visão geral |
+| **A vez é de quem não escreveu por último** | ✅ no banco (`situacao_pela_mensagem`): mensagem do cliente põe o chamado em "esperando resposta"; da equipe, em "aguardando o cliente". O lojista só consegue FECHAR — a RLS recusa qualquer outra mudança, e ele não escreve como equipe. A abertura e cada mudança de situação vão para a trilha da empresa, com o autor certo |
+| **Avisos por e-mail de cada pessoa** (C16) | ✅ em Configurações › Empresa, cada um escolhe para si, só nesta empresa: resultado da revisão do app (só proprietários e administradores recebem; para o membro a caixa aparece travada, dizendo por quê) e resposta do suporte. O aviso da revisão (`emails_do_build`) e o da resposta (`email_do_autor_do_chamado`, só para quem continua na empresa e confirmou o e-mail) respeitam a escolha. Convites e avisos de segurança chegam sempre |
+| **Aviso para a equipe** | ✅ chamado novo e resposta de cliente vão para `EMAIL_SUPORTE` (opcional, descrita na A13). Sem ela nada quebra: a fila da A14 recebe tudo do mesmo jeito |
+
+> **Defeito achado na revisão: salvar os avisos desligava a revisão do membro.** A caixa da
+> revisão aparece travada para o membro, e o navegador não envia caixa travada: o servidor lia
+> "desmarcada" e gravava uma escolha que a pessoa nunca fez — e que passaria a valer no dia em que
+> ela virasse administradora. Agora o servidor só grava a escolha da revisão de quem a recebe; o
+> e2e cai quando a correção sai.
+
+Travas novas: 28 asserções no grupo "avisos e chamados" do `rls.test.sql` (outra empresa não lê
+nem escreve; o lojista não escreve como equipe, não muda a situação a não ser para fechar e não
+abre chamado com loja de outra empresa; cada um só mexe na própria escolha de avisos; o aviso não
+vai para quem saiu da empresa), `lib/chamados.test.ts` (validação e HTML escapado nos e-mails),
+`lib/ajuda.test.ts` e `e2e/chamados.spec.ts` (2 cenários, com o lojista, a equipe, um membro e
+uma segunda empresa ao mesmo tempo). A suíte e2e está em 35 testes.
+
+**Depende de ação humana**
+
+| Item | O que falta |
+|---|---|
+| Aviso de chamado novo por e-mail | `EMAIL_SUPORTE` (a caixa da equipe) e a Resend (`RESEND_API_KEY`, `EMAIL_REMETENTE`). Sem elas, os chamados chegam só pela tela A14, e o lojista acompanha a resposta pelo painel |
+
 ### Fase 6 — Painel Admin completo (4–6 dias)
 - Telas A02–A13, impersonação com auditoria, presets por tema (A10), feature flags e reexecução de builds.
 - Reaproveitar do admin Convertfy os padrões de tabela, filtros, página de detalhe com abas e notas internas.
@@ -1023,7 +1059,7 @@ pelo vetor do SHA-256) e `e2e/convites.spec.ts` (3 cenários, com várias sessõ
 | Item | Situação |
 |---|---|
 | A01 — Login do admin | ✅ `exigirPlatformAdmin()` a cada request; quem não está em `platform_admins` vai para /admin/sem-acesso |
-| **A02 — Visão geral** | ✅ dez números numa chamada só (`resumo_do_admin`), separados em "precisa de você" (só o que é > 0) e "a plataforma hoje" (aparece zerado, porque ali zero é informação). `/admin` passou a ser esta tela |
+| **A02 — Visão geral** | ✅ onze números numa chamada só (`resumo_do_admin`), com os chamados esperando resposta (A14), separados em "precisa de você" (só o que é > 0) e "a plataforma hoje" (aparece zerado, porque ali zero é informação). `/admin` passou a ser esta tela |
 | A03 — Organizações (lista) | ✅ saiu de `/admin` para `/admin/organizacoes`, com busca e paginação. **Convidar lojista**: o convite que deixa o lojista piloto criar a conta com o cadastro fechado, com os convites em aberto (reenviar e cancelar) |
 | A04 — Cliente (detalhe) | ⚠️ lojas, membros, últimos builds, **notas internas**, **"Ver como cliente"** (somente leitura, auditado — ver abaixo) e **App e push** por loja: config no ar e desde quando, rascunho parado, atualização obrigatória, versão aprovada em cada loja de aplicativos, projeto Expo, identificadores, notificações, push de 30 dias e automações ligadas. Falta a aba de cobrança (Fase 7) |
 | **A05 — Fila de builds** | ✅ recortes por situação na URL, abrindo no que quebrou; erro da EAS na própria linha; link dos logs; reexecutar com confirmação, travado para build que ainda roda ou que está com a loja |

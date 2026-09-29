@@ -6,7 +6,7 @@
  * primeiro, e some quando não existe; o panorama da plataforma vem depois, e
  * aparece inclusive zerado, porque ali o zero é informação.
  *
- * UMA CHAMADA AO BANCO, não dez: `resumo_do_admin` devolve os dez números de
+ * UMA CHAMADA AO BANCO, não uma por número: `resumo_do_admin` devolve todos de
  * uma vez. A decisão do que é pendência mora em `lib/resumo-admin`, testada
  * sem montar página nenhuma.
  *
