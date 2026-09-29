@@ -238,6 +238,8 @@ async function main(): Promise<void> {
     'admin_usuario_por_email',
     // A04 — notas internas sobre um cliente, com quem escreveu.
     'admin_notas_da_org',
+    // A10 — copiar a config publicada de uma loja para virar preset.
+    'admin_config_para_preset',
     'restaurar_config',
     'abrir_previa',
     'registrar_aparelho',

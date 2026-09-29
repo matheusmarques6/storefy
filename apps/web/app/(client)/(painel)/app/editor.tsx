@@ -37,6 +37,7 @@ import { PreviaNoCelular } from './previa-no-celular';
 import { SecaoAbas } from './secao-abas';
 import { SecaoAparencia } from './secao-aparencia';
 import { SecaoLoja } from './secao-loja';
+import type { Preset } from '@/lib/presets';
 import { SecaoRecursos } from './secao-recursos';
 import { SecaoVersoes } from './secao-versoes';
 
@@ -58,6 +59,8 @@ interface Props {
   historico: VersaoDoHistorico[];
   somenteLeitura: boolean;
   pushConfigurado: boolean;
+  /** Presets de tema curados pela equipe (A10). Vazio some da tela. */
+  presets: Preset[];
   /** Links assinados das imagens atuais. O bucket é privado. */
   urlDoIcone: string | null;
   urlDaSplash: string | null;
@@ -71,6 +74,7 @@ export function Editor({
   historico,
   somenteLeitura,
   pushConfigurado,
+  presets,
   urlDoIcone,
   urlDaSplash,
 }: Props) {
@@ -285,7 +289,12 @@ export function Editor({
                 />
               ) : null}
               {secao === 'loja' ? (
-                <SecaoLoja config={config} aoMudar={setConfig} somenteLeitura={somenteLeitura} />
+                <SecaoLoja
+                  config={config}
+                  aoMudar={setConfig}
+                  somenteLeitura={somenteLeitura}
+                  presets={presets}
+                />
               ) : null}
               {secao === 'recursos' ? (
                 <SecaoRecursos

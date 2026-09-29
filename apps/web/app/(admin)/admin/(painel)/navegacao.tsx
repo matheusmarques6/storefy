@@ -12,6 +12,7 @@ const ITENS = [
   { href: '/admin/revisoes', rotulo: 'Revisões' },
   { href: '/admin/contas', rotulo: 'Contas' },
   { href: '/admin/push', rotulo: 'Push' },
+  { href: '/admin/presets', rotulo: 'Presets' },
   { href: '/admin/equipe', rotulo: 'Equipe' },
   { href: '/admin/logs', rotulo: 'Auditoria' },
   { href: '/admin/ota', rotulo: 'Correção OTA' },

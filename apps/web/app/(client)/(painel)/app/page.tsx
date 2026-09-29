@@ -11,6 +11,7 @@ import { EstadoVazio } from '@/components/estado-vazio';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Editor } from './editor';
+import { lerPresets } from '@/lib/presets';
 
 export const metadata: Metadata = { title: 'Editor do app' };
 
@@ -47,7 +48,7 @@ export default async function PaginaDoEditor() {
     );
   }
 
-  const [publicada, historico, { data: app }] = await Promise.all([
+  const [publicada, historico, { data: app }, { data: presetsBrutos }] = await Promise.all([
     versaoPublicada(supabase, rascunho.rascunho.appId),
     historicoDeVersoes(supabase, rascunho.rascunho.appId),
     supabase
@@ -55,7 +56,24 @@ export default async function PaginaDoEditor() {
       .select('onesignal_app_id, icon_path, splash_path')
       .eq('id', rascunho.rascunho.appId)
       .maybeSingle(),
+    /*
+     * Os presets ATIVOS, que a RLS já filtra: a policy de `config_presets`
+     * libera para o lojista só os ligados. Repetir o filtro aqui seria uma
+     * segunda regra a manter, e a do banco é a que vale.
+     */
+    supabase
+      .from('config_presets')
+      .select('id, nome, tema, descricao, tabs, hide_selectors, custom_css')
+      .order('tema', { ascending: true })
+      .order('nome', { ascending: true }),
   ]);
+
+  /*
+   * Um preset de formato antigo é DESCARTADO, e não derruba o editor: o
+   * lojista veio publicar o app dele, e perder a tela por causa de uma linha
+   * ruim da nossa curadoria seria o pior jeito de descobrir o problema.
+   */
+  const presets = lerPresets(presetsBrutos ?? []);
 
   /*
    * O bucket é privado, então a imagem só aparece na tela por link assinado.
@@ -76,6 +94,7 @@ export default async function PaginaDoEditor() {
       urlDoIcone={urlDoIcone}
       urlDaSplash={urlDaSplash}
       historico={historico}
+      presets={presets}
       somenteLeitura={!podeEscrever(papel)}
       pushConfigurado={(app?.onesignal_app_id ?? null) !== null}
     />

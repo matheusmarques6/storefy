@@ -4210,6 +4210,96 @@ select tests.ok('notas',
 reset role;
 select tests.logout();
 
+-- ============================== grupo: A10 — presets de configuração
+--
+-- O CONTRÁRIO DAS NOTAS INTERNAS, e vale dizer em voz alta: aqui o lojista
+-- LÊ de propósito. Um preset é conteúdo do produto, não dado de cliente, e sem
+-- essa leitura ele não teria como aplicar — a curadoria do admin viraria dado
+-- que ninguém consome. O que ele NÃO pode é ver os desligados nem escrever.
+
+reset role;
+select tests.logout();
+
+insert into public.config_presets (nome, tema, tabs, hide_selectors, custom_css)
+values (
+  'Dawn — padrão', 'Dawn',
+  '[{"id":"inicio","label":"Início","icon":"home","type":"webview","url":"/","badge":"none"},
+    {"id":"conta","label":"Conta","icon":"user","type":"webview","url":"/account","badge":"none"}]'::jsonb,
+  '["header", ".footer"]'::jsonb,
+  'body { padding: 0 }'
+);
+
+insert into public.config_presets (nome, tema, tabs, ativo)
+values (
+  'Impulse — rascunho', 'Impulse',
+  '[{"id":"a","label":"A","icon":"home","type":"webview","url":"/","badge":"none"},
+    {"id":"b","label":"B","icon":"user","type":"webview","url":"/b","badge":"none"}]'::jsonb,
+  false
+);
+
+select tests.login('forasteiro@teste.local');
+set role authenticated;
+
+select tests.ok('presets',
+  tests.contar('select count(*) from public.config_presets') = 1,
+  'o lojista enxerga o preset ATIVO, que é o que ele vai aplicar');
+
+select tests.ok('presets',
+  tests.contar($q$select count(*) from public.config_presets where ativo = false$q$) = 0,
+  'e não enxerga o desligado, que ainda está sendo preparado');
+
+select tests.ok('presets',
+  tests.bloqueado($q$insert into public.config_presets (nome, tema, tabs)
+    values ('Meu', 'Tema',
+      '[{"id":"a","label":"A","icon":"home","type":"webview","url":"/","badge":"none"},
+        {"id":"b","label":"B","icon":"user","type":"webview","url":"/b","badge":"none"}]'::jsonb)$q$),
+  'o lojista NÃO cria preset: a curadoria é da equipe');
+
+select tests.ok('presets',
+  tests.bloqueado($q$update public.config_presets set nome = 'Meu'$q$),
+  'nem edita o que a equipe curou');
+
+select tests.ok('presets',
+  tests.erro('select * from public.admin_config_para_preset(gen_random_uuid())'),
+  'nem copia a config publicada de uma loja para virar preset');
+
+reset role;
+select tests.login('equipe@teste.local');
+set role authenticated;
+
+select tests.ok('presets',
+  tests.contar('select count(*) from public.config_presets') = 2,
+  'a equipe enxerga os dois, ativo e desligado');
+
+/*
+ * A forma das abas é conferida pelo BANCO, e não só pelo Zod. Sem isso um
+ * preset com uma aba só chegaria até a hora de aplicar, depois de o lojista
+ * escolher — e o erro apareceria como se fosse culpa dele.
+ */
+reset role;
+set role service_role;
+
+select tests.ok('presets',
+  tests.erro($q$insert into public.config_presets (nome, tema, tabs)
+    values ('Uma aba só', 'Tema',
+      '[{"id":"a","label":"A","icon":"home","type":"webview","url":"/","badge":"none"}]'::jsonb)$q$),
+  'preset com menos de duas abas é recusado pelo banco');
+
+select tests.ok('presets',
+  tests.erro($q$insert into public.config_presets (nome, tema, tabs)
+    values ('Nem é lista', 'Tema', '{"abas": 1}'::jsonb)$q$),
+  'tabs que não é lista é recusado pelo banco');
+
+select tests.ok('presets',
+  tests.erro($q$insert into public.config_presets (nome, tema, tabs)
+    values ('x', 'Tema',
+      '[{"id":"a","label":"A","icon":"home","type":"webview","url":"/","badge":"none"},
+        {"id":"b","label":"B","icon":"user","type":"webview","url":"/b","badge":"none"}]'::jsonb)$q$),
+  'nome curto demais é recusado pelo banco');
+
+reset role;
+select tests.logout();
+
 \echo ''
 \echo 'Falhas:'
 select grupo, descricao from tests.resultados where not passou order by id;

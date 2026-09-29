@@ -935,7 +935,22 @@ O que **não** deu para conferir aqui, e continua em aberto:
 | **A11 — Equipe interna** | ✅ convidar, trocar papel e remover, com três travas — só superadmin mexe, ninguém altera a si mesmo, e o último superadmin não sai. Conferidas de novo no servidor, com a contagem vinda do banco |
 | A12 — Logs de auditoria | ✅ |
 | **A13 — Configurações do sistema** | ⚠️ o bloco de CHAVES está pronto: as 19 variáveis que a aplicação lê, agrupadas pelo que quebra sem cada uma, com um teste que varre o código e falha quando alguém soma uma variável sem descrevê-la. Feature flags e versão mínima ainda não |
-| A09, A10 | ⬜ ainda não |
+| **A10 — Presets por tema** | ✅ os dois lados: a equipe cria o preset COPIANDO de uma loja publicada, e o lojista aplica no editor com a troca descrita antes de confirmar |
+| A09 | ⬜ ainda não (depende da cobrança, Fase 7) |
+
+> **O preset nasce de uma loja que já funciona, e não de um editor próprio no admin.** Duas
+> razões: um segundo editor de abas seria uma cópia do C06 envelhecendo em paralelo, e um preset
+> escrito à mão é um palpite — um copiado de loja no ar já foi conferido por alguém olhando a
+> tela do celular.
+>
+> **O preset troca o TEMA, nunca a MARCA.** Abas, elementos escondidos e CSS entram; nome,
+> cores, ícone, splash e recursos ficam. Um preset que sobrescrevesse a identidade faria o
+> lojista perder a tarde que passou ajustando para ganhar três seletores. Há asserção para isso.
+>
+> **O lojista LÊ os presets, ao contrário das notas internas.** É conteúdo do produto, não dado
+> de cliente: saber que existe um preset para Dawn não conta nada sobre ninguém. Sem essa
+> leitura ele não teria como aplicar, e a curadoria do admin viraria dado morto. O que ele não
+> pode é ver os desligados nem escrever.
 
 > **As notas internas têm uma propriedade que um descuido destruiria: o cliente nunca as lê.**
 > Nem o dono da organização. A policy natural de escrever — "membros leem as notas da própria

@@ -426,6 +426,48 @@ export type Database = {
           },
         ];
       };
+      config_presets: {
+        Row: {
+          id: string;
+          nome: string;
+          tema: string;
+          descricao: string | null;
+          tabs: Json;
+          hide_selectors: Json;
+          custom_css: string;
+          ativo: boolean;
+          created_by: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          nome: string;
+          tema: string;
+          descricao?: string | null;
+          tabs: Json;
+          hide_selectors?: Json;
+          custom_css?: string;
+          ativo?: boolean;
+          created_by?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          nome?: string;
+          tema?: string;
+          descricao?: string | null;
+          tabs?: Json;
+          hide_selectors?: Json;
+          custom_css?: string;
+          ativo?: boolean;
+          created_by?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
       developer_accounts: {
         Row: {
           id: string;
@@ -1018,6 +1060,10 @@ export type Database = {
       abrir_previa: {
         Args: { p_app_id: string; p_minutos?: number };
         Returns: { token: string | null; expira_em: string | null }[];
+      };
+      admin_config_para_preset: {
+        Args: { p_app_id: string };
+        Returns: { tabs: Json | null; hide_selectors: Json | null; custom_css: string | null }[];
       };
       admin_email_do_usuario: {
         Args: { p_user_id: string };

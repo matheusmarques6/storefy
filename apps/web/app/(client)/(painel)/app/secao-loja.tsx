@@ -9,14 +9,19 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import { editarWebview } from '@/lib/editor-de-config';
+import type { Preset } from '@/lib/presets';
+import { AplicarPreset } from './aplicar-preset';
 
 export function SecaoLoja({
+  presets,
   config,
   aoMudar,
   somenteLeitura,
 }: {
   config: AppConfig;
   aoMudar: (config: AppConfig) => void;
+  /** Os presets de tema que a equipe curou. Vazio esconde o bloco inteiro. */
+  presets: Preset[];
   somenteLeitura: boolean;
 }) {
   const { webview } = config;
@@ -29,6 +34,13 @@ export function SecaoLoja({
 
   return (
     <div className="space-y-8">
+      <AplicarPreset
+        config={config}
+        presets={presets}
+        aoMudar={aoMudar}
+        somenteLeitura={somenteLeitura}
+      />
+
       <section className="space-y-3">
         <div>
           <h3 className="text-sm font-medium">Esconder da loja</h3>
