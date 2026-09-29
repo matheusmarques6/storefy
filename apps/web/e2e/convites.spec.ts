@@ -148,7 +148,11 @@ test('o proprietário convida, a pessoa cria a conta pelo link e entra só nesta
   // Sem empresa nenhuma, a pessoa cai numa tela que diz o que fazer.
   await convidado.goto('/');
   await convidado.waitForURL('/sem-empresa');
-  await expect(convidado.getByText('Sua conta não está em nenhuma empresa')).toBeVisible();
+  await expect(
+    convidado.getByRole('heading', { name: 'Sua conta não está em nenhuma empresa' }),
+  ).toBeVisible();
+  // E pode excluir a conta dali mesmo, sem afetar empresa nenhuma.
+  await expect(convidado.getByText('Nenhuma empresa é afetada')).toBeVisible();
   await expect(convidado.getByRole('button', { name: 'Criar empresa' })).toBeVisible();
 });
 

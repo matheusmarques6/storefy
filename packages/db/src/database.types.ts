@@ -1212,6 +1212,10 @@ export type Database = {
         Args: { p_id: string };
         Returns: unknown;
       };
+      consequencias_de_excluir_minha_conta: {
+        Args: Record<string, never>;
+        Returns: { org_id: string | null; empresa: string | null; efeito: string | null; sucessor: string | null; lojas: number | null }[];
+      };
       consolidar_analytics: {
         Args: { p_dias?: number };
         Returns: number;

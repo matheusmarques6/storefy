@@ -958,8 +958,9 @@ Travas novas: `formularios-controlados.test.ts`, `erros.test.ts` (varredura de `
 
 Depois dela, `e2e/visita.spec.ts` (3) e `e2e/plataforma.spec.ts` (4: chaves da A13 com um
 cadastro aberto no meio do caminho, suporte só lendo, atualização obrigatória do editor até a
-config no ar e a ficha A04 com e sem app publicado). A suíte está em 29 testes verdes contra o
-Supabase local, com o log do servidor limpo.
+config no ar e a ficha A04 com e sem app publicado), `e2e/convites.spec.ts` (3) e
+`e2e/conta.spec.ts` (1). A suíte está em 33 testes verdes contra o Supabase local, com o log do
+servidor limpo.
 
 ### C16 — Equipe e convites (29/09/2026)
 
@@ -978,6 +979,7 @@ piorava: ninguém novo entrava (nem o lojista piloto, nem um colega da equipe), 
 | **Lojista piloto (A03) e colega (A11)** | ✅ os convites da plataforma, com a mesma regra: lojista qualquer pessoa da equipe convida; colega, só superadmin |
 | **Cadastro fechado no banco** | ✅ era só a tela e a ação. O Auth aceitava cadastro direto pela chave pública, e o Google criava conta por fora. Agora um gatilho no FIM da transação da conta nova desfaz tudo — salvo convite aceito, conta criada pela equipe (`criado_pela_equipe` no `app_metadata`, que só a service role escreve) ou o "convidar" do próprio Auth. Conferido contra o Auth de verdade: cadastro pela chave pública com o cadastro fechado volta 500 e nada fica gravado |
 | **`pnpm bootstrap:admin`** | ✅ cria a conta marcada como da equipe e imprime um link de "definir senha" — funciona com o cadastro fechado e sem SMTP. O convite do Auth que ele usava seria barrado justamente quando é a única porta |
+| **Excluir minha conta** (LGPD) | ✅ a Fase 0 consertou a cascata "porque a LGPD exige", mas não havia botão. Agora a tela diz ANTES o que acontece com cada empresa, com a mesma regra da cascata (`consequencias_de_excluir_minha_conta`): a empresa em que a pessoa é sozinha vai junto, com as lojas; na do único dono, quem herda (administrador antes de membro); nas outras, só a saída. Pede o e-mail digitado e a senha; o último superadmin não sai; a trilha de cada empresa registra quem saiu e o que aconteceu. Também em "sem empresa" |
 
 > **FALHA DE SEGURANÇA CORRIGIDA: administrador virava dono.** A policy "owner e admin adicionam
 > membros" deixava um ADMIN inserir um vínculo com papel OWNER para qualquer conta — uma segunda
@@ -986,6 +988,12 @@ piorava: ninguém novo entrava (nem o lojista piloto, nem um colega da equipe), 
 > (nem o proprietário insere direto), e o UPDATE do vínculo ficou restrito à coluna `role` — trocar
 > o `user_id` era pôr outra pessoa na empresa sem convite. A asserção de RLS da escalada cai quando
 > a policy antiga volta.
+
+> **Defeito que o e2e da exclusão de conta achou nos convites.** A restrição "aceite com autor"
+> exigia `accepted_at` e `accepted_by` juntos, e `accepted_by` tem `on delete set null`: excluir
+> uma conta que tinha aceitado um convite zerava o autor, violava a restrição, e o Auth respondia
+> "Database error deleting user" — justamente quem entrou por convite não conseguia se excluir. A
+> regra ficou numa direção só (não há autor sem aceite), com asserção que cai sem a correção.
 
 > **Por que a conferência do cadastro fechado é no COMMIT, e não no INSERT.** A primeira versão
 > conferia no INSERT e barrou o próprio `pnpm bootstrap:admin`: a API admin do Auth grava o

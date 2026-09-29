@@ -4,6 +4,8 @@ import { Eye } from 'lucide-react';
 import { exigirContextoCliente } from '@/lib/contexto';
 import { FormularioEmail, FormularioNome, FormularioSenha } from '../formularios';
 import { NavegacaoConfiguracoes } from '../navegacao-configuracoes';
+import { ExcluirConta } from './excluir-conta';
+import { dadosDaExclusao } from './dados-da-exclusao';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { EstadoVazio } from '@/components/estado-vazio';
 
@@ -27,6 +29,7 @@ export default async function PaginaConta() {
     );
   }
 
+  const exclusao = await dadosDaExclusao(usuario);
   const metadados = usuario.user_metadata as { full_name?: unknown };
   const nome = typeof metadados.full_name === 'string' ? metadados.full_name : '';
 
@@ -70,6 +73,8 @@ export default async function PaginaConta() {
           <FormularioSenha />
         </CardContent>
       </Card>
+
+      <ExcluirConta email={usuario.email ?? ''} {...exclusao} />
     </div>
   );
 }

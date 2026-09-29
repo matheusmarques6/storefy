@@ -286,6 +286,8 @@ async function main(): Promise<void> {
     'meus_convites',
     'membros_da_organizacao',
     'criar_minha_organizacao',
+    // Minha conta — o que acontece com cada empresa ao excluir a conta.
+    'consequencias_de_excluir_minha_conta',
   ];
 
   const { rows: funcoes } = await client.query<FuncaoSql>(

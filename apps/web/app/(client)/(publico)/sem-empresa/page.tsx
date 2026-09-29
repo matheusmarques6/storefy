@@ -15,6 +15,8 @@ import { configuracoesDaPlataforma } from '@/lib/configuracoes-da-plataforma-ser
 import { FUSO_PADRAO, formatarData } from '@/lib/fuso';
 import { sair } from '../acoes';
 import { AceitarDaLista, CriarEmpresa } from './formularios';
+import { ExcluirConta } from '../../(painel)/configuracoes/conta/excluir-conta';
+import { dadosDaExclusao } from '../../(painel)/configuracoes/conta/dados-da-exclusao';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 
@@ -94,6 +96,8 @@ export default async function PaginaSemEmpresa() {
           </CardContent>
         ) : null}
       </Card>
+
+      <ExcluirConta email={user.email ?? ''} {...await dadosDaExclusao(user)} />
 
       <form action={sair}>
         <Button type="submit" variant="ghost" className="w-full">

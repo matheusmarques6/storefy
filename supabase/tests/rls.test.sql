@@ -5146,6 +5146,105 @@ reset role;
 select tests.logout();
 delete from public.platform_settings;
 
+-- ============================== grupo: Minha conta — excluir a conta
+--
+-- A tela promete, empresa por empresa, o que acontece. A promessa tem de
+-- ser a mesma coisa que a cascata do banco FAZ — então o teste pergunta, e
+-- depois exclui de verdade e confere.
+
+reset role;
+select tests.logout();
+
+insert into auth.users (email, raw_user_meta_data, email_confirmed_at) values
+  ('exc-sozinho@teste.local', '{"company_name":"Empresa Solitaria"}'::jsonb, now()),
+  ('exc-dono@teste.local',    '{"company_name":"Empresa Dividida"}'::jsonb,  now()),
+  ('exc-membro@teste.local',  '{"company_name":"Exc Membro"}'::jsonb,        now()),
+  ('exc-admin@teste.local',   '{"full_name":"Admin Sucessor","company_name":"Exc Admin"}'::jsonb, now());
+
+drop table if exists tests.exc;
+create table tests.exc as
+select
+  (select id from auth.users where email = 'exc-sozinho@teste.local') as u_sozinho,
+  (select id from auth.users where email = 'exc-dono@teste.local')    as u_dono,
+  (select id from auth.users where email = 'exc-membro@teste.local')  as u_membro,
+  (select id from auth.users where email = 'exc-admin@teste.local')   as u_admin,
+  (select m.org_id from public.memberships m join auth.users u on u.id = m.user_id
+    where u.email = 'exc-sozinho@teste.local') as org_sozinha,
+  (select m.org_id from public.memberships m join auth.users u on u.id = m.user_id
+    where u.email = 'exc-dono@teste.local') as org_dividida;
+grant select on tests.exc to authenticated;
+
+-- O membro entrou ANTES do admin: mesmo assim, o sucessor é o admin.
+insert into public.memberships (org_id, user_id, role, created_at)
+select org_dividida, u_membro, 'member', now() - interval '2 days' from tests.exc;
+insert into public.memberships (org_id, user_id, role, created_at)
+select org_dividida, u_admin, 'admin', now() - interval '1 day' from tests.exc;
+insert into public.stores (org_id, name, primary_url)
+select org_sozinha, 'Loja Solitaria', 'https://solitaria.com.br' from tests.exc;
+
+select tests.login('exc-sozinho@teste.local');
+set role authenticated;
+
+select tests.ok('excluir conta',
+  (select efeito from public.consequencias_de_excluir_minha_conta()) = 'excluida'
+  and (select lojas from public.consequencias_de_excluir_minha_conta()) = 1,
+  'a única pessoa da empresa fica sabendo que a empresa vai junto, com a loja');
+
+reset role;
+select tests.login('exc-dono@teste.local');
+set role authenticated;
+
+select tests.ok('excluir conta',
+  (select efeito from public.consequencias_de_excluir_minha_conta()
+    where empresa = 'Empresa Dividida') = 'passa_para'
+  and (select sucessor from public.consequencias_de_excluir_minha_conta()
+    where empresa = 'Empresa Dividida') = 'Admin Sucessor',
+  'o único proprietário fica sabendo quem herda: o administrador, antes do membro mais antigo');
+
+reset role;
+select tests.login('exc-membro@teste.local');
+set role authenticated;
+
+select tests.ok('excluir conta',
+  (select efeito from public.consequencias_de_excluir_minha_conta()
+    where empresa = 'Empresa Dividida') = 'sai'
+  and (select count(*) from public.consequencias_de_excluir_minha_conta()) = 2,
+  'quem não é o único dono só sai — e vê também a própria empresa');
+
+select tests.ok('excluir conta',
+  tests.erro('select count(*) from auth.users'),
+  'e a lista vem da função, sem abrir auth.users');
+
+-- Agora de verdade, como a API admin do Auth faz.
+reset role;
+select tests.logout();
+delete from auth.users where email in ('exc-dono@teste.local', 'exc-sozinho@teste.local');
+
+select tests.ok('excluir conta',
+  (select m.role from public.memberships m
+    where m.org_id = (select org_dividida from tests.exc)
+      and m.user_id = (select u_admin from tests.exc)) = 'owner',
+  'a cascata fez o que a tela prometeu: o administrador virou proprietário');
+
+select tests.ok('excluir conta',
+  not exists (select 1 from public.organizations where id = (select org_sozinha from tests.exc))
+  and not exists (select 1 from public.stores where name = 'Loja Solitaria'),
+  'e a empresa da pessoa sozinha foi embora com a loja');
+
+select tests.ok('excluir conta',
+  exists (select 1 from public.organizations where id = (select org_dividida from tests.exc)),
+  'a empresa com mais gente continua');
+
+-- Quem entrou por convite também consegue sair: o aceite fica, sem autor.
+select tests.ok('excluir conta',
+  tests.permitido($q$delete from auth.users where email = 'conv-novo@teste.local'$q$),
+  'a conta que aceitou um convite se exclui');
+
+select tests.ok('excluir conta',
+  (select accepted_at is not null and accepted_by is null
+     from public.invitations where email = 'conv-novo@teste.local'),
+  'e o convite continua dizendo que foi aceito, sem apontar para quem já saiu');
+
 \echo ''
 \echo 'Falhas:'
 select grupo, descricao from tests.resultados where not passou order by id;
