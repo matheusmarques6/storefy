@@ -12,7 +12,7 @@ import { revalidatePath } from 'next/cache';
 import { toString as qrParaSvg } from 'qrcode';
 import {
   ESQUEMA_DA_PREVIA,
-  dominiosDaLoja,
+  blocoDaLoja,
   safeParseAppConfig,
   type AppConfig,
 } from '@storefy/config-schema';
@@ -20,6 +20,7 @@ import { criarClientServidor } from '@/lib/supabase/server';
 import { criarClientServiceRole } from '@/lib/supabase/admin';
 import { exigirContextoCliente } from '@/lib/contexto';
 import { guardarAsset, removerAsset } from '@/lib/assets-da-loja';
+import { iconeDoSite } from '@/lib/logo-do-site';
 import { garantirRascunho, salvarRascunho } from '@/lib/configs-servidor';
 import { validarConfig, type Problema } from '@/lib/editor-de-config';
 import { FALHA_GENERICA, mensagemDaFalha } from '@/lib/erros';
@@ -100,6 +101,68 @@ export async function enviarAsset(
   return {
     ok: true,
     mensagem: tipo === 'icone' ? 'Ícone atualizado.' : 'Tela de abertura atualizada.',
+  };
+}
+
+/**
+ * O ícone do app a partir do logo do site da loja (C03: "confirma logo").
+ *
+ * A página é relida no servidor — o endereço vem do CADASTRO da loja, lido
+ * pela sessão, e não do navegador —, o logo vira um quadrado de 1024 px com
+ * fundo sólido e o desenho na área segura do Android, e o resultado passa
+ * pela MESMA conferência do ícone enviado à mão antes de ser guardado.
+ */
+export async function usarLogoDoSite(storeId: string): Promise<EstadoDoEditor> {
+  const { papel } = await exigirContextoCliente();
+  if (papel !== 'owner' && papel !== 'admin') {
+    return { mensagem: 'Apenas proprietários e administradores trocam a imagem do app.' };
+  }
+
+  const supabase = await criarClientServidor();
+  // Pela sessão: uma loja de outra organização não volta, e nada é buscado.
+  const [lidaLoja, lidoApp] = await Promise.all([
+    supabase.from('stores').select('primary_url').eq('id', storeId).maybeSingle(),
+    supabase.from('apps').select('id').eq('store_id', storeId).maybeSingle(),
+  ]);
+  const falha = lidaLoja.error ?? lidoApp.error;
+  if (falha != null) return { mensagem: traduzirErro(falha.code, falha.message) };
+  if (lidaLoja.data == null || lidoApp.data == null) return { mensagem: 'Loja não encontrada.' };
+
+  let endereco: URL;
+  try {
+    endereco = new URL(lidaLoja.data.primary_url);
+  } catch {
+    return { mensagem: 'O endereço da loja não é válido. Confira na página da loja.' };
+  }
+
+  // A cor da marca é o fundo de um logo branco; o rascunho é onde ela está.
+  const rascunho = await garantirRascunho(supabase, storeId);
+  const corDaMarca = rascunho.ok ? rascunho.rascunho.config.theme.primary : null;
+
+  const icone = await iconeDoSite(endereco, corDaMarca);
+  if (!icone.ok) return { mensagem: icone.motivo };
+
+  const servico = criarClientServiceRole();
+  const guardado = await guardarAsset(servico, storeId, 'icone', {
+    tipoMime: 'image/png',
+    bytes: new Uint8Array(icone.icone),
+  });
+  if (!guardado.ok) return { mensagem: guardado.motivo };
+
+  const { error } = await servico
+    .from('apps')
+    .update({ icon_path: guardado.caminho })
+    .eq('id', lidoApp.data.id);
+  if (error != null) {
+    return { mensagem: 'O ícone ficou pronto, mas não conseguimos salvá-lo. Tente de novo.' };
+  }
+
+  revalidatePath('/app');
+  revalidatePath('/publicacao');
+  revalidatePath(`/lojas/${storeId}/comecar`);
+  return {
+    ok: true,
+    mensagem: 'Pronto: o ícone saiu do logo do site. Confira na prévia e troque se quiser.',
   };
 }
 
@@ -246,14 +309,14 @@ export async function salvarConfig(storeId: string, configBruta: unknown): Promi
   const config: AppConfig = {
     ...analise.data,
     version: atual.rascunho.version,
-    store: {
+    // Do banco, e pela mesma função do rascunho: a plataforma decide se o app
+    // marca o carrinho para a atribuição, e não um campo vindo do formulário.
+    store: blocoDaLoja({
       name: loja.name,
       url: loja.primary_url,
-      domains: dominiosDaLoja(loja.primary_url, loja.shop_domain),
-      // Do banco, como o resto de `store`: é ele que decide se o app marca o
-      // carrinho para a atribuição, e não um campo vindo do formulário.
+      shopDomain: loja.shop_domain,
       platform: loja.platform,
-    },
+    }),
   };
 
   const problemas = validarConfig(config);

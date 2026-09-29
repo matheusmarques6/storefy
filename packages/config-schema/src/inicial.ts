@@ -92,6 +92,23 @@ export interface DadosDaLoja {
 }
 
 /**
+ * O bloco `store` da config, a partir do cadastro da loja.
+ *
+ * É a ÚNICA fonte desse bloco: a config inicial, o rascunho salvo pelo editor
+ * e o rascunho reconciliado depois de uma edição da loja saem daqui. Montado
+ * em três lugares, um deles esqueceria a plataforma — e o app publicado
+ * marcaria (ou deixaria de marcar) o carrinho pela plataforma errada.
+ */
+export function blocoDaLoja(loja: DadosDaLoja): AppConfig['store'] {
+  return {
+    name: loja.name.trim(),
+    url: loja.url.trim(),
+    domains: dominiosDaLoja(loja.url, loja.shopDomain),
+    platform: loja.platform ?? 'shopify',
+  };
+}
+
+/**
  * Monta a config inicial de uma loja.
  *
  * Passa pelo `parseAppConfig` antes de devolver: se um dia um campo novo entrar
@@ -100,12 +117,7 @@ export interface DadosDaLoja {
 export function configInicial(loja: DadosDaLoja, versao = 1): AppConfig {
   return parseAppConfig({
     version: versao,
-    store: {
-      name: loja.name.trim(),
-      url: loja.url.trim(),
-      domains: dominiosDaLoja(loja.url, loja.shopDomain),
-      platform: loja.platform ?? 'shopify',
-    },
+    store: blocoDaLoja(loja),
     theme: TEMA_PADRAO,
     tabs: ABAS_PADRAO,
     webview: {

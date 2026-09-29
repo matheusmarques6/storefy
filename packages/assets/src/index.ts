@@ -34,3 +34,12 @@ export {
   type ImagemDoPush,
   type ProblemaDaImagemDoPush,
 } from './imagem-do-push';
+export {
+  ERROS_DO_LOGO,
+  FRACAO_DO_LOGO,
+  MENOR_LOGO,
+  fundoDoLogo,
+  iconeDoLogo,
+  type IconeDoLogo,
+  type ProblemaDoLogo,
+} from './icone-do-logo';

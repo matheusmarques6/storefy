@@ -13,11 +13,11 @@
 import { useRef, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
-import { ImageUp, Loader2, Trash2 } from 'lucide-react';
+import { Globe, ImageUp, Loader2, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
-import { enviarAsset, removerAssetDaLoja } from './acoes';
+import { enviarAsset, removerAssetDaLoja, usarLogoDoSite } from './acoes';
 import { MENSAGEM_DE_IMAGEM_GRANDE, TAMANHO_MAXIMO_DE_IMAGEM } from '@/lib/limites-de-imagem';
 
 interface Props {
@@ -28,13 +28,48 @@ interface Props {
   /** Link assinado da imagem atual, quando existe. */
   urlAtual: string | null;
   somenteLeitura: boolean;
+  /**
+   * Oferece montar o ícone a partir do logo do site da loja (C03). Só no
+   * ícone: a tela de abertura é uma arte à parte, e não o logo esticado.
+   */
+  comLogoDoSite?: boolean;
 }
 
-export function CampoDeImagem({ storeId, tipo, rotulo, ajuda, urlAtual, somenteLeitura }: Props) {
+export function CampoDeImagem({
+  storeId,
+  tipo,
+  rotulo,
+  ajuda,
+  urlAtual,
+  somenteLeitura,
+  comLogoDoSite = false,
+}: Props) {
   const router = useRouter();
   const entrada = useRef<HTMLInputElement>(null);
   const [enviando, iniciar] = useTransition();
+  const [buscandoLogo, iniciarLogo] = useTransition();
   const [erro, setErro] = useState<string | null>(null);
+  const ocupado = enviando || buscandoLogo;
+
+  function usarLogo() {
+    setErro(null);
+    iniciarLogo(async () => {
+      let resultado: Awaited<ReturnType<typeof usarLogoDoSite>>;
+      try {
+        resultado = await usarLogoDoSite(storeId);
+      } catch {
+        setErro('Não conseguimos buscar o logo agora. Confira a conexão e tente de novo.');
+        return;
+      }
+      if (resultado.ok === true) {
+        toast.success(resultado.mensagem ?? 'Ícone atualizado.');
+        router.refresh();
+      } else {
+        // Embaixo do campo, como o erro do envio: diz o que fazer em seguida.
+        setErro(resultado.mensagem ?? 'Não foi possível usar o logo do site.');
+      }
+    });
+  }
 
   function enviar(arquivo: File) {
     setErro(null);
@@ -129,7 +164,7 @@ export function CampoDeImagem({ storeId, tipo, rotulo, ajuda, urlAtual, somenteL
             // Fora da ordem do Tab: o botão ao lado é quem abre a escolha, e o
             // campo escondido seria uma parada invisível antes dele.
             tabIndex={-1}
-            disabled={somenteLeitura || enviando}
+            disabled={somenteLeitura || ocupado}
             onChange={(evento) => {
               const arquivo = evento.target.files?.[0];
               if (arquivo !== undefined) enviar(arquivo);
@@ -144,7 +179,7 @@ export function CampoDeImagem({ storeId, tipo, rotulo, ajuda, urlAtual, somenteL
               type="button"
               variant="outline"
               size="sm"
-              disabled={somenteLeitura || enviando}
+              disabled={somenteLeitura || ocupado}
               onClick={() => {
                 entrada.current?.click();
               }}
@@ -157,8 +192,25 @@ export function CampoDeImagem({ storeId, tipo, rotulo, ajuda, urlAtual, somenteL
               {urlAtual === null ? 'Enviar imagem' : 'Trocar'}
             </Button>
 
+            {comLogoDoSite && tipo === 'icone' && !somenteLeitura ? (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={ocupado}
+                onClick={usarLogo}
+              >
+                {buscandoLogo ? (
+                  <Loader2 className="size-4 animate-spin" aria-hidden />
+                ) : (
+                  <Globe className="size-4" aria-hidden />
+                )}
+                {buscandoLogo ? 'Buscando o logo…' : 'Usar o logo do site'}
+              </Button>
+            ) : null}
+
             {urlAtual === null || somenteLeitura ? null : (
-              <Button type="button" variant="ghost" size="sm" disabled={enviando} onClick={remover}>
+              <Button type="button" variant="ghost" size="sm" disabled={ocupado} onClick={remover}>
                 <Trash2 className="size-4" aria-hidden />
                 Remover
               </Button>

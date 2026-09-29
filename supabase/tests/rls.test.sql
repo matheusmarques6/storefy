@@ -8044,6 +8044,80 @@ select tests.ok('domínio da shopify',
 reset role;
 select tests.logout();
 
+-- ============================== grupo: plataforma da loja (migration 59)
+--
+-- A plataforma é escolhida no painel. Loja conectada à Shopify é Shopify: o
+-- banco recusa marcá-la como outra, o que desligaria a atribuição com os
+-- pedidos chegando.
+
+reset role;
+select tests.logout();
+
+insert into auth.users (email, raw_user_meta_data, email_confirmed_at) values
+  ('plat-dono@teste.local',   '{"company_name":"Plat Dono"}'::jsonb,   now()),
+  ('plat-membro@teste.local', '{"company_name":"Plat Membro"}'::jsonb, now());
+
+drop table if exists tests.plat;
+create table tests.plat as
+select
+  (select m.org_id from public.memberships m
+     join auth.users u on u.id = m.user_id where u.email = 'plat-dono@teste.local') as org,
+  (select id from auth.users where email = 'plat-membro@teste.local') as u_membro;
+
+insert into public.memberships (org_id, user_id, role)
+select org, u_membro, 'member' from tests.plat;
+grant select on tests.plat to anon, authenticated, service_role;
+
+select tests.login('plat-dono@teste.local');
+set role authenticated;
+
+select tests.ok('plataforma da loja',
+  tests.contar($q$with feita as (
+      insert into public.stores (org_id, name, primary_url, platform)
+      select org, 'Loja Nuvem', 'https://loja-nuvem.com.br', 'other' from tests.plat
+      returning 1)
+    select count(*) from feita$q$) = 1,
+  'o dono cadastra a loja como outra plataforma');
+
+select tests.ok('plataforma da loja',
+  tests.contar($q$with feito as (
+      update public.stores set platform = 'shopify' where name = 'Loja Nuvem' returning 1)
+    select count(*) from feito$q$) = 1,
+  'e troca a plataforma na edição');
+
+reset role;
+select tests.logout();
+select tests.login('plat-membro@teste.local');
+set role authenticated;
+
+select tests.ok('plataforma da loja',
+  tests.bloqueado($q$update public.stores set platform = 'other' where name = 'Loja Nuvem'$q$),
+  'quem é só membro não troca a plataforma');
+
+reset role;
+select tests.logout();
+
+-- Conectada à Shopify (a service role grava o token na vida real).
+update public.stores
+   set shopify_access_token_enc = 'v1.token.cifrado', shopify_scopes = array['read_orders']
+ where name = 'Loja Nuvem';
+
+select tests.login('plat-dono@teste.local');
+set role authenticated;
+
+select tests.ok('plataforma da loja',
+  tests.erro_com($q$update public.stores set platform = 'other' where name = 'Loja Nuvem'$q$,
+    'stores_conectada_e_shopify'),
+  'loja conectada à Shopify não vira outra plataforma');
+
+reset role;
+select tests.logout();
+
+select tests.ok('plataforma da loja',
+  tests.erro_com($q$update public.stores set platform = 'other' where name = 'Loja Nuvem'$q$,
+    'stores_conectada_e_shopify'),
+  'nem pela service role: é regra da loja, e não do painel');
+
 -- ============================== grupo: varredura de segurança (Fase 8)
 --
 -- Duas travas que valem para o schema inteiro, e não para uma tabela: uma

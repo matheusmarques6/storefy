@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { safeParseAppConfig } from './index';
-import { ABAS_PADRAO, configInicial, dominiosDaLoja } from './inicial';
+import { ABAS_PADRAO, blocoDaLoja, configInicial, dominiosDaLoja } from './inicial';
 
 const LOJA = { name: 'Oak Vintage', url: 'https://oakvintage.com.br' };
 
@@ -41,6 +41,30 @@ describe('dominiosDaLoja', () => {
     expect(dominiosDaLoja('   ')).toEqual([]);
     expect(dominiosDaLoja('não é url')).toEqual([]);
     expect(dominiosDaLoja('https://oakvintage.com.br', '  ')).toEqual(['oakvintage.com.br']);
+  });
+});
+
+describe('blocoDaLoja', () => {
+  it('monta o bloco da loja do cadastro, com a plataforma', () => {
+    expect(
+      blocoDaLoja({
+        name: '  Loja Oak  ',
+        url: 'https://www.oak.com.br',
+        shopDomain: 'oak.myshopify.com',
+        platform: 'other',
+      }),
+    ).toEqual({
+      name: 'Loja Oak',
+      url: 'https://www.oak.com.br',
+      domains: ['oak.com.br', 'oak.myshopify.com'],
+      platform: 'other',
+    });
+  });
+
+  it('sem plataforma, é Shopify — e a config inicial usa o mesmo bloco', () => {
+    const dados = { name: 'Loja', url: 'https://loja.com.br' };
+    expect(blocoDaLoja(dados).platform).toBe('shopify');
+    expect(configInicial(dados).store).toEqual(blocoDaLoja(dados));
   });
 });
 

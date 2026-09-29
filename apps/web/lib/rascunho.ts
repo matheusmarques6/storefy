@@ -8,7 +8,12 @@
  * quebrada dá tela de formulário sem valores e um "publicar" que grava lixo no
  * app do cliente.
  */
-import { configInicial, safeParseAppConfig, type AppConfig } from '@storefy/config-schema';
+import {
+  blocoDaLoja,
+  configInicial,
+  safeParseAppConfig,
+  type AppConfig,
+} from '@storefy/config-schema';
 
 export interface DadosDaLojaNoBanco {
   name: string;
@@ -26,6 +31,12 @@ export interface LinhaDeRascunho {
 export type DecisaoDoRascunho =
   /** O rascunho está bom; o editor abre nele. */
   | { acao: 'usar'; version: number; config: AppConfig }
+  /**
+   * O rascunho está bom, mas a loja mudou depois dele (nome, endereço ou
+   * plataforma, na tela da loja). O bloco `store` é regravado com o cadastro,
+   * e o resto do que o lojista montou fica como está.
+   */
+  | { acao: 'atualizar'; version: number; config: AppConfig }
   /** Havia rascunho, mas ilegível. Vai ser reescrito na mesma versão. */
   | { acao: 'consertar'; version: number; config: AppConfig }
   /** Não havia rascunho nenhum. Nasce um. */
@@ -56,6 +67,17 @@ export function decidirRascunho(
 
   const analise = safeParseAppConfig(rascunho.config);
   if (analise.success) {
+    /*
+     * O `store` do rascunho segue o cadastro, sempre. Sem isto, trocar o
+     * endereço ou a plataforma na tela da loja só chegaria ao app quando o
+     * lojista mexesse de novo no editor — e "Publicar" sem mexer em nada
+     * poria no ar o endereço antigo, ou a marcação de carrinho da plataforma
+     * errada.
+     */
+    const store = blocoDaLoja(dados);
+    if (!mesmaLoja(analise.data.store, store)) {
+      return { acao: 'atualizar', version: rascunho.version, config: { ...analise.data, store } };
+    }
     return { acao: 'usar', version: rascunho.version, config: analise.data };
   }
 
@@ -70,4 +92,15 @@ export function decidirRascunho(
     version: rascunho.version,
     config: configInicial(dados, rascunho.version),
   };
+}
+
+/** Campo a campo, e não por `JSON.stringify`: a ordem das chaves não é dado. */
+function mesmaLoja(a: AppConfig['store'], b: AppConfig['store']): boolean {
+  return (
+    a.name === b.name &&
+    a.url === b.url &&
+    a.platform === b.platform &&
+    a.domains.length === b.domains.length &&
+    a.domains.every((dominio, indice) => dominio === b.domains[indice])
+  );
 }

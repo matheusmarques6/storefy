@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { configInicial } from '@storefy/config-schema';
+import { configInicial, type AppConfig } from '@storefy/config-schema';
 import { decidirRascunho, type DadosDaLojaNoBanco } from '@/lib/rascunho';
 
 const LOJA: DadosDaLojaNoBanco = {
@@ -8,6 +8,19 @@ const LOJA: DadosDaLojaNoBanco = {
   shop_domain: 'oak-vintage.myshopify.com',
   platform: 'shopify' as const,
 };
+
+/** Um rascunho salvo quando a loja estava exatamente como `LOJA`. */
+function salvoCom(versao: number): AppConfig {
+  return configInicial(
+    {
+      name: LOJA.name,
+      url: LOJA.primary_url,
+      shopDomain: LOJA.shop_domain,
+      platform: LOJA.platform,
+    },
+    versao,
+  );
+}
 
 describe('decidirRascunho', () => {
   it('cria o primeiro rascunho quando o app não tem nenhum', () => {
@@ -29,7 +42,7 @@ describe('decidirRascunho', () => {
   });
 
   it('usa o rascunho que está lá quando ele é válido', () => {
-    const guardada = configInicial({ name: 'Oak', url: 'https://oakvintage.com.br' }, 4);
+    const guardada = salvoCom(4);
     guardada.theme.primary = '#ff0000';
 
     const decisao = decidirRascunho(LOJA, { version: 4, config: guardada }, 4);
@@ -41,7 +54,12 @@ describe('decidirRascunho', () => {
   it('completa os defaults de um rascunho gravado antes de um campo existir', () => {
     const antiga = {
       version: 2,
-      store: { name: 'Oak', url: 'https://oakvintage.com.br', domains: ['oakvintage.com.br'] },
+      // Sem `platform`: o rascunho é de antes do campo existir.
+      store: {
+        name: 'Oak Vintage',
+        url: 'https://oakvintage.com.br',
+        domains: ['oakvintage.com.br', 'oak-vintage.myshopify.com'],
+      },
       theme: {
         primary: '#000',
         background: '#fff',
@@ -66,6 +84,43 @@ describe('decidirRascunho', () => {
     expect(decisao.acao).toBe('usar');
     expect(decisao.config.minSupportedBuild).toBe(1);
     expect(decisao.config.webview.pullToRefresh).toBe(true);
+  });
+
+  /*
+   * A loja mudou na tela dela depois do rascunho. Sem regravar o `store`,
+   * "Publicar" sem mexer no editor poria no ar o endereço antigo — ou a
+   * marcação de carrinho da plataforma errada.
+   */
+  it('ATUALIZA o bloco da loja quando o cadastro mudou, e mantém o resto', () => {
+    const guardada = salvoCom(6);
+    guardada.theme.primary = '#123456';
+
+    const mudou = decidirRascunho(
+      { ...LOJA, name: 'Oak Store', primary_url: 'https://oakstore.com.br', platform: 'other' },
+      { version: 6, config: guardada },
+      6,
+    );
+    expect(mudou.acao).toBe('atualizar');
+    expect(mudou.version).toBe(6);
+    expect(mudou.config.store).toEqual({
+      name: 'Oak Store',
+      url: 'https://oakstore.com.br',
+      domains: ['oakstore.com.br', 'oak-vintage.myshopify.com'],
+      platform: 'other',
+    });
+    // O que o lojista montou no editor fica.
+    expect(mudou.config.theme.primary).toBe('#123456');
+    expect(mudou.config.tabs).toEqual(guardada.tabs);
+  });
+
+  it('só a plataforma mudou: também atualiza', () => {
+    const decisao = decidirRascunho(
+      { ...LOJA, platform: 'other' },
+      { version: 3, config: salvoCom(3) },
+      3,
+    );
+    expect(decisao.acao).toBe('atualizar');
+    expect(decisao.config.store.platform).toBe('other');
   });
 
   it('CONSERTA o rascunho ilegível em vez de abrir o editor em cima de lixo', () => {

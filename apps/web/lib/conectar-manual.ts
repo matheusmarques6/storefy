@@ -143,6 +143,9 @@ export async function conectarPeloAppDoLojista(
       shopify_token_expires_at: troca.valor.venceEm,
       shopify_scopes: troca.valor.escopos,
       shopify_conexao: 'manual',
+      // Loja conectada à Shopify É Shopify: o app passa a marcar o carrinho, e
+      // o banco recusa a combinação contrária (migration 59).
+      platform: 'shopify',
     })
     .eq('id', pedido.storeId);
 

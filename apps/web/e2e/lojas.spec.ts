@@ -224,3 +224,73 @@ test('editar a loja conectada não desliga os pedidos, e outra empresa não os d
     .in('shopify_order_id', ['7001', '7002']);
   expect(pedidos?.map((pedido) => pedido.apps.store_id)).toEqual([lojaId, lojaId]);
 });
+
+/*
+ * A plataforma decide se o app marca o carrinho (a receita do app) e como os
+ * links do app saem. Ela se escolhe no cadastro — a detecção sugere —, se
+ * troca na edição, e chega ao rascunho do app sem o lojista precisar mexer no
+ * editor. Com a Shopify conectada, o campo trava.
+ */
+test('a plataforma se escolhe no cadastro, troca na edição e chega ao app', async ({ page }) => {
+  const email = emailDeTeste('plataforma');
+  await criarUsuarioConfirmado(email, 'Empresa Plataforma');
+  await entrar(page, email);
+
+  await page.goto('/lojas/nova');
+  await page.getByLabel('Nome da loja').fill('Loja Nuvem');
+  await page.getByLabel('Endereço da loja').fill('loja-nuvem-e2e.com.br');
+  const plataforma = page.getByLabel('Plataforma da loja');
+  await expect(plataforma).toHaveValue('shopify');
+  await plataforma.selectOption('other');
+  await expect(
+    page.getByText('não separa as vendas do app das do site', { exact: false }),
+  ).toBeVisible();
+  await page.getByRole('button', { name: 'Criar loja' }).click();
+  await page.waitForURL(/\/lojas\/[0-9a-f-]{36}\/comecar$/);
+  const lojaId = /\/lojas\/([0-9a-f-]{36})/.exec(page.url())?.[1] ?? '';
+
+  const banco = bancoDeTeste();
+  const lerLoja = async () =>
+    (await banco.from('stores').select('platform').eq('id', lojaId).single()).data;
+  const lerRascunho = async () => {
+    const { data: app } = await banco.from('apps').select('id').eq('store_id', lojaId).single();
+    const { data } = await banco
+      .from('app_configs')
+      .select('config')
+      .eq('app_id', app?.id ?? '')
+      .eq('status', 'draft')
+      .single();
+    return (data?.config as { store: { platform: string } } | undefined)?.store.platform;
+  };
+
+  expect(await lerLoja()).toEqual({ platform: 'other' });
+  expect(await lerRascunho()).toBe('other');
+
+  // Troca na edição; o rascunho acompanha quando o editor abre.
+  await page.goto(`/lojas/${lojaId}`);
+  await expect(page.getByLabel('Plataforma da loja')).toHaveValue('other');
+  await page.getByLabel('Plataforma da loja').selectOption('shopify');
+  await page.getByRole('button', { name: 'Salvar alterações' }).click();
+  await expect(page.getByText('Alterações salvas.')).toBeVisible();
+  expect(await lerLoja()).toEqual({ platform: 'shopify' });
+
+  await page.goto('/app');
+  await expect(page.getByRole('heading', { name: 'Editor do app' })).toBeVisible();
+  expect(await lerRascunho()).toBe('shopify');
+
+  // Conectada à Shopify: o campo trava, e diz o que fazer.
+  await conectarShopify(lojaId, `plataforma-${String(Date.now())}.myshopify.com`);
+  await page.goto(`/lojas/${lojaId}`);
+  await expect(page.getByLabel('Plataforma da loja')).toBeDisabled();
+  await expect(
+    page.getByText(
+      'A loja está conectada à Shopify. Para trocar a plataforma, desconecte em Integrações.',
+    ),
+  ).toBeVisible();
+
+  // Salvar o resto não mexe na plataforma travada.
+  await page.getByLabel('Nome da loja').fill('Loja Nuvem Conectada');
+  await page.getByRole('button', { name: 'Salvar alterações' }).click();
+  await expect(page.getByText('Alterações salvas.')).toBeVisible();
+  expect(await lerLoja()).toEqual({ platform: 'shopify' });
+});

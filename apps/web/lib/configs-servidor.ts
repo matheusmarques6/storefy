@@ -122,7 +122,8 @@ export async function garantirRascunho(
       return { ok: false, motivo: mensagemDaFalha('configs', error, FALHA_GENERICA) };
   }
 
-  if (decisao.acao === 'consertar') {
+  // Consertar (ilegível) e atualizar (a loja mudou) regravam a mesma linha.
+  if (decisao.acao === 'consertar' || decisao.acao === 'atualizar') {
     const { error } = await supabase
       .from('app_configs')
       .update({ config: decisao.config })

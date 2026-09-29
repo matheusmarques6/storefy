@@ -23,12 +23,21 @@ import { Campo, propsDoCampo } from '@/components/campo';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 
+/** O que muda para o app em cada plataforma, na linguagem do lojista. */
+const O_QUE_A_PLATAFORMA_MUDA = {
+  shopify: 'O app separa as vendas feitas nele das do site, e os links do app saem pela Shopify.',
+  other:
+    'O app abre a sua loja normalmente, mas não separa as vendas do app das do site. Os links do app pedem dois arquivos no seu site, em Publicação.',
+} as const;
+
 export function FormularioLoja({
   acao,
   nomeInicial = '',
   urlInicial = '',
   emailInicial = '',
   fusoInicial = '',
+  plataformaInicial = 'shopify',
+  plataformaTravada = false,
   gruposDeFusos,
   rotuloEnvio,
   carregando,
@@ -40,6 +49,13 @@ export function FormularioLoja({
   urlInicial?: string;
   emailInicial?: string;
   fusoInicial?: string;
+  /** `stores.platform`. No cadastro, a detecção troca quando lê o site. */
+  plataformaInicial?: 'shopify' | 'other';
+  /**
+   * A loja está conectada à Shopify: a plataforma não muda por aqui (e o
+   * campo travado nem é enviado). Trocar exige desconectar antes.
+   */
+  plataformaTravada?: boolean;
   /**
    * As opções do fuso, montadas no SERVIDOR: os nomes vêm do `Intl`, e o do
    * navegador pode chamar o mesmo fuso de outro jeito — a lista mudaria entre
@@ -64,6 +80,7 @@ export function FormularioLoja({
   const [nome, setNome] = useState(nomeInicial);
   const [url, setUrl] = useState(urlInicial);
   const [marca, setMarca] = useState<MarcaDetectada | null>(null);
+  const [plataforma, setPlataforma] = useState<'shopify' | 'other'>(plataformaInicial);
   const [avisoDaDeteccao, setAviso] = useState<string | null>(null);
   const [detectando, iniciarDeteccao] = useTransition();
 
@@ -77,6 +94,9 @@ export function FormularioLoja({
           return;
         }
         setMarca(resultado.marca);
+        // O que o site mostra decide o ponto de partida; o lojista confirma
+        // (ou corrige) no campo, que fica logo abaixo.
+        setPlataforma(resultado.marca.ehShopify ? 'shopify' : 'other');
         // O nome digitado pelo lojista tem prioridade sobre o que lemos.
         if (nome.trim() === '' && resultado.marca.nome !== null) setNome(resultado.marca.nome);
         if (resultado.marca.nome === null) {
@@ -196,6 +216,31 @@ export function FormularioLoja({
           placeholder="Minha Loja"
           required
         />
+      </Campo>
+
+      <Campo
+        id="plataforma"
+        rotulo="Plataforma da loja"
+        erro={estado.erros?.plataforma}
+        dica={
+          plataformaTravada
+            ? 'A loja está conectada à Shopify. Para trocar a plataforma, desconecte em Integrações.'
+            : marca !== null && !marca.ehShopify && plataforma === 'other'
+              ? `Lemos o seu site e ele não parece uma loja Shopify. ${O_QUE_A_PLATAFORMA_MUDA.other}`
+              : O_QUE_A_PLATAFORMA_MUDA[plataforma]
+        }
+      >
+        <Select
+          {...propsDoCampo('plataforma', estado.erros?.plataforma, true)}
+          value={plataforma}
+          disabled={plataformaTravada}
+          onChange={(evento) => {
+            setPlataforma(evento.target.value === 'other' ? 'other' : 'shopify');
+          }}
+        >
+          <option value="shopify">Shopify</option>
+          <option value="other">Outra plataforma (Nuvemshop, WooCommerce, VTEX…)</option>
+        </Select>
       </Campo>
 
       {comContato ? (

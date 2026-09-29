@@ -205,6 +205,8 @@ test('quem é membro vê o visual e o checklist, mas não muda nem gera código'
   ).toBeVisible();
   await expect(page.getByRole('switch', { name: 'Tirar a aba Buscar' })).toBeDisabled();
   await expect(page.getByRole('button', { name: 'Salvar e continuar' })).toHaveCount(0);
+  // Nem monta o ícone a partir do logo do site.
+  await expect(page.getByRole('button', { name: 'Usar o logo do site' })).toHaveCount(0);
 
   await page.getByRole('link', { name: 'Continuar' }).click();
   await page.waitForURL(`**/lojas/${lojaId}/comecar/pronto`);
@@ -214,6 +216,42 @@ test('quem é membro vê o visual e o checklist, mas não muda nem gera código'
   await expect(page.getByRole('button', { name: 'Gerar código' })).toHaveCount(0);
   await expect(page.getByText('Falta: Ícone e tela de abertura')).toBeVisible();
   await expect(page.getByRole('link', { name: 'Enviar no editor' })).toHaveCount(0);
+});
+
+/*
+ * "Usar o logo do site" relê a página da loja no servidor. O endereço deste
+ * teste não existe na internet — e é o caminho que precisa estar certo na
+ * tela: o botão espera, diz o motivo embaixo do campo, e o ícone não muda. O
+ * caminho do logo que dá certo está no teste de unidade (`logo-do-site`),
+ * com imagens de verdade, porque o servidor do teste não sai para a internet.
+ */
+test('usar o logo do site: com o site fora do ar, diz o motivo e não muda o ícone', async ({
+  page,
+}) => {
+  const email = emailDeTeste('comeco-logo');
+  await criarUsuarioConfirmado(email, 'Empresa Logo');
+  await entrar(page, email);
+  const lojaId = await criarLojaPelaTela(
+    page,
+    'Loja do Logo',
+    `loja-que-nao-existe-${String(Date.now())}.com.br`,
+  );
+
+  const botao = page.getByRole('button', { name: 'Usar o logo do site' });
+  await expect(botao).toBeVisible();
+  await botao.click();
+
+  await expect(
+    page.getByText('Não conseguimos acessar a loja agora. Confira o endereço ou preencha à mão.'),
+  ).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByRole('button', { name: 'Usar o logo do site' })).toBeEnabled();
+
+  const { data: app } = await bancoDeTeste()
+    .from('apps')
+    .select('icon_path')
+    .eq('store_id', lojaId)
+    .single();
+  expect(app?.icon_path).toBeNull();
 });
 
 /*

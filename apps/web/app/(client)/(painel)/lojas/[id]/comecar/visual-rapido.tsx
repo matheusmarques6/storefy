@@ -144,9 +144,10 @@ export function VisualRapido({
               storeId={storeId}
               tipo="icone"
               rotulo="Ícone"
-              ajuda="Quadrado, pelo menos 1024×1024, sem fundo transparente e sem cantos arredondados — os dois sistemas arredondam sozinhos."
+              ajuda="Quadrado, pelo menos 1024×1024, sem fundo transparente e sem cantos arredondados — os dois sistemas arredondam sozinhos. Ou use o logo do seu site: a gente monta o quadrado com ele."
               urlAtual={urlDoIcone}
               somenteLeitura={somenteLeitura}
+              comLogoDoSite
             />
           </CardContent>
         </Card>

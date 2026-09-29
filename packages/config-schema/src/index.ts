@@ -171,7 +171,7 @@ export function safeParseAppConfig(input: unknown) {
   return AppConfigSchema.safeParse(input);
 }
 
-export { configInicial, dominiosDaLoja, ABAS_PADRAO, TEMA_PADRAO } from './inicial';
+export { blocoDaLoja, configInicial, dominiosDaLoja, ABAS_PADRAO, TEMA_PADRAO } from './inicial';
 export type { DadosDaLoja } from './inicial';
 export { NOMES_DE_ICONE, ROTULO_DO_ICONE, ehNomeDeIcone } from './icones';
 export type { NomeDeIcone } from './icones';

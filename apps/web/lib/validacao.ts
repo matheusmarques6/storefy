@@ -125,6 +125,13 @@ export const lojaSchema = z.object({
       }
       return aceito;
     }),
+  /*
+   * Em que plataforma a loja roda. Ausente quer dizer "não mexer" na edição e
+   * Shopify no cadastro — é o produto, e o padrão do banco. Decide se o app
+   * marca o carrinho para separar a venda do app e se os links do app saem
+   * pela Shopify ou pelos arquivos no site.
+   */
+  plataforma: z.enum(['shopify', 'other'], { error: 'Escolha a plataforma da loja.' }).optional(),
 });
 
 export const organizacaoSchema = z.object({

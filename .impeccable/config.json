@@ -1,0 +1,15 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "broken-image",
+        "value": "*",
+        "files": ["apps/web/lib/logo-do-site.ts"],
+        "createdAt": "2026-09-29T21:36:58.040Z",
+        "reason": "Claude (self-triage): L100 is a regex matching <img> tags inside scraped store HTML to find the logo URL; nothing is rendered"
+      }
+    ]
+  }
+}

@@ -143,6 +143,8 @@ describe('conectarPeloAppDoLojista', () => {
     expect(gravado).toHaveLength(1);
     const linha = gravado[0] ?? {};
     expect(linha.shopify_conexao).toBe('manual');
+    // Conectada à Shopify, a loja passa a ser Shopify — mesmo a que dizia "outra".
+    expect(linha.platform).toBe('shopify');
     expect(linha.shopify_client_id).toBe('id-do-app');
     expect(linha.shop_domain).toBe(LOJA);
 

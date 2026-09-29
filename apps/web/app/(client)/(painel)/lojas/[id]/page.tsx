@@ -75,7 +75,7 @@ export default async function PaginaLoja({
           <CardTitle className="text-base">Dados da loja</CardTitle>
           <CardDescription>
             {podeEditar
-              ? 'O nome, o endereço que o app abre, o contato de atendimento e o fuso horário da loja.'
+              ? 'O nome, o endereço que o app abre, a plataforma, o contato de atendimento e o fuso horário da loja.'
               : 'Somente proprietários e administradores podem alterar estes dados.'}
           </CardDescription>
         </CardHeader>
@@ -87,6 +87,8 @@ export default async function PaginaLoja({
               urlInicial={loja.primary_url}
               emailInicial={loja.support_email ?? ''}
               fusoInicial={loja.timezone}
+              plataformaInicial={loja.platform}
+              plataformaTravada={loja.shopify_scopes != null}
               gruposDeFusos={gruposDeFusos(loja.timezone)}
               rotuloEnvio="Salvar alterações"
               carregando="Salvando..."
@@ -105,6 +107,12 @@ export default async function PaginaLoja({
               <div>
                 <dt className="text-muted-foreground">E-mail de atendimento</dt>
                 <dd className="font-medium">{loja.support_email ?? 'Ainda não cadastrado'}</dd>
+              </div>
+              <div>
+                <dt className="text-muted-foreground">Plataforma</dt>
+                <dd className="font-medium">
+                  {loja.platform === 'shopify' ? 'Shopify' : 'Outra plataforma'}
+                </dd>
               </div>
               <div>
                 <dt className="text-muted-foreground">Fuso horário</dt>

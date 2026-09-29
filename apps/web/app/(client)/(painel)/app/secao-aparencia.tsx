@@ -55,6 +55,7 @@ export function SecaoAparencia({
           ajuda="Quadrado, pelo menos 1024×1024, sem fundo transparente e sem cantos arredondados — os dois sistemas arredondam sozinhos."
           urlAtual={urlDoIcone}
           somenteLeitura={somenteLeitura}
+          comLogoDoSite
         />
         <CampoDeImagem
           storeId={storeId}

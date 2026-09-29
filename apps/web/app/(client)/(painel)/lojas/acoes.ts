@@ -27,7 +27,7 @@ import {
   temaSugerido,
   type MarcaDetectada,
 } from '@/lib/deteccao-da-loja';
-import { ehHostPublico } from '@/lib/preview-proxy';
+import { confirmarShopify, lerPaginaDaLoja } from '@/lib/pagina-da-loja';
 import { dominioAoEditar } from '@/lib/dominio-da-loja';
 import { mensagemDaFalha } from '@/lib/erros';
 
@@ -40,14 +40,6 @@ export interface EstadoLoja {
 
 export type ResultadoDaDeteccao =
   { ok: true; marca: MarcaDetectada } | { ok: false; motivo: string };
-
-/** A loja pode demorar; o cadastro não pode ficar pendurado nela. */
-const TEMPO_LIMITE_DA_DETECCAO_MS = 8000;
-/** Teto do documento lido. Página inicial de loja passa longe disso. */
-const TAMANHO_MAXIMO = 2 * 1024 * 1024;
-
-const AGENTE =
-  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0 Safari/537.36 StorefyBot';
 
 /**
  * Lê a página inicial da loja para preencher nome, cor e logo (C02–C04).
@@ -76,74 +68,18 @@ export async function detectarLoja(urlBruta: string): Promise<ResultadoDaDetecca
   } catch {
     return { ok: false, motivo: 'Endereço inválido.' };
   }
-  if (alvo.protocol !== 'http:' && alvo.protocol !== 'https:') {
-    return { ok: false, motivo: 'Use um endereço http ou https.' };
-  }
-  if (!ehHostPublico(alvo.hostname)) {
-    return { ok: false, motivo: 'Este endereço não pode ser consultado.' };
-  }
 
-  const cancelador = new AbortController();
-  const alarme = setTimeout(() => {
-    cancelador.abort();
-  }, TEMPO_LIMITE_DA_DETECCAO_MS);
+  // A leitura confere o endereço e cada redirecionamento: só host público.
+  const pagina = await lerPaginaDaLoja(alvo);
+  if (!pagina.ok) return { ok: false, motivo: pagina.motivo };
 
-  try {
-    const resposta = await fetch(alvo.toString(), {
-      signal: cancelador.signal,
-      redirect: 'follow',
-      headers: { 'User-Agent': AGENTE, Accept: 'text/html,application/xhtml+xml' },
-    });
+  const marca = detectarMarca(pagina.html, pagina.url.toString());
 
-    if (!resposta.ok) {
-      return {
-        ok: false,
-        motivo: `A loja respondeu com erro ${String(resposta.status)}. Confira o endereço.`,
-      };
-    }
+  // A confirmação por `/products.json` só entra quando o HTML não bastou:
+  // é uma requisição a mais, e na maioria das lojas o HTML já entrega.
+  if (!marca.ehShopify) marca.ehShopify = await confirmarShopify(pagina.url);
 
-    const bruto = await resposta.arrayBuffer();
-    if (bruto.byteLength > TAMANHO_MAXIMO) {
-      return { ok: false, motivo: 'A página inicial da loja é grande demais para analisarmos.' };
-    }
-
-    const html = new TextDecoder('utf-8').decode(bruto);
-    const marca = detectarMarca(html, resposta.url === '' ? alvo.toString() : resposta.url);
-
-    // A confirmação por `/products.json` só entra quando o HTML não bastou:
-    // é uma requisição a mais, e na maioria das lojas o HTML já entrega.
-    if (!marca.ehShopify) {
-      marca.ehShopify = await confirmarShopify(alvo, cancelador.signal);
-    }
-
-    return { ok: true, marca };
-  } catch {
-    return {
-      ok: false,
-      motivo: 'Não conseguimos acessar a loja agora. Confira o endereço ou preencha à mão.',
-    };
-  } finally {
-    clearTimeout(alarme);
-  }
-}
-
-/** `/products.json` é público em toda loja Shopify e devolve uma lista. */
-async function confirmarShopify(base: URL, sinal: AbortSignal): Promise<boolean> {
-  try {
-    const resposta = await fetch(new URL('/products.json?limit=1', base).toString(), {
-      signal: sinal,
-      headers: { 'User-Agent': AGENTE, Accept: 'application/json' },
-    });
-    if (!resposta.ok) return false;
-    const corpo: unknown = await resposta.json();
-    return (
-      typeof corpo === 'object' &&
-      corpo !== null &&
-      Array.isArray((corpo as { products?: unknown }).products)
-    );
-  } catch {
-    return false;
-  }
+  return { ok: true, marca };
 }
 
 /** A URL é única por organização; o banco tem o índice que garante isso. */
@@ -165,7 +101,11 @@ export async function criarLoja(_anterior: EstadoLoja, dados: FormData): Promise
   // O cadastro não pede o e-mail de atendimento: ele aparece na edição e na
   // tela de publicação, onde faz diferença. Sem o campo, o schema entende
   // "sem contato".
-  const analise = lojaSchema.safeParse({ nome: dados.get('nome'), url: dados.get('url') });
+  const analise = lojaSchema.safeParse({
+    nome: dados.get('nome'),
+    url: dados.get('url'),
+    plataforma: dados.get('plataforma') ?? undefined,
+  });
   if (!analise.success) return { erros: extrairErros(analise.error) };
 
   const { organizacao } = await exigirContextoCliente();
@@ -178,6 +118,8 @@ export async function criarLoja(_anterior: EstadoLoja, dados: FormData): Promise
       name: analise.data.nome,
       primary_url: analise.data.url,
       shop_domain: new URL(analise.data.url).hostname,
+      // A detecção preenche, o lojista confirma na tela. Sem escolha, Shopify.
+      platform: analise.data.plataforma ?? 'shopify',
     })
     .select('id')
     .single();
@@ -242,6 +184,7 @@ export async function editarLoja(
     emailDeAtendimento: dados.get('emailDeAtendimento') ?? '',
     // Ausente quer dizer "não mexer" — o schema só confere o que veio.
     fuso: dados.get('fuso') ?? undefined,
+    plataforma: dados.get('plataforma') ?? undefined,
   });
   if (!analise.success) return { erros: extrairErros(analise.error), valores };
 
@@ -266,6 +209,7 @@ export async function editarLoja(
       ...(dominio === undefined ? {} : { shop_domain: dominio }),
       support_email: analise.data.emailDeAtendimento,
       ...(analise.data.fuso === undefined ? {} : { timezone: analise.data.fuso }),
+      ...(analise.data.plataforma === undefined ? {} : { platform: analise.data.plataforma }),
     })
     .eq('id', lojaId)
     .select('id')
