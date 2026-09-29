@@ -147,4 +147,6 @@ export const ROTULO_ACAO_AUDITORIA: Record<AuditAction, string> = {
   create: 'Criou',
   update: 'Editou',
   delete: 'Excluiu',
+  view_as_start: 'Abriu como cliente',
+  view_as_end: 'Fechou a visita',
 };

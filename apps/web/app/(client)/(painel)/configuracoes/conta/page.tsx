@@ -1,15 +1,32 @@
 /** Configurações da conta do usuário: nome, e-mail e senha. */
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, Eye } from 'lucide-react';
 import { exigirContextoCliente } from '@/lib/contexto';
 import { FormularioEmail, FormularioNome, FormularioSenha } from '../formularios';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { EstadoVazio } from '@/components/estado-vazio';
 
 export const metadata: Metadata = { title: 'Minha conta' };
 
 export default async function PaginaConta() {
-  const { usuario } = await exigirContextoCliente();
+  const { usuario, visita } = await exigirContextoCliente();
+
+  /*
+   * Durante a visita ao painel de um cliente, "minha conta" seria a conta da
+   * EQUIPE — não a do cliente — no meio do painel dele. A tela diz isso em vez
+   * de mostrar formulários que o proxy recusaria.
+   */
+  if (visita != null) {
+    return (
+      <EstadoVazio
+        icone={Eye}
+        titulo="Esta tela é da sua conta, e não do cliente"
+        descricao="Você está vendo o painel de um cliente, somente para leitura. Encerre a visita para mexer nos dados da sua conta."
+      />
+    );
+  }
+
   const metadados = usuario.user_metadata as { full_name?: unknown };
   const nome = typeof metadados.full_name === 'string' ? metadados.full_name : '';
 

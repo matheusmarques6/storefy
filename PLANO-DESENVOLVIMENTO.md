@@ -967,7 +967,7 @@ Travas novas: `formularios-controlados.test.ts`, `erros.test.ts` (varredura de `
 | A01 — Login do admin | ✅ `exigirPlatformAdmin()` a cada request; quem não está em `platform_admins` vai para /admin/sem-acesso |
 | **A02 — Visão geral** | ✅ dez números numa chamada só (`resumo_do_admin`), separados em "precisa de você" (só o que é > 0) e "a plataforma hoje" (aparece zerado, porque ali zero é informação). `/admin` passou a ser esta tela |
 | A03 — Organizações (lista) | ✅ saiu de `/admin` para `/admin/organizacoes`, com busca e paginação |
-| A04 — Cliente (detalhe) | ⚠️ lojas, membros, últimos builds e **notas internas**. Faltam as abas de app/config, push, cobrança e o "entrar como cliente" |
+| A04 — Cliente (detalhe) | ⚠️ lojas, membros, últimos builds, **notas internas** e **"Ver como cliente"** (somente leitura, auditado — ver abaixo). Faltam as abas de app/config, push e cobrança |
 | **A05 — Fila de builds** | ✅ recortes por situação na URL, abrindo no que quebrou; erro da EAS na própria linha; link dos logs; reexecutar com confirmação, travado para build que ainda roda ou que está com a loja |
 | **A06 — Revisões das lojas** | ✅ ordenada do mais ANTIGO para o mais novo (aqui o interessante é o que está parado), com alerta a partir de 7 dias e o motivo da recusa na linha |
 | **A07 — Contas de desenvolvedor** | ✅ estado e identificadores públicos (Team ID, Key ID) de cada cliente. Nenhuma coluna `_enc` é lida: o segredo não passa pela tela |
@@ -977,6 +977,35 @@ Travas novas: `formularios-controlados.test.ts`, `erros.test.ts` (varredura de `
 | **A13 — Configurações do sistema** | ⚠️ o bloco de CHAVES está pronto: as 19 variáveis que a aplicação lê, em três níveis (essencial, por recurso, opcional) pelo que quebra sem cada uma, com um teste que varre o código e falha quando alguém soma uma variável sem descrevê-la. Opcional desligada aparece como "Não usado", e não como falta. Feature flags e versão mínima ainda não |
 | **A10 — Presets por tema** | ✅ os dois lados: a equipe cria o preset COPIANDO de uma loja publicada, e o lojista aplica no editor com a troca descrita antes de confirmar |
 | A09 | ⬜ ainda não (depende da cobrança, Fase 7) |
+
+> **"Entrar como cliente" virou "Ver como cliente": somente leitura.** Entrar COMO o cliente
+> exigiria uma sessão com a identidade dele, e tudo que a equipe fizesse iria para a trilha como
+> se o cliente tivesse feito — inclusive publicar o app ou mandar push para os clientes DELE. Para
+> o que o suporte precisa, que é ver o que o lojista está vendo, ler basta, e ler não tem como
+> dar errado em nome de ninguém. Como funciona:
+>
+> - a pessoa da equipe continua com a PRÓPRIA sessão; o painel lê o cliente pelas policies de
+>   sempre (`or is_platform_admin()`), e nenhuma policy de escrita dá passagem à equipe — o
+>   "somente leitura" é do banco (conferido no `pg_policies`);
+> - por cima, o proxy recusa toda ação de formulário durante a visita (e2e manda um POST direto
+>   e recebe 403), e as telas escondem o que escreve;
+> - abrir exige MOTIVO, e o começo (com o motivo) e o fim vão para a auditoria com ações
+>   próprias (`view_as_start`/`view_as_end`) — a auditoria é gravada antes, e sem ela a visita
+>   não abre;
+> - o convite é assinado, vale 5 minutos e só abre na sessão do mesmo admin; a visita dura 1
+>   hora, e cai na hora se a pessoa sair da equipe;
+> - uma visita esquecida no navegador não trava quem entra depois: o proxy descarta o cookie
+>   que não é da pessoa logada, e "Sair" apaga a visita.
+>
+> O e2e navega por TODAS as telas durante a visita e confere que nenhuma linha nova apareceu na
+> trilha do cliente — toda escrita nas tabelas dele passa por trigger de auditoria.
+>
+> **Dois defeitos que o e2e da visita achou no caminho**: um `redirect()` de server action para
+> uma rota interna faz o Next renderizar o destino NO SERVIDOR, seguindo o 303 com os cookies de
+> antes — o cookie da visita nunca chegava ao navegador. E `new URL(caminho, requisicao.url)`
+> numa rota leva o host em que o servidor escuta (`localhost` no `next start`), e não o que o
+> navegador pediu; as rotas do OAuth da Shopify tinham o mesmo problema. `redirecionarPara` usa
+> `Location` relativo, que o navegador resolve contra o endereço que ele mesmo pediu.
 
 > **O preset nasce de uma loja que já funciona, e não de um editor próprio no admin.** Duas
 > razões: um segundo editor de abas seria uma cópia do C06 envelhecendo em paralelo, e um preset

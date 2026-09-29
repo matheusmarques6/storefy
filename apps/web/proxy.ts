@@ -20,6 +20,12 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { carregarUsuario } from '@/lib/supabase/middleware';
 import { env, supabaseConfigurado } from '@/lib/env';
+import {
+  COOKIE_LOJA_DA_VISITA,
+  COOKIE_VISITA,
+  PREFIXO_DAS_ROTAS_DA_VISITA,
+  donoDoToken,
+} from '@/lib/visita-nomes';
 
 /** Rotas do painel do cliente que não exigem login. */
 const PUBLICAS_CLIENTE = [
@@ -98,6 +104,38 @@ export async function proxy(request: NextRequest) {
   }
 
   // -------------------------------------------------------------- cliente
+
+  /*
+   * "Ver como cliente" é SOMENTE LEITURA. Enquanto a visita está aberta, toda
+   * requisição que não é leitura — ação de formulário do Next, que é POST —
+   * para aqui, com exceção das rotas da própria visita (sair dela e trocar de
+   * loja). O banco já recusaria a escrita, porque a equipe não tem policy de
+   * escrita nas tabelas do cliente; isto é a segunda tranca, e a que diz o
+   * porquê em vez de deixar a tela quebrar com "permissão negada".
+   *
+   * A assinatura do cookie não é conferida aqui, e não precisa: para BLOQUEAR,
+   * basta ele existir. Um cookie forjado só trava quem o forjou.
+   *
+   * Mas precisa ser de QUEM ESTÁ AQUI. O admin que sai da conta sem encerrar a
+   * visita deixa o cookie no navegador; se outra pessoa entra no mesmo
+   * computador, a visita não é dela — o cookie vai embora, e nada trava.
+   */
+  const tokenDaVisita = request.cookies.get(COOKIE_VISITA)?.value;
+  if (tokenDaVisita != null && donoDoToken(tokenDaVisita) !== usuario?.id) {
+    response.cookies.delete(COOKIE_VISITA);
+    response.cookies.delete(COOKIE_LOJA_DA_VISITA);
+  } else if (
+    tokenDaVisita != null &&
+    request.method !== 'GET' &&
+    request.method !== 'HEAD' &&
+    !caminho.startsWith(PREFIXO_DAS_ROTAS_DA_VISITA)
+  ) {
+    return new NextResponse(
+      'Você está vendo o painel de um cliente, e a visita é somente leitura. Encerre a visita para voltar a mexer no seu painel.',
+      { status: 403, headers: { 'content-type': 'text/plain; charset=utf-8' } },
+    );
+  }
+
   const ehPublica = PUBLICAS_CLIENTE.some(
     (rota) => caminho === rota || caminho.startsWith(`${rota}/`),
   );

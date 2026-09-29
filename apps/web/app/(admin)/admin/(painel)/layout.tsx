@@ -8,6 +8,7 @@
 import Link from 'next/link';
 import { exigirPlatformAdmin } from '@/lib/contexto';
 import { NavegacaoAdmin, NavegacaoAdminMovel } from './navegacao';
+import { VisitaAberta } from './visita-aberta';
 import { sair } from '../../../(client)/(publico)/acoes';
 import { Button } from '@/components/ui/button';
 
@@ -16,6 +17,7 @@ export default async function LayoutAdmin({ children }: { children: React.ReactN
 
   return (
     <div className="flex min-h-dvh flex-col">
+      <VisitaAberta adminId={usuario.id} />
       <header className="bg-background/95 sticky top-0 z-40 border-b backdrop-blur">
         <div className="flex h-14 items-center gap-2 px-4 sm:gap-4">
           <NavegacaoAdminMovel />

@@ -17,6 +17,7 @@
  */
 import { randomBytes } from 'node:crypto';
 import { NextResponse, type NextRequest } from 'next/server';
+import { redirecionarPara } from '@/lib/redirecionar';
 import { exigirContextoCliente } from '@/lib/contexto';
 import { criarClientServidor } from '@/lib/supabase/server';
 import { urlDoSite } from '@/lib/env';
@@ -40,8 +41,7 @@ const VEJA_ALI = 303;
 export async function POST(requisicao: NextRequest): Promise<NextResponse> {
   const { lojaAtiva, papel } = await exigirContextoCliente();
 
-  const voltar = (erro: string): NextResponse =>
-    NextResponse.redirect(new URL(`/integracoes?shopify=${erro}`, requisicao.url), VEJA_ALI);
+  const voltar = (erro: string): NextResponse => redirecionarPara(`/integracoes?shopify=${erro}`);
 
   if (lojaAtiva == null) return voltar('sem_loja');
   if (papel !== 'owner' && papel !== 'admin') return voltar('sem_permissao');

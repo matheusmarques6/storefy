@@ -21,6 +21,8 @@ import {
   type PlatformAdminRole,
 } from '@storefy/db';
 import { criarClientServidor } from '@/lib/supabase/server';
+import { visitaDoPedido, type DadosDaVisita } from '@/lib/visita';
+import { COOKIE_LOJA_DA_VISITA } from '@/lib/visita-nomes';
 
 export const COOKIE_ORG = 'storefy_org';
 export const COOKIE_LOJA = 'storefy_loja';
@@ -35,6 +37,12 @@ export interface ContextoCliente {
   lojas: LojaVisivel[];
   /** Loja selecionada. Null só quando a organização ainda não tem nenhuma. */
   lojaAtiva: LojaVisivel | null;
+  /**
+   * Preenchido quando é a EQUIPE vendo o painel deste cliente ("Ver como
+   * cliente", A04). Nesse caso `papel` é `member` — as telas escondem o que
+   * escreve — e o proxy recusa qualquer escrita. Ver `lib/visita.ts`.
+   */
+  visita: { expiraEm: string } | null;
 }
 
 /** Usuário autenticado, ou null. */
@@ -59,6 +67,14 @@ export async function exigirContextoCliente(): Promise<ContextoCliente> {
   } = await supabase.auth.getUser();
 
   if (user == null) redirect('/entrar');
+
+  const visita = await visitaDoPedido(supabase, user.id);
+  if (visita != null) {
+    const daVisita = await contextoDaVisita(supabase, user, visita);
+    // Organização que não existe mais: a visita não tem o que mostrar, e o
+    // painel volta a ser o da própria pessoa.
+    if (daVisita != null) return daVisita;
+  }
 
   /*
    * `user_id` no filtro, e não só na RLS. A policy de `memberships` deixa a
@@ -125,6 +141,51 @@ export async function exigirContextoCliente(): Promise<ContextoCliente> {
     organizacoes,
     lojas: listaLojas,
     lojaAtiva,
+    visita: null,
+  };
+}
+
+/**
+ * O painel do cliente visitado, lido com a sessão da própria equipe.
+ *
+ * Quem abre é o admin, com a sessão DELE: as leituras passam pelas policies
+ * que terminam em `or is_platform_admin()`, e nenhuma escrita passa — a equipe
+ * não tem policy de escrita nas tabelas do cliente. O papel devolvido é
+ * `member` para as telas esconderem o que escreve.
+ */
+async function contextoDaVisita(
+  supabase: Awaited<ReturnType<typeof criarClientServidor>>,
+  usuario: User,
+  visita: DadosDaVisita,
+): Promise<ContextoCliente | null> {
+  const { data: organizacao } = await supabase
+    .from('organizations')
+    .select('*')
+    .eq('id', visita.orgId)
+    .maybeSingle();
+  if (organizacao == null) return null;
+
+  const { data: lojas, error } = await supabase
+    .from('stores')
+    .select(COLUNAS_DA_LOJA)
+    .eq('org_id', visita.orgId)
+    .order('created_at', { ascending: true });
+  if (error != null) {
+    throw new Error(`Não foi possível carregar as lojas do cliente: ${error.message}`);
+  }
+
+  const armazem = await cookies();
+  const preferida = armazem.get(COOKIE_LOJA_DA_VISITA)?.value;
+  const lojaAtiva = lojas.find((loja) => loja.id === preferida) ?? lojas[0] ?? null;
+
+  return {
+    usuario,
+    organizacao,
+    papel: 'member',
+    organizacoes: [{ organizacao, papel: 'member' }],
+    lojas,
+    lojaAtiva,
+    visita: { expiraEm: new Date(visita.expiraEm).toISOString() },
   };
 }
 

@@ -2,6 +2,8 @@
 
 /** Server Actions de autenticação — tela C01. */
 import { redirect } from 'next/navigation';
+import { cookies } from 'next/headers';
+import { COOKIE_LOJA_DA_VISITA, COOKIE_VISITA } from '@/lib/visita-nomes';
 import { criarClientServidor } from '@/lib/supabase/server';
 import { urlDoSite } from '@/lib/env';
 import { traduzirErroAuth } from '@/lib/erros-do-auth';
@@ -85,6 +87,13 @@ export async function cadastrar(
 export async function sair(): Promise<void> {
   const supabase = await criarClientServidor();
   await supabase.auth.signOut();
+
+  // Uma visita ao painel de cliente aberta não sobrevive à saída da conta: o
+  // próximo a entrar neste navegador não pode herdá-la.
+  const armazem = await cookies();
+  armazem.delete(COOKIE_VISITA);
+  armazem.delete(COOKIE_LOJA_DA_VISITA);
+
   redirect('/entrar');
 }
 

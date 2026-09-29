@@ -26,6 +26,7 @@ import { criarClientServidor } from '@/lib/supabase/server';
 import { lerNotas } from '@/lib/notas-internas';
 import { FUSO_PADRAO, formatarDataHora } from '@/lib/fuso';
 import { Notas } from './notas';
+import { VerComoCliente } from './ver-como-cliente';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import {
@@ -112,7 +113,10 @@ export default async function PaginaOrganizacao({ params }: { params: Promise<{ 
           <h1 className="text-2xl font-semibold tracking-tight">{org.name}</h1>
           <p className="text-muted-foreground mt-1 font-mono text-xs">{org.slug}</p>
         </div>
-        <Badge variant="secondary">{ROTULO_STATUS_ORG[org.status]}</Badge>
+        <div className="flex items-center gap-3">
+          <Badge variant="secondary">{ROTULO_STATUS_ORG[org.status]}</Badge>
+          <VerComoCliente orgId={org.id} nome={org.name} />
+        </div>
       </div>
 
       <Card>

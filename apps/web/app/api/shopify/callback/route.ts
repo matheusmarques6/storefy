@@ -14,7 +14,8 @@
  * O token nunca chega ao navegador: ele é cifrado e gravado pela service role,
  * porque `shopify_access_token_enc` é invisível até para o dono da loja.
  */
-import { NextResponse, type NextRequest } from 'next/server';
+import { type NextResponse, type NextRequest } from 'next/server';
+import { redirecionarPara } from '@/lib/redirecionar';
 import { criarClientServiceRole } from '@/lib/supabase/admin';
 import { criptografar, criptografiaConfigurada, iguaisEmTempoConstante } from '@/lib/cripto';
 import { serviceRoleConfigurada, supabaseConfigurado, urlDoSite } from '@/lib/env';
@@ -35,7 +36,7 @@ const UM_ANO = 60 * 60 * 24 * 365;
 
 export async function GET(requisicao: NextRequest): Promise<NextResponse> {
   const voltar = (erro: string): NextResponse => {
-    const resposta = NextResponse.redirect(new URL(`/integracoes?shopify=${erro}`, requisicao.url));
+    const resposta = redirecionarPara(`/integracoes?shopify=${erro}`, 302);
     resposta.cookies.delete(COOKIE_DO_STATE);
     return resposta;
   };
@@ -125,9 +126,7 @@ export async function GET(requisicao: NextRequest): Promise<NextResponse> {
     const aviso =
       faltando.length > 0 ? 'escopos' : webhooks.falharam.length > 0 ? 'parcial' : 'conectada';
 
-    const resposta = NextResponse.redirect(
-      new URL(`/integracoes?shopify=${aviso}`, requisicao.url),
-    );
+    const resposta = redirecionarPara(`/integracoes?shopify=${aviso}`, 302);
     resposta.cookies.delete(COOKIE_DO_STATE);
 
     /*

@@ -155,7 +155,14 @@ function pedidoDeInstalacao(shop: string): NextRequest {
 /** O código de `?shopify=` de uma resposta de redirecionamento. */
 function codigo(resposta: Response): string | null {
   const destino = resposta.headers.get('location');
-  return destino === null ? null : new URL(destino).searchParams.get('shopify');
+  if (destino === null) return null;
+  /*
+   * A volta para as integrações é um caminho RELATIVO: montada com o host de
+   * `requisicao.url`, ela mandava o lojista para o host em que o servidor
+   * escuta (`localhost` no `next start`), sem a sessão dele.
+   */
+  expect(destino.startsWith('/'), destino).toBe(true);
+  return new URL(destino, 'http://painel.exemplo').searchParams.get('shopify');
 }
 
 describe('POST /api/shopify/install', () => {

@@ -16,6 +16,9 @@ import { revalidatePath } from 'next/cache';
 import { exigirPlatformAdmin } from '@/lib/contexto';
 import { criarClientServiceRole } from '@/lib/supabase/admin';
 import { conferirNota } from '@/lib/notas-internas';
+import { DURACAO_DA_VISITA_MS, conferirMotivo, criarToken } from '@/lib/visita';
+import { urlDoSite } from '@/lib/env';
+import type { ValoresDigitados } from '@/lib/validacao';
 
 export interface EstadoDaNota {
   ok?: boolean;
@@ -85,6 +88,88 @@ export async function apagarNota(notaId: string): Promise<EstadoDaNota> {
 
   revalidatePath(`/admin/organizacoes/${nota.org_id}`);
   return { ok: true, mensagem: 'Nota apagada.' };
+}
+
+export interface EstadoDaVisita {
+  mensagem?: string;
+  valores?: ValoresDigitados;
+  /** O endereço do convite: a tela navega para ele (ver o fim de `iniciarVisita`). */
+  destino?: string;
+}
+
+/**
+ * "Ver como cliente" (A04): abre o painel deste cliente, SÓ PARA LER.
+ *
+ * A ordem é a garantia: a auditoria é gravada ANTES de o convite existir, e
+ * se ela falhar a visita não abre. Uma visita sem registro é exatamente o que
+ * esta tela não pode permitir.
+ *
+ * O convite vai na URL e vale 5 minutos, e só abre a visita na sessão do
+ * MESMO admin (ver `app/visita/iniciar`). Vazado num log, não serve a mais
+ * ninguém.
+ */
+export async function iniciarVisita(
+  _anterior: EstadoDaVisita,
+  dados: FormData,
+): Promise<EstadoDaVisita> {
+  const usuario = await exigirPlatformAdmin();
+  const valores = { motivo: texto(dados.get('motivo')) };
+
+  const orgId = texto(dados.get('orgId'));
+  if (orgId === '') return { mensagem: 'Organização não informada.', valores };
+
+  const motivo = conferirMotivo(valores.motivo);
+  if (!motivo.ok) return { mensagem: motivo.mensagem, valores };
+
+  const servico = criarClientServiceRole();
+  const { data: org } = await servico
+    .from('organizations')
+    .select('id')
+    .eq('id', orgId)
+    .maybeSingle();
+  if (org == null) return { mensagem: 'Este cliente não existe mais.', valores };
+
+  let convite: string;
+  try {
+    convite = criarToken('convite', orgId, usuario.id);
+  } catch {
+    return {
+      mensagem:
+        'A chave de criptografia do servidor não está configurada, e sem ela a visita não tem como ser assinada. Veja a tela Sistema.',
+      valores,
+    };
+  }
+
+  const { error } = await servico.from('audit_logs').insert({
+    actor_id: usuario.id,
+    org_id: orgId,
+    action: 'view_as_start',
+    entity: 'organizations',
+    entity_id: orgId,
+    diff: {
+      motivo: motivo.motivo,
+      expira_em: new Date(Date.now() + DURACAO_DA_VISITA_MS).toISOString(),
+    },
+  });
+  if (error != null) {
+    return {
+      mensagem: 'Não conseguimos registrar a visita na auditoria, e sem o registro ela não abre.',
+      valores,
+    };
+  }
+
+  /*
+   * O destino VOLTA para a tela, que navega até ele — e não um `redirect()`
+   * daqui. Redirecionar de uma ação para dentro do próprio app faz o Next
+   * renderizar o destino NO SERVIDOR, seguindo o 303 da rota da visita com os
+   * cookies de antes: o cookie da visita nunca chegava ao navegador, e o admin
+   * via o próprio painel com o endereço do convite na barra. Quem achou foi o
+   * e2e.
+   *
+   * Endereço ABSOLUTO do painel do cliente: com domínio próprio, o admin mora
+   * em outro host, e um caminho relativo cairia dentro do admin.
+   */
+  return { destino: `${urlDoSite()}/visita/iniciar?convite=${encodeURIComponent(convite)}` };
 }
 
 /** O campo como texto: `FormData.get` devolve string OU File. */

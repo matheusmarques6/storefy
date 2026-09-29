@@ -1240,7 +1240,7 @@ export type Database = {
     };
     Enums: {
       app_config_status: "draft" | "published" | "archived";
-      audit_action: "create" | "update" | "delete";
+      audit_action: "create" | "update" | "delete" | "view_as_start" | "view_as_end";
       automation_run_status: "scheduled" | "sent" | "canceled" | "failed";
       build_profile: "development" | "preview" | "production";
       build_status: "queued" | "building" | "finished" | "errored" | "submitted" | "in_review" | "approved" | "rejected" | "canceled";

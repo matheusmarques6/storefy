@@ -18,7 +18,13 @@ import 'server-only';
  * do servidor, e este módulo é `server-only`: importá-lo de um componente de
  * cliente é erro de build, não descoberta em produção.
  */
-import { createCipheriv, createDecipheriv, randomBytes, timingSafeEqual } from 'node:crypto';
+import {
+  createCipheriv,
+  createDecipheriv,
+  createHmac,
+  randomBytes,
+  timingSafeEqual,
+} from 'node:crypto';
 
 /** Marca de versão no começo do pacote, para trocar de algoritmo um dia. */
 const VERSAO = 'v1';
@@ -55,6 +61,18 @@ function chave(): Buffer {
     );
   }
   return bytes;
+}
+
+/**
+ * Uma chave própria para outra finalidade, tirada da `ENCRYPTION_KEY`.
+ *
+ * Assinar um cookie com a MESMA chave que cifra os segredos misturaria dois
+ * usos de um mesmo material: um HMAC da chave com o nome da finalidade dá uma
+ * chave diferente para cada uso, sem uma variável de ambiente a mais para
+ * configurar e esquecer.
+ */
+export function derivarChave(finalidade: string): Buffer {
+  return createHmac('sha256', chave()).update(`storefy:${finalidade}`).digest();
 }
 
 /** A chave está configurada e no formato certo? Para a tela de diagnóstico. */

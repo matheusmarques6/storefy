@@ -1,16 +1,22 @@
 /** Moldura do painel do cliente: cabeçalho, seletor de loja e navegação. */
 import Link from 'next/link';
 import { ehPlatformAdmin, exigirContextoCliente } from '@/lib/contexto';
+import { FaixaDaVisita } from './faixa-da-visita';
 import { MenuUsuario } from './menu-usuario';
 import { NavegacaoAbas, NavegacaoMovel } from './navegacao';
 import { SeletorLoja } from './seletor-loja';
 
 export default async function LayoutPainel({ children }: { children: React.ReactNode }) {
   const contexto = await exigirContextoCliente();
-  const admin = await ehPlatformAdmin(contexto.usuario.id);
+  // Em visita, quem está aqui é da equipe por definição: a visita só abre para
+  // quem está em `platform_admins`, conferido a cada request.
+  const admin = contexto.visita != null || (await ehPlatformAdmin(contexto.usuario.id));
 
   return (
     <div className="flex min-h-dvh flex-col">
+      {contexto.visita == null ? null : (
+        <FaixaDaVisita cliente={contexto.organizacao.name} expiraEm={contexto.visita.expiraEm} />
+      )}
       <header className="bg-background/95 sticky top-0 z-40 border-b backdrop-blur">
         {/*
          * Linha 1: o que é da CONTA — marca, loja ativa e usuário. Linha 2 (a
@@ -26,9 +32,17 @@ export default async function LayoutPainel({ children }: { children: React.React
           {/* `min-w-0` deixa o seletor encolher e truncar o nome da loja, em
               vez de empurrar o menu da conta para fora da tela. */}
           <div className="min-w-0 flex-1">
-            <SeletorLoja lojas={contexto.lojas} lojaAtiva={contexto.lojaAtiva} />
+            <SeletorLoja
+              lojas={contexto.lojas}
+              lojaAtiva={contexto.lojaAtiva}
+              emVisita={contexto.visita != null}
+            />
           </div>
-          <MenuUsuario email={contexto.usuario.email ?? ''} ehAdmin={admin} />
+          <MenuUsuario
+            email={contexto.usuario.email ?? ''}
+            ehAdmin={admin}
+            emVisita={contexto.visita != null}
+          />
         </div>
         <NavegacaoAbas />
       </header>

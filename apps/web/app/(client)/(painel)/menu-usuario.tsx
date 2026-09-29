@@ -18,6 +18,7 @@
 import { useTransition } from 'react';
 import { Loader2, LogOut, Settings, ShieldCheck, User as IconeUsuario } from 'lucide-react';
 import { sair } from '../(publico)/acoes';
+import { ID_DO_FORMULARIO_DE_ENCERRAR } from './faixa-da-visita';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -28,7 +29,21 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 
-export function MenuUsuario({ email, ehAdmin }: { email: string; ehAdmin: boolean }) {
+export function MenuUsuario({
+  email,
+  ehAdmin,
+  emVisita = false,
+}: {
+  email: string;
+  ehAdmin: boolean;
+  /**
+   * A equipe vendo o painel de um cliente. "Minha conta" some — a conta aqui
+   * não é a do cliente —, e "Sair" vira "Encerrar visita": sair da sessão no
+   * meio da visita deixaria o cookie dela para trás, e o proxy recusaria o
+   * próprio "Sair", que é uma ação de formulário.
+   */
+  emVisita?: boolean;
+}) {
   const [saindo, iniciar] = useTransition();
 
   return (
@@ -41,12 +56,14 @@ export function MenuUsuario({ email, ehAdmin }: { email: string; ehAdmin: boolea
       <DropdownMenuContent align="end" className="w-64">
         <DropdownMenuLabel className="truncate normal-case">{email}</DropdownMenuLabel>
         <DropdownMenuSeparator />
-        <DropdownMenuItem asChild>
-          <a href="/configuracoes/conta">
-            <IconeUsuario className="size-4" aria-hidden />
-            Minha conta
-          </a>
-        </DropdownMenuItem>
+        {emVisita ? null : (
+          <DropdownMenuItem asChild>
+            <a href="/configuracoes/conta">
+              <IconeUsuario className="size-4" aria-hidden />
+              Minha conta
+            </a>
+          </DropdownMenuItem>
+        )}
         <DropdownMenuItem asChild>
           <a href="/configuracoes">
             <Settings className="size-4" aria-hidden />
@@ -65,24 +82,37 @@ export function MenuUsuario({ email, ehAdmin }: { email: string; ehAdmin: boolea
           </>
         ) : null}
         <DropdownMenuSeparator />
-        <DropdownMenuItem
-          disabled={saindo}
-          onSelect={(evento) => {
-            // Mantém o menu aberto mostrando "Saindo…" até o redirect levar
-            // a pessoa para o login.
-            evento.preventDefault();
-            iniciar(async () => {
-              await sair();
-            });
-          }}
-        >
-          {saindo ? (
-            <Loader2 className="size-4 animate-spin" aria-hidden />
-          ) : (
+        {emVisita ? (
+          <DropdownMenuItem
+            onSelect={() => {
+              // O formulário mora na faixa da visita, fora do menu — ver lá.
+              const formulario = document.getElementById(ID_DO_FORMULARIO_DE_ENCERRAR);
+              if (formulario instanceof HTMLFormElement) formulario.requestSubmit();
+            }}
+          >
             <LogOut className="size-4" aria-hidden />
-          )}
-          {saindo ? 'Saindo…' : 'Sair'}
-        </DropdownMenuItem>
+            Encerrar visita
+          </DropdownMenuItem>
+        ) : (
+          <DropdownMenuItem
+            disabled={saindo}
+            onSelect={(evento) => {
+              // Mantém o menu aberto mostrando "Saindo…" até o redirect levar
+              // a pessoa para o login.
+              evento.preventDefault();
+              iniciar(async () => {
+                await sair();
+              });
+            }}
+          >
+            {saindo ? (
+              <Loader2 className="size-4 animate-spin" aria-hidden />
+            ) : (
+              <LogOut className="size-4" aria-hidden />
+            )}
+            {saindo ? 'Saindo…' : 'Sair'}
+          </DropdownMenuItem>
+        )}
       </DropdownMenuContent>
     </DropdownMenu>
   );
