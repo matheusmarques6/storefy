@@ -4123,6 +4123,93 @@ select tests.ok('admin',
 reset role;
 select tests.logout();
 
+-- ============================== grupo: A04 — notas internas sobre o cliente
+--
+-- A ASSERÇÃO QUE SEGURA TUDO é a do dono. A policy natural de escrever seria
+-- "membros leem as notas da própria organização" — e ela entregaria ao lojista
+-- tudo que a equipe anotou sobre ele: reclamação, desconto negociado, risco de
+-- cancelamento. A policy certa não tem cláusula por organização nenhuma.
+
+reset role;
+select tests.logout();
+
+insert into public.org_notes (org_id, author_id, body)
+select org_a, u_equipe, 'Ligou reclamando do build de ontem. Prometido retorno na sexta.'
+  from tests.ids;
+
+-- O DONO da organização de que a nota fala. Se alguém enxerga, é ele.
+select tests.login('a-owner@teste.local');
+set role authenticated;
+
+select tests.ok('notas',
+  tests.contar('select count(*) from public.org_notes') = 0,
+  'o DONO da organização não enxerga as notas internas sobre ela');
+
+select tests.ok('notas',
+  tests.erro(format('select * from public.admin_notas_da_org(%L)', (select org_a from tests.ids))),
+  'e nem pela função que lista as notas com autor');
+
+/* Escrever também não: a RLS nega por padrão, sem policy de insert. */
+select tests.ok('notas',
+  tests.bloqueado(format(
+    'insert into public.org_notes (org_id, body) values (%L, ''nota do cliente'')',
+    (select org_a from tests.ids))),
+  'o dono também não escreve nota interna sobre a própria organização');
+
+reset role;
+select tests.login('equipe@teste.local');
+set role authenticated;
+
+select tests.ok('notas',
+  tests.contar('select count(*) from public.org_notes') = 1,
+  'a equipe da plataforma enxerga a nota');
+
+select tests.ok('notas',
+  (select author_email from public.admin_notas_da_org((select org_a from tests.ids)))
+    = 'equipe@teste.local',
+  'e a função devolve quem escreveu, vindo de auth.users');
+
+/*
+ * Nem a equipe escreve pelo navegador: não há policy de insert, e o caminho é
+ * a ação do servidor com a service role. Uma policy de escrita aqui seria uma
+ * segunda porta a lembrar de trancar.
+ */
+select tests.ok('notas',
+  tests.bloqueado(format(
+    'insert into public.org_notes (org_id, body) values (%L, ''pelo navegador'')',
+    (select org_a from tests.ids))),
+  'nem a equipe escreve nota pelo navegador: só pelo servidor');
+
+reset role;
+set role service_role;
+
+/* O piso e o teto do tamanho. Nota vazia ocupa espaço e não diz nada. */
+select tests.ok('notas',
+  tests.erro(format(
+    'insert into public.org_notes (org_id, body) values (%L, ''   '')',
+    (select org_a from tests.ids))),
+  'nota só de espaço em branco é recusada pelo banco');
+
+select tests.ok('notas',
+  tests.erro(format(
+    'insert into public.org_notes (org_id, body) values (%L, %L)',
+    (select org_a from tests.ids), repeat('x', 4001))),
+  'nota maior que o teto é recusada pelo banco');
+
+/*
+ * A nota sobrevive à saída de quem escreveu. Perder o histórico de um cliente
+ * porque alguém deixou a equipe seria perder justamente o que ela guarda.
+ */
+update public.org_notes set author_id = null
+ where org_id = (select org_a from tests.ids);
+
+select tests.ok('notas',
+  tests.contar('select count(*) from public.org_notes') = 1,
+  'nota sem autor continua existindo, em vez de sumir junto com a pessoa');
+
+reset role;
+select tests.logout();
+
 \echo ''
 \echo 'Falhas:'
 select grupo, descricao from tests.resultados where not passou order by id;

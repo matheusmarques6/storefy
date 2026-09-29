@@ -927,7 +927,7 @@ O que **não** deu para conferir aqui, e continua em aberto:
 | A01 — Login do admin | ✅ `exigirPlatformAdmin()` a cada request; quem não está em `platform_admins` vai para /admin/sem-acesso |
 | **A02 — Visão geral** | ✅ dez números numa chamada só (`resumo_do_admin`), separados em "precisa de você" (só o que é > 0) e "a plataforma hoje" (aparece zerado, porque ali zero é informação). `/admin` passou a ser esta tela |
 | A03 — Organizações (lista) | ✅ saiu de `/admin` para `/admin/organizacoes`, com busca e paginação |
-| A04 — Cliente (detalhe) | ⚠️ existe com lojas e membros; faltam as abas de app/config, builds, push, cobrança, notas e o "entrar como cliente" |
+| A04 — Cliente (detalhe) | ⚠️ lojas, membros, últimos builds e **notas internas**. Faltam as abas de app/config, push, cobrança e o "entrar como cliente" |
 | **A05 — Fila de builds** | ✅ recortes por situação na URL, abrindo no que quebrou; erro da EAS na própria linha; link dos logs; reexecutar com confirmação, travado para build que ainda roda ou que está com a loja |
 | **A06 — Revisões das lojas** | ✅ ordenada do mais ANTIGO para o mais novo (aqui o interessante é o que está parado), com alerta a partir de 7 dias e o motivo da recusa na linha |
 | **A07 — Contas de desenvolvedor** | ✅ estado e identificadores públicos (Team ID, Key ID) de cada cliente. Nenhuma coluna `_enc` é lida: o segredo não passa pela tela |
@@ -936,6 +936,18 @@ O que **não** deu para conferir aqui, e continua em aberto:
 | A12 — Logs de auditoria | ✅ |
 | **A13 — Configurações do sistema** | ⚠️ o bloco de CHAVES está pronto: as 19 variáveis que a aplicação lê, agrupadas pelo que quebra sem cada uma, com um teste que varre o código e falha quando alguém soma uma variável sem descrevê-la. Feature flags e versão mínima ainda não |
 | A09, A10 | ⬜ ainda não |
+
+> **As notas internas têm uma propriedade que um descuido destruiria: o cliente nunca as lê.**
+> Nem o dono da organização. A policy natural de escrever — "membros leem as notas da própria
+> organização" — é exatamente a errada, e entregaria ao lojista tudo que a equipe anotou sobre
+> ele: reclamação, desconto negociado, risco de cancelamento. A policy certa não tem cláusula
+> por organização nenhuma, só `is_platform_admin()`. Escrevi a policy errada de propósito para
+> conferir: a asserção do dono cai. É ela que segura isso no lugar.
+>
+> `org_notes` não tem UPDATE, de propósito: uma nota é o registro do que se sabia NAQUELE dia, e
+> reescrevê-la apaga a razão de ela existir. Quem mudou de ideia escreve outra. Apagar continua
+> possível — engano de digitação acontece —, e apagar É auditado, com o texto da nota junto:
+> escrever não precisa, porque a nota que existe já diz quem a escreveu e quando.
 
 > **DEFEITO ENCONTRADO, e não corrigido nesta sessão: a atualização obrigatória não tem como
 > ser acionada.** `minSupportedBuild` existe na `AppConfig` com `default(1)`, e

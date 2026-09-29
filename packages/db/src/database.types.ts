@@ -595,6 +595,37 @@ export type Database = {
           },
         ];
       };
+      org_notes: {
+        Row: {
+          id: string;
+          org_id: string;
+          author_id: string | null;
+          body: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          org_id: string;
+          author_id?: string | null;
+          body: string;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          org_id?: string;
+          author_id?: string | null;
+          body?: string;
+          created_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "org_notes_org_id_fkey";
+            columns: ["org_id"];
+            referencedRelation: "organizations";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       organizations: {
         Row: {
           id: string;
@@ -999,6 +1030,10 @@ export type Database = {
       admin_membros_da_org: {
         Args: { p_org_id: string };
         Returns: { user_id: string | null; email: string | null; role: Database["public"]["Enums"]["membership_role"] | null; created_at: string | null; ultimo_acesso: string | null }[];
+      };
+      admin_notas_da_org: {
+        Args: { p_org_id: string; p_limite?: number };
+        Returns: { id: string | null; body: string | null; created_at: string | null; author_id: string | null; author_email: string | null }[];
       };
       admin_usuario_por_email: {
         Args: { p_email: string };

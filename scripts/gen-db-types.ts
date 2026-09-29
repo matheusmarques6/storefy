@@ -236,6 +236,8 @@ async function main(): Promise<void> {
     'admin_equipe',
     'outros_superadmins',
     'admin_usuario_por_email',
+    // A04 — notas internas sobre um cliente, com quem escreveu.
+    'admin_notas_da_org',
     'restaurar_config',
     'abrir_previa',
     'registrar_aparelho',

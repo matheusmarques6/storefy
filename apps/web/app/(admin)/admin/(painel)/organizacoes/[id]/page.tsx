@@ -1,10 +1,29 @@
-/** A04 — Detalhe da organização: lojas, membros e datas. */
+/**
+ * A04 — a ficha de um cliente.
+ *
+ * É a tela que o suporte abre quando alguém liga. Junta o que está espalhado
+ * pelas listas do admin — lojas, equipe, builds — recortado nesse cliente, e
+ * acrescenta o que não existe em lugar nenhum: as NOTAS INTERNAS, que são o
+ * que se sabe dele e hoje mora na cabeça de quem atendeu da última vez.
+ *
+ * As notas não são lidas pelo cliente, nem pelo dono da organização. Isso é
+ * garantido pela RLS de `org_notes`, e provado por asserção — a policy natural
+ * de escrever ("membros leem as notas da própria organização") entregaria a
+ * ele tudo que a equipe anotou.
+ */
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { ArrowLeft } from 'lucide-react';
-import { ROTULO_PAPEL, ROTULO_STATUS_LOJA, ROTULO_STATUS_ORG } from '@storefy/db';
+import {
+  ROTULO_PAPEL,
+  ROTULO_STATUS_BUILD,
+  ROTULO_STATUS_LOJA,
+  ROTULO_STATUS_ORG,
+} from '@storefy/db';
 import { criarClientServidor } from '@/lib/supabase/server';
+import { lerNotas } from '@/lib/notas-internas';
+import { Notas } from './notas';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import {
@@ -27,16 +46,33 @@ export default async function PaginaOrganizacao({ params }: { params: Promise<{ 
   const { id } = await params;
   const supabase = await criarClientServidor();
 
-  const [{ data: org }, { data: lojas, error: erroLojas }, { data: membros, error: erroMembros }] =
-    await Promise.all([
-      supabase.from('organizations').select('*').eq('id', id).maybeSingle(),
-      supabase
-        .from('stores')
-        .select('id, name, primary_url, status, created_at')
-        .eq('org_id', id)
-        .order('created_at', { ascending: true }),
-      supabase.rpc('admin_membros_da_org', { p_org_id: id }),
-    ]);
+  const [
+    { data: org },
+    { data: lojas, error: erroLojas },
+    { data: membros, error: erroMembros },
+    { data: notasBrutas, error: erroNotas },
+    { data: builds, error: erroBuilds },
+  ] = await Promise.all([
+    supabase.from('organizations').select('*').eq('id', id).maybeSingle(),
+    supabase
+      .from('stores')
+      .select('id, name, primary_url, status, created_at')
+      .eq('org_id', id)
+      .order('created_at', { ascending: true }),
+    supabase.rpc('admin_membros_da_org', { p_org_id: id }),
+    supabase.rpc('admin_notas_da_org', { p_org_id: id }),
+    /*
+     * Os builds deste cliente, pelos apps das lojas dele. O filtro é por
+     * `stores.org_id` e não por uma lista de ids montada aqui: duas consultas
+     * em sequência deixariam a segunda ver um estado diferente da primeira.
+     */
+    supabase
+      .from('builds')
+      .select('id, platform, status, version, created_at, apps!inner(stores!inner(org_id, name))')
+      .eq('apps.stores.org_id', id)
+      .order('created_at', { ascending: false })
+      .limit(5),
+  ]);
 
   if (org == null) notFound();
   // Erro de consulta vira erro visível: mostrar "nenhuma loja" quando na verdade
@@ -47,9 +83,16 @@ export default async function PaginaOrganizacao({ params }: { params: Promise<{ 
   if (erroMembros != null) {
     throw new Error(`Não foi possível carregar os membros: ${erroMembros.message}`);
   }
+  if (erroNotas != null) {
+    throw new Error(`Não foi possível carregar as notas: ${erroNotas.message}`);
+  }
+  if (erroBuilds != null) {
+    throw new Error(`Não foi possível carregar os builds: ${erroBuilds.message}`);
+  }
 
   const listaLojas = lojas;
   const listaMembros = membros;
+  const notas = lerNotas(notasBrutas);
 
   return (
     <div className="space-y-6">
@@ -173,6 +216,58 @@ export default async function PaginaOrganizacao({ params }: { params: Promise<{ 
           </TableBody>
         </Table>
       </Card>
+
+      <Card>
+        <CardHeader>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <CardTitle className="text-base">Últimos builds</CardTitle>
+            <Link
+              href="/admin/builds?filtro=todos"
+              className="text-muted-foreground hover:text-foreground text-sm"
+            >
+              Ver a fila inteira
+            </Link>
+          </div>
+          <CardDescription>As cinco publicações mais recentes deste cliente.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {builds.length === 0 ? (
+            <p className="text-muted-foreground text-sm">
+              Este cliente ainda não publicou nenhum app.
+            </p>
+          ) : (
+            <ul className="space-y-2 text-sm">
+              {builds.map((build) => (
+                <li key={build.id} className="flex flex-wrap items-center justify-between gap-2">
+                  <span>
+                    {build.apps.stores.name}
+                    <span className="text-muted-foreground ml-2 text-xs">
+                      {build.platform === 'ios' ? 'iOS' : 'Android'}
+                      {build.version == null ? '' : ` · ${build.version}`}
+                    </span>
+                  </span>
+                  <span className="flex items-center gap-2">
+                    <Badge
+                      variant={
+                        build.status === 'errored' || build.status === 'rejected'
+                          ? 'destructive'
+                          : 'secondary'
+                      }
+                    >
+                      {ROTULO_STATUS_BUILD[build.status]}
+                    </Badge>
+                    <span className="text-muted-foreground text-xs">
+                      {dataHora(build.created_at)}
+                    </span>
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </CardContent>
+      </Card>
+
+      <Notas orgId={id} notas={notas} />
     </div>
   );
 }
