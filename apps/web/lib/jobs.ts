@@ -93,7 +93,8 @@ export function faltaConfiguracao(
 }
 
 /** Os jobs do Vercel Cron, com o nome que a página de status conhece. */
-export type NomeDoJob = 'dispatch-push' | 'push-stats' | 'review-status' | 'analytics';
+export type NomeDoJob =
+  'dispatch-push' | 'push-stats' | 'review-status' | 'analytics' | 'inactive-devices';
 
 /**
  * Anota a execução — deu certo, ou falhou com qual erro — para a página de

@@ -2,9 +2,10 @@
  * As automações de push (tela C09 do plano).
  *
  * Só entra aqui a automação que funciona DE PONTA A PONTA: gatilho de verdade,
- * destinatário de verdade, envio de verdade. "Inativo há 7 dias" ainda não tem
- * gatilho, e por isso NÃO aparece na tela — um card "em breve" é exatamente o
- * que a regra 3 do CLAUDE.md proíbe.
+ * destinatário de verdade, envio de verdade. O "webhook customizado" ainda não
+ * tem quem o chame, e por isso NÃO aparece na tela — um card "em breve" é
+ * exatamente o que a regra 3 do CLAUDE.md proíbe. O "inativo há 7 dias"
+ * ganhou o gatilho na Fase 8 (`agendar_inativos`, pelo job de hora em hora).
  *
  * O texto sugerido de cada uma é ponto de partida editável, e não dado
  * inventado: nada dele vira linha no banco antes de o lojista salvar.
@@ -18,6 +19,7 @@ export const TIPOS_DE_AUTOMACAO = [
   'abandoned_cart',
   'order_shipped',
   'back_in_stock',
+  'inactive_7d',
 ] as const;
 export type TipoDeAutomacao = (typeof TIPOS_DE_AUTOMACAO)[number];
 
@@ -71,6 +73,18 @@ export const DESCRICAO_DO_TIPO: Record<TipoDeAutomacao, DescricaoDoTipo> = {
       title: 'Voltou!',
       body: 'O produto que você queria está de volta. Corre que é por pouco tempo.',
       delayMinutes: 0,
+    },
+  },
+  inactive_7d: {
+    nome: 'Sentimos sua falta',
+    gatilho: 'Quando o cliente passa 7 dias sem abrir o app.',
+    porque:
+      'Traz de volta quem instalou e esqueceu. Vai uma vez por sumiço, e é cancelado sozinho se a pessoa voltar antes do horário.',
+    rotuloDoAtraso: 'Horário do envio, no 7º dia',
+    sugestao: {
+      title: 'Faz tempo que você não passa por aqui',
+      body: 'Separamos as novidades da semana para você. Vem dar uma olhada.',
+      delayMinutes: 10 * 60,
     },
   },
   order_shipped: {
@@ -157,6 +171,32 @@ export const ATRASOS_SUGERIDOS: { minutos: number; rotulo: string }[] = [
   { minutos: 1440, rotulo: '1 dia' },
   { minutos: 4320, rotulo: '3 dias' },
 ];
+
+/**
+ * No "inativo", o atraso é a HORA do envio no 7º dia: o banco conta a partir
+ * da meia-noite da loja (`agendar_inativos`). Um "esperar 6 horas" ali não
+ * diria nada ao lojista; "às 10h", sim. Antes das 8h não há opção: a
+ * madrugada empurraria para as 8h de qualquer jeito.
+ */
+export const HORARIOS_DO_INATIVO: { minutos: number; rotulo: string }[] = [
+  8, 10, 12, 15, 18, 20,
+].map((hora) => ({ minutos: hora * 60, rotulo: `Às ${String(hora)}h` }));
+
+/** As opções do campo de atraso de cada automação. */
+export function opcoesDeAtraso(tipo: TipoDeAutomacao): { minutos: number; rotulo: string }[] {
+  return tipo === 'inactive_7d' ? HORARIOS_DO_INATIVO : ATRASOS_SUGERIDOS;
+}
+
+/** A linha de resumo do card quando a automação está ligada. */
+export function resumoDaAutomacaoLigada(tipo: TipoDeAutomacao, minutos: number): string {
+  if (tipo === 'inactive_7d') {
+    const hora = Math.floor(Math.max(0, minutos) / 60);
+    return `Ligada · envia no 7º dia sem abrir o app, às ${String(Math.max(8, hora))}h`;
+  }
+  return minutos <= 0
+    ? 'Ligada · envia na hora'
+    : `Ligada · envia ${descricaoDoAtraso(minutos)} depois`;
+}
 
 export interface ProblemaDaAutomacao {
   campo: 'title' | 'body' | 'deepLink' | 'delayMinutes';

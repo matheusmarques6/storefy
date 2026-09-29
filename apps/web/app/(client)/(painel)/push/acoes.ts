@@ -483,7 +483,11 @@ export async function salvarAutomacao(entrada: {
   const base = await contexto();
   if (!base.ok) return { mensagem: base.motivo };
 
-  if (!ehTipoDeAutomacao(entrada.tipo)) {
+  // O tipo estreitado pela própria guarda. Um "estreitador" à parte, escrito
+  // quando só existiam duas automações, gravava toda automação nova como
+  // carrinho abandonado — por cima do texto e da chave do carrinho.
+  const tipo = entrada.tipo;
+  if (!ehTipoDeAutomacao(tipo)) {
     return { mensagem: 'Esta automação ainda não existe.' };
   }
 
@@ -514,7 +518,7 @@ export async function salvarAutomacao(entrada: {
   const { error } = await base.supabase.from('push_automations').upsert(
     {
       app_id: base.app.id,
-      type: validacaoTipo(entrada.tipo),
+      type: tipo,
       enabled: validacao.valores.enabled,
       delay_minutes: validacao.valores.delayMinutes,
       title: validacao.valores.title,
@@ -530,12 +534,7 @@ export async function salvarAutomacao(entrada: {
   return {
     ok: true,
     mensagem: validacao.valores.enabled
-      ? `${DESCRICAO_DO_TIPO[validacaoTipo(entrada.tipo)].nome} ligada.`
-      : `${DESCRICAO_DO_TIPO[validacaoTipo(entrada.tipo)].nome} desligada.`,
+      ? `Automação “${DESCRICAO_DO_TIPO[tipo].nome}” ligada.`
+      : `Automação “${DESCRICAO_DO_TIPO[tipo].nome}” desligada.`,
   };
-}
-
-/** Estreita o tipo depois de `ehTipoDeAutomacao`, sem asserção. */
-function validacaoTipo(tipo: string): 'welcome' | 'abandoned_cart' {
-  return tipo === 'welcome' ? 'welcome' : 'abandoned_cart';
 }

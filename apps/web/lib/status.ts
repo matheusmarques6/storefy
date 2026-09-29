@@ -16,7 +16,7 @@
 export type EstadoDoComponente = 'operacional' | 'instavel' | 'parado' | 'aguardando';
 
 export interface JobDoStatus {
-  job: 'dispatch-push' | 'push-stats' | 'review-status' | 'analytics';
+  job: 'dispatch-push' | 'push-stats' | 'review-status' | 'analytics' | 'inactive-devices';
   nome: string;
   descricao: string;
   /** De quanto em quanto tempo o cron chama, em minutos (`vercel.json`). */
@@ -36,6 +36,12 @@ export const JOBS_DO_STATUS: readonly JobDoStatus[] = [
     nome: 'Estatísticas das notificações',
     descricao: 'Entregas e aberturas de cada campanha.',
     intervaloMin: 15,
+  },
+  {
+    job: 'inactive-devices',
+    nome: 'Aviso de quem sumiu',
+    descricao: 'A notificação para quem passou 7 dias sem abrir o app.',
+    intervaloMin: 60,
   },
   {
     job: 'analytics',

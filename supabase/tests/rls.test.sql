@@ -6478,6 +6478,168 @@ select tests.ok('batimento',
 
 reset role;
 
+-- ============================== grupo: inativos (Fase 8)
+--
+-- "Sentimos sua falta": quem abriu o app pela última vez há 7 a 9 dias recebe
+-- UM aviso por sumiço, na hora que o lojista escolheu do 7º dia; quem voltou
+-- antes do envio não recebe. As datas são sempre relativas ao "hoje" da loja,
+-- para a suíte valer a qualquer hora do dia.
+
+reset role;
+
+insert into public.push_automations (app_id, type, enabled, delay_minutes, title, body)
+select app_a, 'inactive_7d', true, 600, 'Sentimos sua falta', 'Vem ver as novidades.'
+from tests.lojas
+on conflict (app_id, type) do update set enabled = true, delay_minutes = 600;
+
+insert into public.devices (app_id, onesignal_subscription_id, platform)
+select app_a, sub, 'ios'
+  from tests.lojas, unnest(array['sub-sumido-7', 'sub-sumido-12', 'sub-voltou', 'sub-ativo']) sub;
+insert into public.devices (app_id, onesignal_subscription_id, platform)
+select app_b, 'sub-sumido-da-outra-org', 'android' from tests.lojas;
+
+create table tests.hoje_da_loja as
+select (now() at time zone s.timezone)::date as hoje, s.timezone as fuso
+  from public.stores s where s.id = (select loja_a from tests.lojas);
+
+-- A história de uso de cada aparelho, em dias da loja.
+insert into public.device_days (app_id, device_id, day)
+select d.app_id, d.id, h.hoje - dias.n
+  from public.devices d
+  cross join tests.hoje_da_loja h
+  join (values
+    ('sub-sumido-7', 20), ('sub-sumido-7', 7),
+    ('sub-sumido-12', 12),
+    ('sub-voltou', 8), ('sub-voltou', 1),
+    ('sub-ativo', 0),
+    ('sub-sumido-da-outra-org', 7)
+  ) as dias(sub, n) on dias.sub = d.onesignal_subscription_id;
+
+set role service_role;
+select public.agendar_inativos();
+reset role;
+
+select tests.ok('inativos',
+  tests.contar($q$select count(*) from public.automation_runs r
+     join public.devices d on d.id = r.device_id
+    where d.onesignal_subscription_id = 'sub-sumido-7'
+      and r.trigger_ref = 'inativo:' || ((select hoje from tests.hoje_da_loja) - 7)::text
+      and r.status = 'scheduled'$q$) = 1,
+  'quem abriu o app pela última vez há 7 dias recebe o aviso');
+
+select tests.ok('inativos',
+  (select extract(hour from r.scheduled_for at time zone h.fuso)::integer = 10
+          and (r.scheduled_for at time zone h.fuso)::date = h.hoje
+     from public.automation_runs r
+     join public.devices d on d.id = r.device_id
+     cross join tests.hoje_da_loja h
+    where d.onesignal_subscription_id = 'sub-sumido-7'),
+  'na hora escolhida do 7º dia, no fuso da loja (10h)');
+
+select tests.ok('inativos',
+  tests.contar($q$select count(*) from public.automation_runs r
+     join public.devices d on d.id = r.device_id
+    where d.onesignal_subscription_id in ('sub-sumido-12', 'sub-voltou', 'sub-ativo')$q$) = 0,
+  'sumido há 12 dias, quem voltou depois e quem usou hoje não recebem');
+
+select tests.ok('isolamento',
+  tests.contar($q$select count(*) from public.automation_runs r
+     join public.devices d on d.id = r.device_id
+    where d.onesignal_subscription_id = 'sub-sumido-da-outra-org'$q$) = 0,
+  'a outra organização, sem a automação ligada, não recebe nada');
+
+set role service_role;
+select public.agendar_inativos();
+reset role;
+
+select tests.ok('inativos',
+  tests.contar($q$select count(*) from public.automation_runs r
+     join public.devices d on d.id = r.device_id
+    where d.onesignal_subscription_id = 'sub-sumido-7'$q$) = 1,
+  'rodar de novo não repete: um aviso por sumiço');
+
+-- Desligada, nada é agendado — nem para quem acabou de completar 7 dias.
+insert into public.devices (app_id, onesignal_subscription_id, platform)
+select app_a, 'sub-sumido-8', 'android' from tests.lojas;
+insert into public.device_days (app_id, device_id, day)
+select d.app_id, d.id, (select hoje from tests.hoje_da_loja) - 8
+  from public.devices d where d.onesignal_subscription_id = 'sub-sumido-8';
+update public.push_automations set enabled = false
+ where app_id = (select app_a from tests.lojas) and type = 'inactive_7d';
+
+set role service_role;
+select public.agendar_inativos();
+reset role;
+
+select tests.ok('inativos',
+  tests.contar($q$select count(*) from public.automation_runs r
+     join public.devices d on d.id = r.device_id
+    where d.onesignal_subscription_id = 'sub-sumido-8'$q$) = 0,
+  'automação desligada não agenda nada');
+
+update public.push_automations set enabled = true
+ where app_id = (select app_a from tests.lojas) and type = 'inactive_7d';
+
+-- Ligada de novo, quem está na janela (8 dias) entra.
+set role service_role;
+select public.agendar_inativos();
+reset role;
+
+select tests.ok('inativos',
+  tests.contar($q$select count(*) from public.automation_runs r
+     join public.devices d on d.id = r.device_id
+    where d.onesignal_subscription_id = 'sub-sumido-8'$q$) = 1,
+  'a janela vai até 9 dias: uma hora ou um dia sem cron não deixa ninguém de fora');
+
+-- Voltou ao app antes do envio: o despacho cancela.
+insert into public.device_days (app_id, device_id, day)
+select d.app_id, d.id, (select hoje from tests.hoje_da_loja)
+  from public.devices d where d.onesignal_subscription_id = 'sub-sumido-7';
+
+set role service_role;
+select count(*) from public.reservar_envios_de_automacao(1000);
+reset role;
+
+select tests.ok('inativos',
+  (select r.status = 'canceled' and r.canceled_reason = 'voltou a abrir o app'
+     from public.automation_runs r
+     join public.devices d on d.id = r.device_id
+    where d.onesignal_subscription_id = 'sub-sumido-7'),
+  'quem voltou ao app antes do envio não recebe o "sentimos sua falta"');
+
+select tests.ok('inativos',
+  (select r.status <> 'canceled'
+     from public.automation_runs r
+     join public.devices d on d.id = r.device_id
+    where d.onesignal_subscription_id = 'sub-sumido-8'),
+  'e quem continua sumido segue na fila');
+
+set role service_role;
+select public.registrar_batimento('inactive-devices', true, 120);
+reset role;
+
+select tests.ok('inativos',
+  tests.contar($q$select count(*) from public.job_heartbeats
+    where job = 'inactive-devices' and last_success_at is not null$q$) = 1,
+  'o job de hora em hora anota o próprio batimento');
+
+select tests.login('a-owner@teste.local');
+set role authenticated;
+
+select tests.ok('inativos',
+  tests.erro($q$select public.agendar_inativos()$q$),
+  'o lojista não dispara o agendamento por conta própria');
+
+reset role;
+set role anon;
+
+select tests.ok('inativos',
+  tests.erro($q$select public.agendar_inativos()$q$),
+  'nem o anônimo');
+
+reset role;
+drop table tests.hoje_da_loja;
+
 -- ============================== grupo: varredura de segurança (Fase 8)
 --
 -- Duas travas que valem para o schema inteiro, e não para uma tabela: uma

@@ -1555,6 +1555,10 @@ export type Database = {
         Args: { p_email: string };
         Returns: string;
       };
+      agendar_inativos: {
+        Args: Record<string, never>;
+        Returns: number;
+      };
       agendar_pedido_enviado: {
         Args: { p_app_id: string; p_shopify_order_id: string };
         Returns: boolean;

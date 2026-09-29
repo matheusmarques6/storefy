@@ -79,11 +79,6 @@ export default async function PaginaDeAutomacoes() {
           />
         ))}
       </div>
-
-      <p className="text-muted-foreground text-xs">
-        Outras automações — aviso de volta ao estoque, pedido enviado e cliente inativo — entram em
-        uma próxima atualização. Elas aparecem aqui quando estiverem prontas para usar.
-      </p>
     </div>
   );
 }

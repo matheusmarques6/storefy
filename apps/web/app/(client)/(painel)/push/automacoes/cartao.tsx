@@ -12,9 +12,9 @@ import { useRouter } from 'next/navigation';
 import { Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import {
-  ATRASOS_SUGERIDOS,
+  opcoesDeAtraso,
+  resumoDaAutomacaoLigada,
   DESCRICAO_DO_TIPO,
-  descricaoDoAtraso,
   type TipoDeAutomacao,
 } from '@/lib/automacao';
 import { MAXIMO_DO_CORPO, MAXIMO_DO_TITULO, type ProblemaNoFormulario } from '@/lib/campanha';
@@ -82,14 +82,17 @@ export function CartaoDaAutomacao({ tipo, salva, urlDaLoja, nomeDoApp, podeEscre
   }
 
   return (
-    <Card>
+    <Card role="region" aria-labelledby={`automacao-${tipo}`}>
       <CardHeader className="flex flex-row items-start justify-between gap-4">
         <div className="space-y-1">
-          <CardTitle className="text-base">{descricao.nome}</CardTitle>
+          <CardTitle id={`automacao-${tipo}`} className="text-base">
+            {descricao.nome}
+          </CardTitle>
           <CardDescription>{descricao.gatilho}</CardDescription>
           <p className="text-muted-foreground text-xs">
-            {ligada
-              ? `Ligada · envia ${descricaoDoAtraso(valores.delayMinutes)} depois`
+            {/* O resumo é do que está SALVO: o que está sendo editado ainda não vale. */}
+            {ligada && salva !== null
+              ? resumoDaAutomacaoLigada(tipo, salva.delayMinutes)
               : descricao.porque}
           </p>
         </div>
@@ -188,7 +191,7 @@ export function CartaoDaAutomacao({ tipo, salva, urlDaLoja, nomeDoApp, podeEscre
                   }}
                   className="border-input bg-background h-9 w-full rounded-md border px-3 text-sm"
                 >
-                  {ATRASOS_SUGERIDOS.map((opcao) => (
+                  {opcoesDeAtraso(tipo).map((opcao) => (
                     <option key={opcao.minutos} value={opcao.minutos}>
                       {opcao.rotulo}
                     </option>

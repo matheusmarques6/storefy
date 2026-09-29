@@ -9,7 +9,7 @@ import 'server-only';
  */
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '@storefy/db';
-import type { TipoDeAutomacao } from '@/lib/automacao';
+import { ehTipoDeAutomacao, type TipoDeAutomacao } from '@/lib/automacao';
 import type { StatusDaCampanha } from '@/lib/campanha';
 
 type Client = SupabaseClient<Database>;
@@ -48,12 +48,22 @@ export interface AppDaLoja {
   oneSignalAppId: string | null;
 }
 
+/**
+ * Erro de leitura vira a tela de erro do painel (com "tentar de novo"), e não
+ * lista vazia: "nenhuma campanha" com o banco fora do ar seria mentira — e o
+ * lojista criaria de novo a campanha que já existe.
+ */
+function falhouAoLer(oQue: string, erro: { message: string } | null): void {
+  if (erro != null) throw new Error(`Não foi possível ler ${oQue}: ${erro.message}`);
+}
+
 export async function appDaLoja(supabase: Client, storeId: string): Promise<AppDaLoja | null> {
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from('apps')
     .select('id, onesignal_app_id')
     .eq('store_id', storeId)
     .maybeSingle();
+  falhouAoLer('o app da loja', error);
 
   return data == null ? null : { id: data.id, oneSignalAppId: data.onesignal_app_id };
 }
@@ -63,12 +73,13 @@ export async function listarCampanhas(
   appId: string,
   limite = 50,
 ): Promise<CampanhaNaLista[]> {
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from('push_campaigns')
     .select('id, title, body, deep_link, status, scheduled_at, sent_at, created_at, stats')
     .eq('app_id', appId)
     .order('created_at', { ascending: false })
     .limit(limite);
+  falhouAoLer('as campanhas', error);
 
   return (data ?? []).map((linha) => ({
     id: linha.id,
@@ -88,12 +99,13 @@ export async function buscarCampanha(
   appId: string,
   campanhaId: string,
 ): Promise<CampanhaNaLista | null> {
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from('push_campaigns')
     .select('id, title, body, deep_link, status, scheduled_at, sent_at, created_at, stats')
     .eq('app_id', appId)
     .eq('id', campanhaId)
     .maybeSingle();
+  falhouAoLer('a campanha', error);
 
   if (data == null) return null;
   return {
@@ -110,15 +122,20 @@ export async function buscarCampanha(
 }
 
 export async function listarAutomacoes(supabase: Client, appId: string): Promise<AutomacaoSalva[]> {
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from('push_automations')
     .select('id, type, enabled, delay_minutes, title, body, deep_link')
     .eq('app_id', appId);
+  falhouAoLer('as automações', error);
 
+  /*
+   * Pelo MESMO critério da tela (`ehTipoDeAutomacao`). Um filtro escrito à
+   * mão com os dois tipos da Fase 3 deixava "Pedido enviado", "De volta ao
+   * estoque" e "Sentimos sua falta" sempre desligados na tela, mesmo ligados.
+   */
   return (data ?? [])
-    .filter(
-      (linha): linha is typeof linha & { type: TipoDeAutomacao } =>
-        linha.type === 'welcome' || linha.type === 'abandoned_cart',
+    .filter((linha): linha is typeof linha & { type: TipoDeAutomacao } =>
+      ehTipoDeAutomacao(linha.type),
     )
     .map((linha) => ({
       id: linha.id,
@@ -155,12 +172,13 @@ export async function aparelhosRecentes(
   appId: string,
   limite = 10,
 ): Promise<AparelhoParaTeste[]> {
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from('devices')
     .select('id, onesignal_subscription_id, platform, app_version, last_seen_at')
     .eq('app_id', appId)
     .order('last_seen_at', { ascending: false })
     .limit(limite);
+  falhouAoLer('os aparelhos', error);
 
   return (data ?? []).map((linha) => ({
     id: linha.id,

@@ -1,18 +1,22 @@
 import { describe, expect, it } from 'vitest';
 import {
+  ATRASOS_SUGERIDOS,
   ATRASO_MAXIMO_MINUTOS,
   DESCRICAO_DO_TIPO,
   TIPOS_DE_AUTOMACAO,
   descricaoDoAtraso,
   ehTipoDeAutomacao,
+  opcoesDeAtraso,
+  resumoDaAutomacaoLigada,
   validarAutomacao,
 } from '@/lib/automacao';
 
 describe('os tipos oferecidos', () => {
   /*
-   * "Inativo há 7 dias" está no plano para depois. Enquanto o job não souber
-   * disparar, um card dele na tela seria um botão que não faz nada — o que a
-   * regra 3 proíbe.
+   * Só o que funciona de ponta a ponta. O "inativo" entrou quando ganhou o
+   * gatilho (`agendar_inativos`); o "webhook customizado" continua de fora
+   * enquanto ninguém o chamar — um card dele seria um botão que não faz nada,
+   * o que a regra 3 proíbe.
    */
   it('só os que funcionam de ponta a ponta', () => {
     expect([...TIPOS_DE_AUTOMACAO]).toEqual([
@@ -20,8 +24,9 @@ describe('os tipos oferecidos', () => {
       'abandoned_cart',
       'order_shipped',
       'back_in_stock',
+      'inactive_7d',
     ]);
-    expect(ehTipoDeAutomacao('inactive_7d')).toBe(false);
+    expect(ehTipoDeAutomacao('inactive_7d')).toBe(true);
     expect(ehTipoDeAutomacao('custom_webhook')).toBe(false);
     expect(ehTipoDeAutomacao('qualquer coisa')).toBe(false);
   });
@@ -100,5 +105,36 @@ describe('validarAutomacao', () => {
         expect(problema.mensagem).not.toMatch(/expected|String|Number|invalid_type/);
       }
     }
+  });
+});
+
+describe('o horário do "sentimos sua falta"', () => {
+  it('é a hora do 7º dia, e não um atraso', () => {
+    expect(opcoesDeAtraso('inactive_7d').map((opcao) => opcao.rotulo)).toEqual([
+      'Às 8h',
+      'Às 10h',
+      'Às 12h',
+      'Às 15h',
+      'Às 18h',
+      'Às 20h',
+    ]);
+    // A sugestão é uma das opções: o select não pode abrir vazio.
+    expect(opcoesDeAtraso('inactive_7d').map((opcao) => opcao.minutos)).toContain(
+      DESCRICAO_DO_TIPO.inactive_7d.sugestao.delayMinutes,
+    );
+    expect(opcoesDeAtraso('welcome')).toBe(ATRASOS_SUGERIDOS);
+  });
+
+  it('o resumo do card diz quando sai, em palavras', () => {
+    expect(resumoDaAutomacaoLigada('inactive_7d', 600)).toBe(
+      'Ligada · envia no 7º dia sem abrir o app, às 10h',
+    );
+    // Antes das 8h a madrugada empurra para as 8h; o resumo não mente.
+    expect(resumoDaAutomacaoLigada('inactive_7d', 0)).toBe(
+      'Ligada · envia no 7º dia sem abrir o app, às 8h',
+    );
+    expect(resumoDaAutomacaoLigada('welcome', 10)).toBe('Ligada · envia 10 minutos depois');
+    // "envia na hora depois" era o texto de antes para atraso zero.
+    expect(resumoDaAutomacaoLigada('back_in_stock', 0)).toBe('Ligada · envia na hora');
   });
 });

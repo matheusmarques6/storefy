@@ -68,7 +68,8 @@ const IDS_DAS_ABAS = new Set([
 
 /** Um valor literal do YAML: sem variável `${...}`. */
 function literal(valor: string): string | null {
-  const limpo = valor.trim().replace(/^"(.*)"$/, '$1');
+  // O Prettier do pre-commit troca aspas duplas por simples no YAML: as duas valem.
+  const limpo = valor.trim().replace(/^(["'])(.*)\1$/, '$2');
   return limpo.includes('${') ? null : limpo;
 }
 
@@ -78,14 +79,14 @@ function alvos(yaml: string): { textos: string[]; ids: string[] } {
   const ids: string[] = [];
   for (const linha of yaml.split('\n')) {
     const texto =
-      /^\s*-?\s*(?:tapOn|assertVisible|assertNotVisible|visible|notVisible|text):\s*(".*"|[^{\s].*)$/.exec(
+      /^\s*-?\s*(?:tapOn|assertVisible|assertNotVisible|visible|notVisible|text):\s*("[^"]*"|'[^']*'|[^{\s].*)$/.exec(
         linha,
       )?.[1];
     if (texto !== undefined) {
       const valor = literal(texto);
       if (valor !== null) textos.push(valor);
     }
-    const id = /^\s*id:\s*"(.+)"\s*$/.exec(linha)?.[1];
+    const id = /^\s*id:\s*(["'])(.+)\1\s*$/.exec(linha)?.[2];
     if (id !== undefined) ids.push(id);
   }
   return { textos, ids };
@@ -136,10 +137,11 @@ describe('fluxos do Maestro', () => {
   it('o próprio teste pega um texto que o app não tem', () => {
     // Sem isto, um extrator quebrado passaria achando zero alvos.
     const { textos, ids } = alvos(
-      '- tapOn: "Recarregar tudo"\n- assertVisible:\n    id: "nao-existe"\n',
+      '- tapOn: "Recarregar tudo"\n- assertVisible:\n    id: "nao-existe"\n' +
+        "- tapOn: 'Aspas simples'\n- assertVisible:\n    id: 'outro-id'\n",
     );
-    expect(textos).toEqual(['Recarregar tudo']);
-    expect(ids).toEqual(['nao-existe']);
+    expect(textos).toEqual(['Recarregar tudo', 'Aspas simples']);
+    expect(ids).toEqual(['nao-existe', 'outro-id']);
     expect(oAppMostra('Recarregar tudo')).toBe(false);
     // E acha o que está numa tela de verdade.
     expect(oAppMostra('Tentar de novo')).toBe(true);

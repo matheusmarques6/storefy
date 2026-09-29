@@ -170,9 +170,10 @@ export default async function PaginaPushGlobal({
         <CardContent className="text-muted-foreground flex items-start gap-2 py-4 text-sm">
           <CreditCard className="mt-0.5 size-4 shrink-0" aria-hidden />
           <span>
-            O custo em reais ainda não aparece aqui: converter aparelho ativo em dinheiro depende da
-            tabela de preços do plano contratado, que entra na Fase 7. Por ora o número que importa
-            é o de aparelhos ativos — é sobre ele que a OneSignal cobra.
+            O custo em reais não aparece aqui: ele depende do contrato da Storefy com a OneSignal,
+            que não está no sistema, e um valor estimado nesta tela seria pior do que nenhum. O
+            número que importa é o de aparelhos ativos — é sobre ele que a OneSignal cobra, e o
+            preço de cada um está na fatura dela.
           </span>
         </CardContent>
       </Card>

@@ -302,6 +302,7 @@ async function main(): Promise<void> {
     'registrar_links_do_app',
     // Fase 8 — o batimento dos jobs do cron e a página pública de status.
     'registrar_batimento',
+    'agendar_inativos',
     'batimentos_publicos',
     'salvar_quem_paga',
     'registrar_assinatura',

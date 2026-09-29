@@ -314,7 +314,7 @@ Conferido contra o código na Fase 8a (ver "Fase 8a — Entregue").
   - `CART_UPDATED` com `count > 0` cria ou reagenda o run (delay padrão de 60 minutos).
   - `ORDER_COMPLETED` ou o webhook Shopify `orders/create` (casando pelo `cart_token`) cancela o run.
   - Regras: no máximo 1 push de carrinho a cada 24 horas por device, e janela de silêncio das 22h às 8h no fuso da loja.
-- **Fase posterior:** "de volta ao estoque", "pedido enviado" (webhook `fulfillments/create`), "inativo há 7 dias" e webhook customizado (integração com Klaviyo/Omnisend/n8n).
+- **Fase posterior:** "de volta ao estoque", "pedido enviado" (webhook `fulfillments/create`), "inativo há 7 dias" e webhook customizado (integração com Klaviyo/Omnisend/n8n). ✅ os três primeiros entregues (Fases 5 e 8d); o webhook customizado segue fora da tela até existir quem o chame.
 - **Reaproveitamento do admin Convertfy:** o módulo **Automações** do admin Convertfy (gatilho → espera → ação → estatísticas) é o modelo mental e de UI para `push_automations`. Vale copiar os componentes do editor de fluxo se forem compatíveis.
 
 ### Onboarding de push (automático)
@@ -1278,7 +1278,7 @@ com um servidor no lugar da Asaas falando HTTP de verdade com o painel). A suít
 
 ### Fase 8 — Polimento, QA e lançamento (5+ dias)
 - Trocar os layouts provisórios pelos do Claude Design (tela por tela, usando os IDs C/A/M).
-- Testes E2E com Playwright (onboarding → editor → publicar config → campanha). ✅ `e2e/jornada.spec.ts` faz a jornada inteira só pela tela (cadastro → loja → editor → publicar → campanha agendada), e a suíte tem 42 testes
+- Testes E2E com Playwright (onboarding → editor → publicar config → campanha). ✅ `e2e/jornada.spec.ts` faz a jornada inteira só pela tela (cadastro → loja → editor → publicar → campanha agendada), e a suíte tem 43 testes
 - Maestro para fluxos do app (abrir, trocar aba, carrinho, offline). ✅ escritos em `apps/mobile/.maestro/` (abrir, trocar aba, busca, carrinho, offline, ajustes e desligar as notificações), conferidos pelo `maestro check-syntax` 2.10; `src/maestro.test.ts` quebra se um fluxo citar texto ou `id` que o app não tem. Rodar depende de simulador/emulador com o build da loja de teste (ver "Depende de ação humana" da Fase 8c)
 - Sentry (web + mobile), logs estruturados, status page. ✅ Fase 8b
 - Revisão de segurança: RLS, segredos, rate limit, HMAC. ✅ Fase 8b
@@ -1497,6 +1497,32 @@ por um caminho DENTRO do app (4.5.4), e o Storefy é campanha de promoção.
 | Checklist da C12 acessível | ✅ cada item diz "Pronto", "Falta" ou "Recomendado" a quem usa leitor de tela (antes, só o ícone dizia) |
 | Fluxos do Maestro | ✅ sete fluxos em `apps/mobile/.maestro/`, com ids estáveis nas abas (pelo tipo, porque o nome muda de loja para loja) e um teste que confere cada texto e cada `id` contra o app — conferido pondo um botão renomeado e uma aba inexistente |
 | Busca nativa (M08) | ✅ também faltava: a aba Busca só abria a página da loja, e um comentário dizia que o campo era nativo. Agora o campo é do app (tecla "Buscar", limpar, termo cortado em 100 caracteres) e leva a aba a `/search?q=` na busca da própria loja; as notas da revisão contam o recurso |
+
+#### Fase 8d — Entregue (29/09/2026): "Sentimos sua falta" e as automações que nunca ligavam
+
+| Item | Estado |
+|---|---|
+| Automação "Inativo há 7 dias" (C09) | ✅ o tipo existia no banco desde a Fase 3, sem gatilho. `agendar_inativos` acha quem abriu o app pela última vez há 7 a 9 dias (a folga cobre o cron parado), um aviso por sumiço (`trigger_ref`), na hora escolhida do 7º dia no fuso da loja; o despacho cancela o de quem voltou antes do envio. Job próprio de hora em hora (`/api/jobs/inactive-devices`), com batimento e linha na página de status. 14 asserções de RLS |
+| Hora do envio, e não "atraso" | ✅ no "sentimos sua falta" o campo é "Horário do envio, no 7º dia" (8h a 20h); o resumo do card diz "envia no 7º dia sem abrir o app, às 10h" — e sempre do que está SALVO, não do que está sendo editado |
+
+**O que o teste novo achou**
+
+- **Três automações nunca ligavam pelo painel, e ligar uma delas estragava o
+  carrinho abandonado.** O "estreitador" de tipo da ação de salvar foi escrito
+  na Fase 3, quando só existiam boas-vindas e carrinho, e devolvia
+  `abandoned_cart` para todo o resto: ligar "Pedido enviado" ou "De volta ao
+  estoque" regravava o título, o texto e o atraso do carrinho abandonado. E a
+  leitura da tela filtrava os mesmos dois tipos, então as outras apareciam
+  sempre desligadas. Os dois lados agora usam `ehTipoDeAutomacao`, e o
+  `e2e/automacoes.spec.ts` liga cada uma pela tela e confere o banco.
+- **Leitura com erro virava lista vazia** nas telas de notificações: "nenhuma
+  campanha" com o banco fora do ar, e o lojista criaria de novo a campanha que
+  existe. Agora vira a tela de erro, com "tentar de novo".
+- **Dois textos de "em breve" que envelheceram:** a tela de automações
+  prometia "numa próxima atualização" três automações que já estavam nela, e a
+  A08 dizia que o custo em reais "entra na Fase 7" — que já foi entregue e não
+  é de onde esse custo vem (ele depende do contrato da Storefy com a
+  OneSignal).
 
 **Depende de ação humana**
 
