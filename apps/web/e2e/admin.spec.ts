@@ -88,7 +88,9 @@ test('platform admin enxerga organizações e lojas de todos os clientes', async
       name: 'Loja Visivel',
     }),
   ).toBeVisible();
-  await expect(paginaAdmin.getByText(emailCliente)).toBeVisible();
+  await expect(
+    paginaAdmin.getByRole('region', { name: 'Membros' }).getByText(emailCliente),
+  ).toBeVisible();
 
   // A auditoria registrou a criação da loja.
   await paginaAdmin.goto('/admin/logs');

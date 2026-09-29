@@ -7352,6 +7352,41 @@ select tests.ok('status da loja',
 delete from public.stores where name in ('Loja do Status', 'Loja Pausada');
 drop table tests.status;
 
+-- ============================== grupo: A12 — quem fez (migration 54)
+--
+-- O e-mail de quem fez cada ação mora em `auth.users`: só a equipe da
+-- plataforma o recebe, e só dos ids pedidos.
+
+reset role;
+select tests.login('forasteiro@teste.local');
+set role authenticated;
+
+select tests.ok('auditoria',
+  tests.erro($q$select * from public.admin_autores_da_auditoria(
+                 array[(select u_a_owner from tests.ids)])$q$),
+  'usuário comum NÃO lê quem fez as ações');
+
+reset role;
+select tests.login('equipe@teste.local');
+set role authenticated;
+
+select tests.ok('auditoria',
+  (select email = 'a-owner@teste.local' and not equipe
+     from public.admin_autores_da_auditoria(array[(select u_a_owner from tests.ids)])),
+  'a equipe lê o e-mail de quem fez, e vê que não é da equipe');
+
+select tests.ok('auditoria',
+  (select equipe from public.admin_autores_da_auditoria(
+     array[(select u_equipe from tests.ids)])),
+  'e sabe quando quem fez é da equipe da plataforma');
+
+select tests.ok('auditoria',
+  (select count(*) from public.admin_autores_da_auditoria(null)) = 0,
+  'sem ids pedidos, nada volta');
+
+reset role;
+select tests.logout();
+
 -- ============================== grupo: varredura de segurança (Fase 8)
 --
 -- Duas travas que valem para o schema inteiro, e não para uma tabela: uma

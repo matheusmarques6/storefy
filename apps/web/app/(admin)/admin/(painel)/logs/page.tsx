@@ -1,10 +1,20 @@
-/** A12 — Logs de auditoria. */
+/**
+ * A12 — Logs de auditoria: quem fez o quê.
+ *
+ * O "quem" sai de `admin_autores_da_auditoria` (o e-mail mora em
+ * `auth.users`). `?org=` filtra uma organização — é o "ver toda a trilha"
+ * que sai da A04.
+ */
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { ScrollText } from 'lucide-react';
 import { ROTULO_ACAO_AUDITORIA, type Json } from '@storefy/db';
 import { exigirPlatformAdmin } from '@/lib/contexto';
 import { criarClientServidor } from '@/lib/supabase/server';
+import { ehUuid } from '@/lib/app-config-publica';
+import { autoresDaAuditoria } from '@/lib/auditoria-admin';
+import { lido } from '@/lib/leitura';
+import { AutorDaLinha } from '@/components/autor-da-auditoria';
 import { CampoBusca, Paginacao, lerParams } from '../paginacao';
 import { termoParaIlike } from '@/lib/listagem';
 import { FUSO_PADRAO, formatarDataHora } from '@/lib/fuso';
@@ -47,15 +57,20 @@ function nomeNoDiff(diff: Json | null): string | null {
 export default async function PaginaLogs({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; pagina?: string }>;
+  searchParams: Promise<{ q?: string; pagina?: string; org?: string }>;
 }) {
   await exigirPlatformAdmin();
-  const { busca, pagina, de, ate } = lerParams(await searchParams);
+  const parametros = await searchParams;
+  const { busca, pagina, de, ate } = lerParams(parametros);
+  // Um id que não é uuid não filtra nada — e não vira erro de consulta no banco.
+  const orgFiltrada = ehUuid(parametros.org ?? '') ? (parametros.org ?? null) : null;
   const supabase = await criarClientServidor();
 
   let consulta = supabase
     .from('audit_logs')
-    .select('id, action, entity, entity_id, diff, created_at, org_id', { count: 'exact' })
+    .select('id, action, entity, entity_id, diff, created_at, org_id, actor_id', {
+      count: 'exact',
+    })
     .order('created_at', { ascending: false })
     .range(de, ate);
 
@@ -63,9 +78,22 @@ export default async function PaginaLogs({
     const termo = termoParaIlike(busca);
     consulta = consulta.ilike('entity', `%${termo}%`);
   }
+  if (orgFiltrada !== null) consulta = consulta.eq('org_id', orgFiltrada);
 
   const { data: logs, count, error } = await consulta;
   if (error != null) throw new Error(`Não foi possível carregar a auditoria: ${error.message}`);
+
+  const [autores, lidaOrgFiltrada] = await Promise.all([
+    autoresDaAuditoria(
+      supabase,
+      logs.map((log) => log.actor_id),
+    ),
+    orgFiltrada === null
+      ? null
+      : supabase.from('organizations').select('name').eq('id', orgFiltrada).maybeSingle(),
+  ]);
+  const nomeDaOrgFiltrada =
+    lidaOrgFiltrada === null ? null : (lido(lidaOrgFiltrada, 'a organização').data?.name ?? null);
 
   /*
    * A organização vem em consulta separada, e não por embed.
@@ -98,10 +126,24 @@ export default async function PaginaLogs({
         </p>
       </div>
 
+      {orgFiltrada === null ? null : (
+        <p className="text-sm">
+          Só as ações de{' '}
+          <Link href={`/admin/organizacoes/${orgFiltrada}`} className="font-medium underline">
+            {nomeDaOrgFiltrada ?? 'uma organização excluída'}
+          </Link>
+          .{' '}
+          <Link href="/admin/logs" className="text-muted-foreground underline">
+            Ver todas
+          </Link>
+        </p>
+      )}
+
       <CampoBusca
         acao="/admin/logs"
         valor={busca}
         placeholder="Filtrar por entidade (ex.: stores)"
+        extras={orgFiltrada === null ? undefined : { org: orgFiltrada }}
       />
 
       {logs.length === 0 ? (
@@ -121,6 +163,7 @@ export default async function PaginaLogs({
               <TableHeader>
                 <TableRow>
                   <TableHead>Quando</TableHead>
+                  <TableHead>Quem</TableHead>
                   <TableHead>Organização</TableHead>
                   <TableHead>Ação</TableHead>
                   <TableHead>Entidade</TableHead>
@@ -138,6 +181,12 @@ export default async function PaginaLogs({
                     <TableRow key={log.id}>
                       <TableCell className="text-muted-foreground whitespace-nowrap">
                         {formatarDataHora(log.created_at, FUSO_PADRAO)}
+                      </TableCell>
+                      <TableCell>
+                        <AutorDaLinha
+                          actorId={log.actor_id}
+                          autor={log.actor_id === null ? undefined : autores.get(log.actor_id)}
+                        />
                       </TableCell>
                       <TableCell>
                         {nomeAtual != null && log.org_id != null ? (
@@ -166,7 +215,13 @@ export default async function PaginaLogs({
               </TableBody>
             </Table>
           </Card>
-          <Paginacao pagina={pagina} total={count ?? 0} base="/admin/logs" busca={busca} />
+          <Paginacao
+            pagina={pagina}
+            total={count ?? 0}
+            base="/admin/logs"
+            busca={busca}
+            extras={orgFiltrada === null ? undefined : { org: orgFiltrada }}
+          />
         </>
       )}
     </div>

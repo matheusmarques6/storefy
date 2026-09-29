@@ -20,8 +20,11 @@ import {
   ROTULO_STATUS_BUILD,
   ROTULO_STATUS_LOJA,
   ROTULO_STATUS_ORG,
+  ROTULO_ACAO_AUDITORIA,
 } from '@storefy/db';
 import { exigirPlatformAdminComPapel } from '@/lib/contexto';
+import { autoresDaAuditoria } from '@/lib/auditoria-admin';
+import { AutorDaLinha } from '@/components/autor-da-auditoria';
 import { criarClientServidor } from '@/lib/supabase/server';
 import { lerNotas } from '@/lib/notas-internas';
 import { FUSO_PADRAO, formatarDataHora } from '@/lib/fuso';
@@ -60,6 +63,7 @@ export default async function PaginaOrganizacao({ params }: { params: Promise<{ 
     { data: notasBrutas, error: erroNotas },
     { data: builds, error: erroBuilds },
     { data: convites, error: erroConvites },
+    { data: acoes, error: erroAcoes },
   ] = await Promise.all([
     supabase.from('organizations').select('*').eq('id', id).maybeSingle(),
     supabase
@@ -88,6 +92,14 @@ export default async function PaginaOrganizacao({ params }: { params: Promise<{ 
       .is('accepted_at', null)
       .is('revoked_at', null)
       .order('created_at', { ascending: false }),
+    // As últimas ações na trilha, para o suporte ver o que mudou por último
+    // sem sair da página do cliente (A04 › logs).
+    supabase
+      .from('audit_logs')
+      .select('id, action, entity, created_at, actor_id')
+      .eq('org_id', id)
+      .order('created_at', { ascending: false })
+      .limit(8),
   ]);
 
   // Erro de leitura não é "cliente inexistente": o 404 esconderia a falha.
@@ -112,6 +124,13 @@ export default async function PaginaOrganizacao({ params }: { params: Promise<{ 
   if (erroConvites != null) {
     throw new Error(`Não foi possível carregar os convites: ${erroConvites.message}`);
   }
+  if (erroAcoes != null) {
+    throw new Error(`Não foi possível carregar as últimas ações: ${erroAcoes.message}`);
+  }
+  const autores = await autoresDaAuditoria(
+    supabase,
+    acoes.map((acao) => acao.actor_id),
+  );
 
   const listaLojas = lojas;
   const listaMembros = membros;
@@ -205,9 +224,11 @@ export default async function PaginaOrganizacao({ params }: { params: Promise<{ 
 
       <AppsDaOrganizacao lojas={listaLojas.map((loja) => ({ id: loja.id, name: loja.name }))} />
 
-      <Card>
+      <Card role="region" aria-labelledby="titulo-dos-membros">
         <CardHeader>
-          <CardTitle className="text-base">Membros</CardTitle>
+          <CardTitle id="titulo-dos-membros" className="text-base">
+            Membros
+          </CardTitle>
         </CardHeader>
         <Table>
           <TableHeader>
@@ -296,6 +317,46 @@ export default async function PaginaOrganizacao({ params }: { params: Promise<{ 
                     </Badge>
                     <span className="text-muted-foreground text-xs">
                       {dataHora(build.created_at)}
+                    </span>
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card role="region" aria-labelledby="titulo-das-ultimas-acoes">
+        <CardHeader>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <CardTitle id="titulo-das-ultimas-acoes" className="text-base">
+              Últimas ações
+            </CardTitle>
+            <Link
+              href={`/admin/logs?org=${id}`}
+              className="text-muted-foreground hover:text-foreground text-sm"
+            >
+              Ver toda a trilha
+            </Link>
+          </div>
+          <CardDescription>Quem fez o quê neste cliente, das mais recentes.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {acoes.length === 0 ? (
+            <p className="text-muted-foreground text-sm">Nenhuma ação registrada ainda.</p>
+          ) : (
+            <ul className="space-y-3 text-sm">
+              {acoes.map((acao) => (
+                <li key={acao.id} className="flex flex-wrap items-start justify-between gap-2">
+                  <AutorDaLinha
+                    actorId={acao.actor_id}
+                    autor={acao.actor_id === null ? undefined : autores.get(acao.actor_id)}
+                  />
+                  <span className="flex items-center gap-2">
+                    <Badge variant="outline">{ROTULO_ACAO_AUDITORIA[acao.action]}</Badge>
+                    <span className="font-mono text-xs">{acao.entity}</span>
+                    <span className="text-muted-foreground text-xs">
+                      {dataHora(acao.created_at)}
                     </span>
                   </span>
                 </li>

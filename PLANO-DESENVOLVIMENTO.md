@@ -1678,6 +1678,15 @@ Também achado pela auditoria das telas contra o plano.
 | Só o banco escreve | ✅ a sessão perdeu o `insert` e o `update` da coluna; a varredura de colunas graváveis da RLS lista a exceção pelo nome |
 | Testes | ✅ RLS: 11 do status (rascunho, a API recusada, gerando, em revisão, recusado, gerando de novo, no ar, atualização em revisão sem tirar do ar, trilha, pausada que não muda, o cálculo) e o resumo do A02 agora plantado com builds de verdade; e2e: o cartão do painel passando por gerando, em revisão, recusado (com a frase do motivo) e no ar, e a lista de lojas |
 
+#### Fase 8l — Entregue (29/09/2026): A12 e A04 — quem fez o quê
+
+| Item | Estado |
+|---|---|
+| O defeito | ❌→✅ a A12 promete "quem fez o quê", e a tela mostrava só o quê: `actor_id` era gravado desde a Fase 0 e nunca lido. A Fase 3 deixou o autor para a Fase 6, e a Fase 6 fechou a A12 sem ele. A A04 também não tinha a trilha do cliente |
+| Quem, em cada linha | ✅ coluna "Quem" na A12: o nome (com o e-mail embaixo) de quem fez; "Equipe" quando foi alguém da Storefy — uma ação do suporte num cliente não pode parecer do cliente —; "O sistema" quando não há autor (gatilho, rotina, aviso da Shopify, do EAS ou do Asaas); "Conta excluída" quando a pessoa já saiu. O e-mail vem de `admin_autores_da_auditoria` (migration 54), que só responde à equipe da plataforma e só dos ids pedidos |
+| A trilha do cliente | ✅ cartão "Últimas ações" na A04, com o autor, e "Ver toda a trilha" abrindo a A12 filtrada pela organização (`?org=`); a busca por entidade mantém o filtro; um id que não é de nada não quebra a tela |
+| Testes | ✅ 4 do rótulo do autor; RLS: 4 (usuário comum recusado, e-mail lido pela equipe, marca de equipe, lista vazia); e2e: o lojista pelo e-mail na A04 e na A12, o filtro que sobrevive à busca, "O sistema" para o build movido pelo workflow e o filtro inválido |
+
 **Estimativa total:** cerca de 7 a 9 semanas para uma pessoa com Claude Code em ritmo forte. O MVP vendável (Fases 0–4) leva cerca de 4 a 5 semanas.
 
 ---

@@ -1583,6 +1583,10 @@ export type Database = {
         Args: { p_id: string };
         Returns: { resultado: string | null; tipo: Database["public"]["Enums"]["invitation_kind"] | null; organizacao: string | null }[];
       };
+      admin_autores_da_auditoria: {
+        Args: { p_ids: string[] };
+        Returns: { user_id: string | null; email: string | null; nome: string | null; equipe: boolean | null }[];
+      };
       admin_config_para_preset: {
         Args: { p_app_id: string };
         Returns: { tabs: Json | null; hide_selectors: Json | null; custom_css: string | null }[];
