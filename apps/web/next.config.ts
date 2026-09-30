@@ -1,10 +1,16 @@
 import type { NextConfig } from 'next';
+import { CABECALHOS_DE_SEGURANCA, CAMINHOS_COM_CABECALHOS } from './lib/cabecalhos-de-seguranca';
 
 const config: NextConfig = {
   reactStrictMode: true,
   // Os pacotes do monorepo são TypeScript puro, sem build próprio.
   transpilePackages: ['@storefy/db', '@storefy/config-schema'],
   typedRoutes: true,
+  headers() {
+    return Promise.resolve([
+      { source: CAMINHOS_COM_CABECALHOS, headers: [...CABECALHOS_DE_SEGURANCA] },
+    ]);
+  },
   experimental: {
     serverActions: {
       /*
