@@ -18,10 +18,12 @@
  */
 import type { Metadata } from 'next';
 import Link from 'next/link';
+import { redirect } from 'next/navigation';
 import { KeyRound } from 'lucide-react';
 import { exigirPlatformAdmin } from '@/lib/contexto';
 import { FUSO_PADRAO, formatarDataHora } from '@/lib/fuso';
 import { criarClientServidor } from '@/lib/supabase/server';
+import { ehPaginaAlemDoFim } from '@/lib/listagem';
 import { Paginacao, lerParams } from '../paginacao';
 import { RevalidarConta } from './revalidar';
 import { Badge } from '@/components/ui/badge';
@@ -92,6 +94,8 @@ export default async function PaginaContas({
     .range(de, ate);
 
   if (error != null) {
+    // Página depois da última (item apagado, link antigo): volta para a primeira.
+    if (ehPaginaAlemDoFim(error)) redirect('/admin/contas');
     throw new Error(`Não foi possível carregar as contas: ${error.message}`);
   }
 

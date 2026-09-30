@@ -7,6 +7,7 @@
  */
 import type { Metadata } from 'next';
 import Link from 'next/link';
+import { redirect } from 'next/navigation';
 import { ScrollText } from 'lucide-react';
 import { ROTULO_ACAO_AUDITORIA, type Json } from '@storefy/db';
 import { exigirPlatformAdmin } from '@/lib/contexto';
@@ -16,7 +17,7 @@ import { autoresDaAuditoria } from '@/lib/auditoria-admin';
 import { lido } from '@/lib/leitura';
 import { AutorDaLinha } from '@/components/autor-da-auditoria';
 import { CampoBusca, Paginacao, lerParams } from '../paginacao';
-import { termoParaIlike } from '@/lib/listagem';
+import { ehPaginaAlemDoFim, montarUrlDePagina, termoParaIlike } from '@/lib/listagem';
 import { FUSO_PADRAO, formatarDataHora } from '@/lib/fuso';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -81,7 +82,18 @@ export default async function PaginaLogs({
   if (orgFiltrada !== null) consulta = consulta.eq('org_id', orgFiltrada);
 
   const { data: logs, count, error } = await consulta;
-  if (error != null) throw new Error(`Não foi possível carregar a auditoria: ${error.message}`);
+  if (error != null) {
+    // Página depois da última (item apagado, link antigo): volta para a primeira.
+    if (ehPaginaAlemDoFim(error)) {
+      redirect(
+        montarUrlDePagina('/admin/logs', {
+          busca,
+          ...(orgFiltrada === null ? {} : { extras: { org: orgFiltrada } }),
+        }),
+      );
+    }
+    throw new Error(`Não foi possível carregar a auditoria: ${error.message}`);
+  }
 
   const [autores, lidaOrgFiltrada] = await Promise.all([
     autoresDaAuditoria(

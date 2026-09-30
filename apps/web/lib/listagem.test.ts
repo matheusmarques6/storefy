@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   POR_PAGINA,
+  ehPaginaAlemDoFim,
   lerParams,
   montarUrlDePagina,
   normalizarBusca,
@@ -129,5 +130,20 @@ describe('montarUrlDePagina', () => {
   it('voltar para a primeira página remove o parâmetro antigo', () => {
     const url = montarUrlDePagina('/admin/builds?filtro=todos&pagina=5', { pagina: 1 });
     expect(url).toBe('/admin/builds?filtro=todos');
+  });
+});
+
+describe('ehPaginaAlemDoFim', () => {
+  /*
+   * Com a contagem exata, o PostgREST responde 416 a uma página depois da
+   * última, em vez de lista vazia — e a tela inteira caía com o erro.
+   */
+  it('reconhece o 416 do PostgREST, e só ele', () => {
+    expect(
+      ehPaginaAlemDoFim({ code: 'PGRST103', message: 'Requested range not satisfiable' }),
+    ).toBe(true);
+    expect(ehPaginaAlemDoFim({ code: 'PGRST301', message: 'JWT expired' })).toBe(false);
+    expect(ehPaginaAlemDoFim({ code: '42501' })).toBe(false);
+    expect(ehPaginaAlemDoFim(null)).toBe(false);
   });
 });

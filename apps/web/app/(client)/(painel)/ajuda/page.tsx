@@ -7,6 +7,7 @@
  */
 import type { Metadata } from 'next';
 import Link from 'next/link';
+import { redirect } from 'next/navigation';
 import { BookOpen, LifeBuoy, MessageCircle } from 'lucide-react';
 import { exigirContextoCliente } from '@/lib/contexto';
 import { criarClientServidor } from '@/lib/supabase/server';
@@ -18,7 +19,7 @@ import {
   ROTULO_DO_ASSUNTO,
 } from '@/lib/chamados';
 import { FUSO_PADRAO, formatarDataHora } from '@/lib/fuso';
-import { lerParams } from '@/lib/listagem';
+import { ehPaginaAlemDoFim, lerParams } from '@/lib/listagem';
 import { FormularioDeChamado } from './formulario-chamado';
 import { Paginacao } from '@/components/paginacao';
 import { Badge } from '@/components/ui/badge';
@@ -49,7 +50,11 @@ export default async function PaginaAjuda({
     .eq('org_id', organizacao.id)
     .order('updated_at', { ascending: false })
     .range(de, ate);
-  if (error != null) throw new Error(`Não foi possível carregar os chamados: ${error.message}`);
+  if (error != null) {
+    // Página depois da última (item apagado, link antigo): volta para a primeira.
+    if (ehPaginaAlemDoFim(error)) redirect('/ajuda');
+    throw new Error(`Não foi possível carregar os chamados: ${error.message}`);
+  }
   const total = count ?? 0;
 
   const fuso = lojaAtiva?.timezone ?? FUSO_PADRAO;

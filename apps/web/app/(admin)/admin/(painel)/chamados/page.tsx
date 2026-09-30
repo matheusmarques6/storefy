@@ -6,10 +6,12 @@
  */
 import type { Metadata } from 'next';
 import Link from 'next/link';
+import { redirect } from 'next/navigation';
 import { MessageCircle } from 'lucide-react';
 import type { TicketStatus } from '@storefy/db';
 import { exigirPlatformAdmin } from '@/lib/contexto';
 import { criarClientServidor } from '@/lib/supabase/server';
+import { ehPaginaAlemDoFim, montarUrlDePagina } from '@/lib/listagem';
 import {
   DATA_DA_SITUACAO_PARA_EQUIPE,
   ROTULO_DA_SITUACAO_PARA_EQUIPE,
@@ -67,8 +69,13 @@ export default async function PaginaChamados({
     contar('respondido'),
     contar('fechado'),
   ]);
-  if (lista.error != null)
+  if (lista.error != null) {
+    // Página depois da última (item apagado, link antigo): volta para a primeira.
+    if (ehPaginaAlemDoFim(lista.error)) {
+      redirect(montarUrlDePagina('/admin/chamados', { extras: { situacao } }));
+    }
     throw new Error(`Não foi possível carregar os chamados: ${lista.error.message}`);
+  }
 
   const contagem: Record<TicketStatus, number> = {
     aberto: abertos.count ?? 0,

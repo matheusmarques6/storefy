@@ -1,12 +1,13 @@
 /** Lojas de todas as organizações, com busca e paginação. */
 import type { Metadata } from 'next';
 import Link from 'next/link';
+import { redirect } from 'next/navigation';
 import { Store } from 'lucide-react';
 import { ROTULO_STATUS_LOJA } from '@storefy/db';
 import { exigirPlatformAdmin } from '@/lib/contexto';
 import { criarClientServidor } from '@/lib/supabase/server';
 import { CampoBusca, Paginacao, lerParams } from '../paginacao';
-import { termoParaIlike } from '@/lib/listagem';
+import { ehPaginaAlemDoFim, montarUrlDePagina, termoParaIlike } from '@/lib/listagem';
 import { FUSO_PADRAO, formatarData } from '@/lib/fuso';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -46,7 +47,11 @@ export default async function PaginaLojasAdmin({
   }
 
   const { data: lojas, count, error } = await consulta;
-  if (error != null) throw new Error(`Não foi possível carregar as lojas: ${error.message}`);
+  if (error != null) {
+    // Página depois da última (item apagado, link antigo): volta para a primeira.
+    if (ehPaginaAlemDoFim(error)) redirect(montarUrlDePagina('/admin/lojas', { busca }));
+    throw new Error(`Não foi possível carregar as lojas: ${error.message}`);
+  }
 
   const lista = lojas;
 

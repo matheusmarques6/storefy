@@ -69,7 +69,10 @@ test('o lojista abre um chamado, a equipe responde, e a conversa segue até fech
     'href',
     '/lojas/nova',
   );
-  await page.goto('/ajuda');
+
+  // Uma página de chamados depois da última (link antigo) volta para a primeira, sem tela de erro.
+  await page.goto('/ajuda?pagina=50');
+  await expect(page).toHaveURL(/\/ajuda$/);
 
   // Sem preencher: um erro claro em cada campo, e nada é criado.
   await page.getByRole('button', { name: 'Abrir chamado' }).click();

@@ -14,10 +14,12 @@
  */
 import type { Metadata } from 'next';
 import Link from 'next/link';
+import { redirect } from 'next/navigation';
 import { ShieldCheck, TriangleAlert } from 'lucide-react';
 import { ROTULO_STATUS_BUILD } from '@storefy/db';
 import { exigirPlatformAdmin } from '@/lib/contexto';
 import { criarClientServidor } from '@/lib/supabase/server';
+import { ehPaginaAlemDoFim } from '@/lib/listagem';
 import { diasEsperando } from '@/lib/builds-admin';
 import { proximoPassoDaRevisao, situacaoNaRevisao } from '@/lib/proximo-passo-da-revisao';
 import { Paginacao, lerParams } from '../paginacao';
@@ -69,7 +71,11 @@ export default async function PaginaRevisoes({
     .order('submitted_at', { ascending: true, nullsFirst: false })
     .range(de, ate);
 
-  if (error != null) throw new Error(`Não foi possível carregar as revisões: ${error.message}`);
+  if (error != null) {
+    // Página depois da última (item apagado, link antigo): volta para a primeira.
+    if (ehPaginaAlemDoFim(error)) redirect('/admin/revisoes');
+    throw new Error(`Não foi possível carregar as revisões: ${error.message}`);
+  }
 
   return (
     <div className="space-y-6">

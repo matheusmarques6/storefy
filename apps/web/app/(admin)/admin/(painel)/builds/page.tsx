@@ -13,10 +13,12 @@
  */
 import type { Metadata } from 'next';
 import Link from 'next/link';
+import { redirect } from 'next/navigation';
 import { ExternalLink, Hammer } from 'lucide-react';
 import { ROTULO_STATUS_BUILD } from '@storefy/db';
 import { exigirPlatformAdmin } from '@/lib/contexto';
 import { criarClientServidor } from '@/lib/supabase/server';
+import { ehPaginaAlemDoFim, montarUrlDePagina } from '@/lib/listagem';
 import {
   FILTROS,
   ROTULO_DO_FILTRO,
@@ -69,7 +71,12 @@ export default async function PaginaBuilds({
   if (status !== null) consulta = consulta.in('status', status);
 
   const { data: builds, count, error } = await consulta;
-  if (error != null) throw new Error(`Não foi possível carregar os builds: ${error.message}`);
+  if (error != null) {
+    // Página depois da última (item apagado, link antigo): volta para a primeira.
+    if (ehPaginaAlemDoFim(error))
+      redirect(montarUrlDePagina('/admin/builds', { extras: { filtro } }));
+    throw new Error(`Não foi possível carregar os builds: ${error.message}`);
+  }
 
   return (
     <div className="space-y-6">

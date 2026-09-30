@@ -62,6 +62,18 @@ export function termoParaIlike(busca: string): string {
     .trim();
 }
 
+/**
+ * A página pedida passou da última?
+ *
+ * Com `count: 'exact'`, o PostgREST não devolve lista vazia para um offset
+ * depois do último resultado: responde 416 (`PGRST103`, "Requested range not
+ * satisfiable"). Um item apagado na última página, ou um link antigo,
+ * derrubava a tela inteira com o erro — a tela volta para a primeira página.
+ */
+export function ehPaginaAlemDoFim(erro: { code?: string; message?: string } | null): boolean {
+  return erro?.code === 'PGRST103';
+}
+
 /** Total de páginas para o total de resultados informado. */
 export function totalDePaginas(total: number): number {
   return Math.max(1, Math.ceil(total / POR_PAGINA));

@@ -76,6 +76,11 @@ test('a auditoria diz quem fez: o lojista pelo e-mail, e a A04 leva à trilha do
   await paginaDaEquipe.goto(`/admin/logs?org=${loja.org_id}`);
   await expect(paginaDaEquipe.getByRole('cell', { name: 'O sistema' }).first()).toBeVisible();
 
+  // Página depois da última (link antigo) volta para a primeira, com o filtro — sem tela de erro.
+  await paginaDaEquipe.goto(`/admin/logs?org=${loja.org_id}&pagina=999`);
+  await expect(paginaDaEquipe).toHaveURL(new RegExp(`/admin/logs\\?org=${loja.org_id}$`));
+  await expect(paginaDaEquipe.getByRole('cell', { name: 'O sistema' }).first()).toBeVisible();
+
   // Filtro que não é id de nada não quebra a tela.
   await paginaDaEquipe.goto('/admin/logs?org=nao-e-um-id');
   await expect(paginaDaEquipe.getByRole('heading', { name: 'Auditoria' })).toBeVisible();
