@@ -48,6 +48,17 @@ test('cria duas lojas, alterna entre elas, edita e exclui uma', async ({ page })
   await page.getByRole('menuitem', { name: 'Loja Um' }).click();
   await expect(page.getByRole('button', { name: 'Trocar de loja' })).toContainText('Loja Um');
 
+  // Sem internet, trocar de loja diz isso em português — e não "Failed to fetch".
+  await page.context().setOffline(true);
+  await page.getByRole('button', { name: 'Trocar de loja' }).click();
+  await page.getByRole('menuitem', { name: 'Loja Dois' }).click();
+  await expect(
+    page.getByText('Sem conexão com a Storefy. Confira a internet e tente de novo.'),
+  ).toBeVisible();
+  await expect(page.getByText('Failed to fetch')).toHaveCount(0);
+  await page.context().setOffline(false);
+  await expect(page.getByRole('button', { name: 'Trocar de loja' })).toContainText('Loja Um');
+
   // Editar.
   await page.goto('/lojas');
   await page

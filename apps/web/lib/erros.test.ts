@@ -9,7 +9,15 @@
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative, resolve } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { FALHA_GENERICA, mensagemDaFalha, textoNossoDaFalha } from '@/lib/erros';
+import {
+  ErroParaATela,
+  FALHA_GENERICA,
+  FRASE_DO_ERRO,
+  mensagemDaFalha,
+  mensagemDeErro,
+  situacaoDoErro,
+  textoNossoDaFalha,
+} from '@/lib/erros';
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -126,5 +134,65 @@ describe('nenhuma tela mostra a mensagem crua de uma falha', () => {
     }
 
     expect(achados).toEqual([]);
+  });
+});
+
+/*
+ * O que chega à tela vindo do motor fala inglês técnico. Cada caso conhecido
+ * tem a sua frase; o nosso (`ErroParaATela`) passa como está; o resto, a
+ * reserva de quem sabe o que estava sendo feito.
+ */
+describe('situacaoDoErro e mensagemDeErro', () => {
+  const comDigest = (mensagem: string) => Object.assign(new Error(mensagem), { digest: '123456' });
+
+  it('o erro escrito para a tela passa como está', () => {
+    const erro = new ErroParaATela('Não foi possível abrir esta loja.');
+    expect(situacaoDoErro(erro)).toBe('para-a-tela');
+    expect(mensagemDeErro(erro, 'reserva')).toBe('Não foi possível abrir esta loja.');
+  });
+
+  it('o painel aberto antes de uma atualização pede para recarregar', () => {
+    const pedaco = Object.assign(new Error('Loading chunk 123 failed.'), {
+      name: 'ChunkLoadError',
+    });
+    const acao = new Error('Server Action "7f3a" was not found on the server.');
+    for (const erro of [pedaco, acao]) {
+      expect(situacaoDoErro(erro)).toBe('painel-atualizado');
+      expect(mensagemDeErro(erro, 'reserva')).toBe(FRASE_DO_ERRO['painel-atualizado']);
+    }
+  });
+
+  it('a rede fora, em qualquer navegador, vira "sem conexão"', () => {
+    for (const texto of [
+      'Failed to fetch',
+      'NetworkError when attempting to fetch resource.',
+      'Load failed',
+    ]) {
+      expect(situacaoDoErro(new TypeError(texto)), texto).toBe('sem-conexao');
+      expect(mensagemDeErro(new TypeError(texto), 'reserva')).toBe(FRASE_DO_ERRO['sem-conexao']);
+    }
+  });
+
+  it('o erro do servidor, com a frase em inglês que o Next põe em produção, não vai para a tela', () => {
+    const doServidor = comDigest(
+      'An error occurred in the Server Components render. The specific message is omitted in production builds to avoid leaking sensitive details.',
+    );
+    expect(situacaoDoErro(doServidor)).toBe('servidor');
+    expect(situacaoDoErro(new Error('An unexpected response was received from the server.'))).toBe(
+      'servidor',
+    );
+    expect(mensagemDeErro(doServidor, 'Não foi possível excluir a loja.')).toBe(
+      'Não foi possível excluir a loja.',
+    );
+  });
+
+  it('o erro qualquer, em inglês ou não, fica com a reserva', () => {
+    const tecnico = new TypeError("Cannot read properties of undefined (reading 'id')");
+    expect(situacaoDoErro(tecnico)).toBe('outro');
+    expect(mensagemDeErro(tecnico, 'Não foi possível trocar de loja.')).toBe(
+      'Não foi possível trocar de loja.',
+    );
+    expect(mensagemDeErro('um texto solto', 'reserva')).toBe('reserva');
+    expect(mensagemDeErro(new ErroParaATela(''), 'reserva')).toBe('reserva');
   });
 });

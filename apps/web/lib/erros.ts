@@ -33,9 +33,69 @@ export function ehControleDeFluxoDoNext(erro: unknown): boolean {
   return ehRedirecionamentoDoNext(erro) || ehNotFoundDoNext(erro);
 }
 
-/** Mensagem para exibir ao usuário, com um texto de reserva legível. */
+/**
+ * Um erro escrito PARA a tela: a frase dele é para o lojista ler, como está.
+ *
+ * Qualquer outro erro que chega à tela vem do motor — do Next, do navegador,
+ * da rede — e fala inglês técnico: em produção o Next troca toda mensagem de
+ * erro do servidor por "An error occurred in the Server Components render…",
+ * a rede fora vira "Failed to fetch", e o painel aberto antes de uma
+ * atualização pede pedaços que não existem mais. Esses viram uma frase nossa.
+ */
+export class ErroParaATela extends Error {
+  override name = 'ErroParaATela';
+}
+
+/** O que houve, nas situações que a tela sabe explicar. */
+export type SituacaoDoErro =
+  'para-a-tela' | 'painel-atualizado' | 'sem-conexao' | 'servidor' | 'outro';
+
+export function situacaoDoErro(erro: unknown): SituacaoDoErro {
+  if (erro instanceof ErroParaATela) return 'para-a-tela';
+  if (!(erro instanceof Error)) return 'outro';
+  const { name, message } = erro;
+  // O painel aberto antes de uma atualização pede o código (chunk) e as ações
+  // da versão velha, que a nova não tem mais.
+  if (
+    name === 'ChunkLoadError' ||
+    name === 'UnrecognizedActionError' ||
+    /Loading (CSS )?chunk|dynamically imported module|Server Action .* was not found/i.test(message)
+  ) {
+    return 'painel-atualizado';
+  }
+  if (
+    /Failed to fetch|NetworkError|Load failed|Network request failed|fetch failed/i.test(message)
+  ) {
+    return 'sem-conexao';
+  }
+  // Veio do servidor: o `digest` é o código do erro no log, e a mensagem, em
+  // produção, é a frase genérica do Next.
+  if (digestDe(erro) !== null || /Server Components render|unexpected response/i.test(message)) {
+    return 'servidor';
+  }
+  return 'outro';
+}
+
+/** A frase de cada situação que não depende da tela em que aconteceu. */
+export const FRASE_DO_ERRO = {
+  'painel-atualizado':
+    'O painel foi atualizado enquanto você o usava. Recarregue a página para continuar.',
+  'sem-conexao': 'Sem conexão com a Storefy. Confira a internet e tente de novo.',
+} as const;
+
+/**
+ * A mensagem de um erro para o lojista: a nossa, quando ele foi escrito para a
+ * tela; a do caso, quando é um que conhecemos; senão, a reserva de quem chama,
+ * que sabe o que estava sendo feito.
+ */
 export function mensagemDeErro(erro: unknown, reserva: string): string {
-  if (erro instanceof Error && erro.message !== '') return erro.message;
+  const situacao = situacaoDoErro(erro);
+  if (situacao === 'para-a-tela' && erro instanceof Error && erro.message !== '') {
+    return erro.message;
+  }
+  if (situacao === 'painel-atualizado' || situacao === 'sem-conexao') {
+    return FRASE_DO_ERRO[situacao];
+  }
   return reserva;
 }
 

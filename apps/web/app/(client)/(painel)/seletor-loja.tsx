@@ -7,7 +7,7 @@ import { Check, ChevronsUpDown, Plus, Store as IconeLoja } from 'lucide-react';
 import { toast } from 'sonner';
 import type { LojaVisivel } from '@storefy/db';
 import { trocarLojaAtiva } from './acoes';
-import { ehControleDeFluxoDoNext, mensagemDeErro } from '@/lib/erros';
+import { ErroParaATela, ehControleDeFluxoDoNext, mensagemDeErro } from '@/lib/erros';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -47,7 +47,7 @@ export function SeletorLoja({
           const dados = new FormData();
           dados.set('lojaId', loja.id);
           const resposta = await fetch('/visita/loja', { method: 'POST', body: dados });
-          if (!resposta.ok) throw new Error('Não foi possível abrir esta loja.');
+          if (!resposta.ok) throw new ErroParaATela('Não foi possível abrir esta loja.');
         } else {
           await trocarLojaAtiva(loja.id);
         }
