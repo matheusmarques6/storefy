@@ -26,6 +26,8 @@ const PERMITIDOS: Record<string, string> = {
   'lib/fuso.ts': 'é onde o fuso é aplicado',
   'app/(client)/(painel)/app/previa-no-celular.tsx':
     'o "vale até" só nasce depois de um clique, no navegador, e é sobre o relógio de quem lê',
+  'app/(client)/(painel)/push/adicionar-celular.tsx':
+    'o "vale até" do código do celular de teste: nasce depois de um clique, e o prazo é contado no relógio de quem lê',
 };
 
 function arquivos(pasta: string): string[] {

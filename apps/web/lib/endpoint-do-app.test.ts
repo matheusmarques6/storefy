@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   CorpoDoAparelho,
   CorpoDoEvento,
+  CorpoDoPareamento,
   TAMANHO_MAXIMO,
   autorizar,
   lerCaixaDeAvisos,
@@ -9,6 +10,7 @@ import {
   lerLinhaDoEvento,
   respostaDoAparelho,
   respostaDoEvento,
+  respostaDoPareamento,
 } from '@/lib/endpoint-do-app';
 import { assinar } from '@/lib/assinatura';
 import { criptografar } from '@/lib/cripto';
@@ -77,6 +79,58 @@ describe('o corpo do aparelho (C05, C11 e C15)', () => {
       const r = await autorizar(CorpoDoAparelho, corpo, comAssinatura(corpo), banco, AGORA);
       expect(r.ok, corpo).toBe(false);
       if (!r.ok) expect(r.resposta.status).toBe(400);
+    }
+  });
+});
+
+describe('o pareamento do celular de teste (C08)', () => {
+  const INSTALACAO = '3f6c1a2e-8d4b-4c7a-9e10-5b2f8a7c6d41';
+
+  it('aceita o código em qualquer caixa, com a instalação ou a inscrição', async () => {
+    for (const extra of [
+      { codigo: 'ABCD2345', installId: INSTALACAO },
+      { codigo: 'abcd2345', subscriptionId: 'inscricao-1' },
+      { codigo: ' ABCD2345 ', installId: INSTALACAO, subscriptionId: 'inscricao-1' },
+    ]) {
+      const corpo = JSON.stringify({ appId: APP, ...extra });
+      const r = await autorizar(CorpoDoPareamento, corpo, comAssinatura(corpo), banco, AGORA);
+      expect(r.ok, corpo).toBe(true);
+      if (r.ok) expect(r.dados.codigo.toUpperCase()).toBe('ABCD2345');
+    }
+  });
+
+  /* 0/O e 1/I nunca saem do banco: um código com eles não gasta tentativa. */
+  it('recusa código fora do formato e celular sem identidade', async () => {
+    for (const extra of [
+      { codigo: 'ABCD0123', installId: INSTALACAO },
+      { codigo: 'CURTO', installId: INSTALACAO },
+      { codigo: 'ABCD23456', installId: INSTALACAO },
+      { codigo: 'ABCD2345' },
+      { installId: INSTALACAO },
+    ]) {
+      const corpo = JSON.stringify({ appId: APP, ...extra });
+      const r = await autorizar(CorpoDoPareamento, corpo, comAssinatura(corpo), banco, AGORA);
+      expect(r.ok, corpo).toBe(false);
+      if (!r.ok) expect(r.resposta.status).toBe(400);
+    }
+  });
+
+  it('o que o banco diz do código vai para o app, que explica ao lojista', () => {
+    for (const resultado of ['pareado', 'codigo_invalido', 'aparelho_desconhecido']) {
+      const r = respostaDoPareamento(resultado);
+      expect(r.status).toBe(200);
+      expect(r.corpo).toEqual({ resultado });
+    }
+    expect(respostaDoPareamento('pareado').motivo).toBeUndefined();
+    expect(respostaDoPareamento('codigo_invalido').motivo).toContain('codigo_invalido');
+  });
+
+  it('limite vira 429, e resposta fora do combinado vira 503 — nunca um "código inválido" inventado', () => {
+    expect(respostaDoPareamento('limitado').status).toBe(429);
+    for (const dados of [null, undefined, '', 'PAREADO', ['pareado'], { resultado: 'pareado' }]) {
+      const r = respostaDoPareamento(dados);
+      expect(r.status, JSON.stringify(dados)).toBe(503);
+      expect(r.corpo).toEqual({ erro: 'indisponivel' });
     }
   });
 });

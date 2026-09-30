@@ -6,7 +6,7 @@ import { exigirContextoCliente } from '@/lib/contexto';
 import { criarClientServidor } from '@/lib/supabase/server';
 import { criarClientServiceRole } from '@/lib/supabase/admin';
 import { estadoDasNotificacoes } from '@/lib/ativar-push';
-import { aparelhosRecentes, appDaLoja, contarAparelhos } from '@/lib/push-servidor';
+import { appDaLoja, celularesDeTeste, contarAparelhos } from '@/lib/push-servidor';
 import { EstadoVazio } from '@/components/estado-vazio';
 import { Button } from '@/components/ui/button';
 import { PushNaoConfigurado } from '../nao-configurado';
@@ -50,8 +50,8 @@ export default async function PaginaDeNovaCampanha() {
 
   const supabase = await criarClientServidor();
   const app = await appDaLoja(supabase, lojaAtiva.id);
-  const [aparelhos, alcance, notificacoes] = await Promise.all([
-    app == null ? Promise.resolve([]) : aparelhosRecentes(supabase, app.id),
+  const [celulares, alcance, notificacoes] = await Promise.all([
+    app == null ? Promise.resolve([]) : celularesDeTeste(supabase, app.id),
     app == null ? Promise.resolve(null) : contarAparelhos(supabase, app.id),
     estadoDasNotificacoes(criarClientServiceRole(), lojaAtiva.id),
   ]);
@@ -81,7 +81,7 @@ export default async function PaginaDeNovaCampanha() {
         urlDaLoja={lojaAtiva.primary_url}
         fuso={lojaAtiva.timezone}
         nomeDoFuso={nomeDoFuso(lojaAtiva.timezone)}
-        aparelhos={aparelhos}
+        celulares={celulares}
         alcance={alcance}
         notificacoesLigadas={notificacoes.ligado}
       />

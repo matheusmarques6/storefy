@@ -12,6 +12,7 @@
  * validação de formulário é conveniência, não segurança.
  */
 import { revalidatePath } from 'next/cache';
+import { toString as qrParaSvg } from 'qrcode';
 import { criarClientServidor } from '@/lib/supabase/server';
 import { criarClientServiceRole } from '@/lib/supabase/admin';
 import { descriptografar } from '@/lib/cripto';
@@ -19,7 +20,17 @@ import { enviarNotificacao } from '@/lib/onesignal';
 import { faltaConfiguracao } from '@/lib/jobs';
 import { ativarNotificacoes } from '@/lib/ativar-push';
 import { exigirContextoCliente } from '@/lib/contexto';
-import { appDaLoja } from '@/lib/push-servidor';
+import { appDaLoja, celularesDeTeste } from '@/lib/push-servidor';
+import {
+  MAXIMO_DO_NOME,
+  MINUTOS_DO_CODIGO,
+  linkDoApp,
+  linkDoQr,
+  type CelularDeTeste,
+} from '@/lib/celular-de-teste';
+import { urlDoSite } from '@/lib/env';
+import { ehUuid } from '@/lib/app-config-publica';
+import { log } from '@/lib/log';
 import { podeCancelar, podeEditar, podeExcluir, validarCampanha } from '@/lib/campanha';
 import { DESCRICAO_DO_TIPO, ehTipoDeAutomacao, validarAutomacao } from '@/lib/automacao';
 import { normalizarDeepLink } from '@/lib/campanha';
@@ -477,11 +488,14 @@ export async function atualizarRascunho(
 }
 
 /**
- * Manda a notificação para UM aparelho, sem criar campanha.
+ * Manda a notificação para UM celular de teste, sem criar campanha.
  *
  * É a última conferência antes de um envio que não tem volta: o lojista vê no
  * próprio celular o texto cortado, o link que abre no lugar errado e o emoji
  * que não renderiza. Nada disso aparece num campo de formulário.
+ *
+ * Só para um celular PAREADO pelo lojista (`test_devices`): o teste leva um
+ * texto que ninguém revisou, e não pode chegar ao celular de um cliente.
  *
  * Não grava `push_campaigns`: um teste no histórico de campanhas confundiria a
  * contagem de envios e o resumo do topo da tela.
@@ -490,7 +504,8 @@ export async function enviarTeste(entrada: {
   title: string;
   body: string;
   deepLink: string;
-  deviceId: string;
+  /** O id do pareamento (`test_devices.id`), e não o do aparelho. */
+  celularId: string;
   /** A imagem da campanha, para o teste chegar como a campanha vai chegar. */
   imagem: string | null;
 }): Promise<EstadoDoPush> {
@@ -512,29 +527,33 @@ export async function enviarTeste(entrada: {
     };
   }
 
+  const naoEDeTeste = {
+    mensagem:
+      'Esse celular não é mais um celular de teste desta loja. Recarregue a página e escolha outro.',
+  };
+  if (!ehUuid(entrada.celularId)) return naoEDeTeste;
+
   /*
-   * O aparelho é lido pelo client da SESSÃO, e filtrado por este app. É a RLS
-   * que decide se aquele usuário enxerga aquele aparelho — um id forjado de
-   * outra loja simplesmente não volta.
+   * O celular é lido pelo client da SESSÃO, entre os celulares de teste deste
+   * app. É a RLS que decide se aquele usuário enxerga aquele pareamento — um
+   * id forjado de outra loja, ou o id de um aparelho de cliente, não volta.
    */
-  const { data: aparelho, error: erroDoAparelho } = await base.supabase
-    .from('devices')
-    .select('onesignal_subscription_id')
-    .eq('id', entrada.deviceId)
+  const { data: celular, error: erroDoCelular } = await base.supabase
+    .from('test_devices')
+    .select('nome, devices!inner(onesignal_subscription_id)')
+    .eq('id', entrada.celularId)
     .eq('app_id', base.app.id)
     .maybeSingle();
 
-  // Falha ao ler não é "aparelho não encontrado": a tela mandaria recarregar sem razão.
-  if (erroDoAparelho != null) {
-    return { mensagem: mensagemDaFalha('push.teste', erroDoAparelho, FALHA_GENERICA) };
+  // Falha ao ler não é "celular não encontrado": a tela mandaria recarregar sem razão.
+  if (erroDoCelular != null) {
+    return { mensagem: mensagemDaFalha('push.teste', erroDoCelular, FALHA_GENERICA) };
   }
-  if (aparelho == null) {
-    return { mensagem: 'Não encontramos esse aparelho. Recarregue a página e tente de novo.' };
-  }
-  if (aparelho.onesignal_subscription_id === null) {
+  if (celular == null) return naoEDeTeste;
+  const inscricao = celular.devices.onesignal_subscription_id;
+  if (inscricao === null) {
     return {
-      mensagem:
-        'Esse aparelho ainda não recebe notificações. Abra o app nele e aceite as notificações, e tente de novo.',
+      mensagem: `${celular.nome} ainda não recebe notificações. Abra o app nele, permita as notificações e tente de novo.`,
     };
   }
 
@@ -559,12 +578,19 @@ export async function enviarTeste(entrada: {
    * aqui enxerga esta loja. Sem o limite, um clique repetido viraria dezenas
    * de notificações no celular de quem está testando.
    */
-  const { data: cabe } = await criarClientServiceRole().rpc('consumir_limite', {
-    p_chave: `teste:${base.app.id}`,
-    p_maximo: 10,
-    p_janela_segundos: 60,
-  });
-  if (cabe === false) {
+  const { data: cabe, error: erroDoLimite } = await criarClientServiceRole().rpc(
+    'consumir_limite',
+    {
+      p_chave: `teste:${base.app.id}`,
+      p_maximo: 10,
+      p_janela_segundos: 60,
+    },
+  );
+  // Sem saber se cabe, não manda: o limite é o que segura o clique repetido.
+  if (erroDoLimite != null) {
+    return { mensagem: mensagemDaFalha('push.teste', erroDoLimite, FALHA_GENERICA) };
+  }
+  if (!cabe) {
     return { mensagem: 'Muitos testes seguidos. Espere um minuto e tente de novo.' };
   }
 
@@ -581,7 +607,7 @@ export async function enviarTeste(entrada: {
       title: validacao.valores.title,
       body: validacao.valores.body,
       deepLink: validacao.valores.deepLink,
-      inscricoes: [aparelho.onesignal_subscription_id],
+      inscricoes: [inscricao],
       imagem:
         imagem.caminho === null
           ? null
@@ -597,7 +623,145 @@ export async function enviarTeste(entrada: {
     };
   }
 
-  return { ok: true, mensagem: 'Teste enviado. Confira o celular.' };
+  return { ok: true, mensagem: `Teste enviado para ${celular.nome}. Confira o celular.` };
+}
+
+// ------------------------------------------------------ celular de teste
+
+export interface EstadoDoCodigoDeTeste {
+  ok?: boolean;
+  mensagem?: string;
+  /** O que está errado no nome do celular, para aparecer embaixo do campo. */
+  erroNoNome?: string;
+  /** O código em claro. Existe só nesta resposta; o banco guarda o hash. */
+  codigo?: string;
+  /** O QR, em SVG, com o link da página que abre o app. */
+  qr?: string;
+  /** O link do próprio app, para quem está com o painel aberto no celular. */
+  abrirNoApp?: string;
+  /** Quando o código nasceu e quando vence, pelo relógio do banco. */
+  geradoEm?: string;
+  expiraEm?: string;
+}
+
+/**
+ * Gera o código e o QR para parear um celular de teste (C08).
+ *
+ * O código volta em claro uma única vez — é o que vai para o QR. O celular é
+ * pareado quando o app, aberto pelo QR, se apresenta com ele
+ * (`/api/public/test-device`); a tela acompanha por `lerCelularesDeTeste`.
+ */
+export async function gerarCodigoDeTeste(nome: string): Promise<EstadoDoCodigoDeTeste> {
+  const base = await contexto();
+  if (!base.ok) return { mensagem: base.motivo };
+
+  const limpo = nome.trim();
+  if (limpo === '' || limpo.length > MAXIMO_DO_NOME) {
+    return {
+      erroNoNome:
+        limpo === ''
+          ? 'Dê um nome ao celular, como "Celular da Ana".'
+          : `Use até ${String(MAXIMO_DO_NOME)} letras no nome.`,
+    };
+  }
+
+  const { data, error } = await base.supabase.rpc('criar_codigo_de_teste', {
+    p_app_id: base.app.id,
+    p_nome: limpo,
+  });
+  if (error != null) {
+    if (error.code === '42501') {
+      return {
+        mensagem: 'Apenas proprietários e administradores adicionam celulares de teste.',
+      };
+    }
+    if (error.code === '22023') return { erroNoNome: error.message };
+    return { mensagem: mensagemDaFalha('push.celular-de-teste', error, FALHA_GENERICA) };
+  }
+
+  // As colunas de uma função que devolve tabela chegam anuláveis no tipo.
+  const linha = Array.isArray(data) ? data[0] : null;
+  const expira = linha?.expira_em == null ? Number.NaN : Date.parse(linha.expira_em);
+  if (linha?.codigo == null || Number.isNaN(expira)) {
+    log.erro('push.celular-de-teste.sem-codigo', { app: base.app.id });
+    return { mensagem: 'Não foi possível gerar o código. Tente de novo.' };
+  }
+
+  let qr: string;
+  try {
+    qr = await qrParaSvg(linkDoQr(urlDoSite(), base.loja.id, linha.codigo), {
+      type: 'svg',
+      margin: 1,
+      // Nível médio: continua legível com o dedo cobrindo um canto da tela.
+      errorCorrectionLevel: 'M',
+    });
+  } catch (erro) {
+    log.erro('push.celular-de-teste.qr', {
+      motivo: erro instanceof Error ? erro.message : 'falha desconhecida',
+    });
+    return { mensagem: 'Não conseguimos desenhar o QR code. Tente de novo.' };
+  }
+
+  return {
+    ok: true,
+    codigo: linha.codigo,
+    qr,
+    abrirNoApp: linkDoApp(base.loja.id, linha.codigo),
+    geradoEm: new Date(expira - MINUTOS_DO_CODIGO * 60_000).toISOString(),
+    expiraEm: new Date(expira).toISOString(),
+  };
+}
+
+/** Os celulares de teste agora — a tela do QR pergunta até o celular aparecer. */
+export async function lerCelularesDeTeste(): Promise<
+  { ok: true; celulares: CelularDeTeste[] } | { ok: false; mensagem: string }
+> {
+  const base = await contexto();
+  if (!base.ok) return { ok: false, mensagem: base.motivo };
+
+  try {
+    return { ok: true, celulares: await celularesDeTeste(base.supabase, base.app.id) };
+  } catch (erro) {
+    log.erro('push.celular-de-teste.ler', {
+      motivo: erro instanceof Error ? erro.message : 'falha desconhecida',
+    });
+    return {
+      ok: false,
+      mensagem: 'Não conseguimos ver os celulares de teste agora. Tente de novo em instantes.',
+    };
+  }
+}
+
+/**
+ * Remove um celular de teste: ele para de receber os testes.
+ *
+ * Pela sessão, e a RLS só deixa o dono e o administrador; o gatilho grava na
+ * trilha quem removeu. O aparelho continua sendo um aparelho do app — só
+ * deixa de ser "de teste".
+ */
+export async function removerCelularDeTeste(celularId: string): Promise<EstadoDoPush> {
+  const base = await contexto();
+  if (!base.ok) return { mensagem: base.motivo };
+
+  const jaNaoEra = {
+    mensagem: 'Esse celular já não era um celular de teste. Recarregue a página.',
+  };
+  if (!ehUuid(celularId)) return jaNaoEra;
+
+  const { data, error } = await base.supabase
+    .from('test_devices')
+    .delete()
+    .eq('id', celularId)
+    .eq('app_id', base.app.id)
+    .select('nome')
+    .maybeSingle();
+
+  if (error != null) return { mensagem: traduzirErro(error.code, error.message) };
+  // Nenhuma linha: já tinha sido removido (outra aba, outra pessoa) ou não é desta loja.
+  if (data == null) return jaNaoEra;
+
+  // Sem revalidar a página: a lista é da própria tela, e a campanha em edição fica como está.
+  return { ok: true, mensagem: `${data.nome} não recebe mais os testes.` };
 }
 
 /**

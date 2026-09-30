@@ -325,6 +325,8 @@ async function main(): Promise<void> {
     'trocar_plano_da_assinatura',
     'registrar_fatura',
     'encerrar_assinatura',
+    'criar_codigo_de_teste',
+    'parear_celular_de_teste',
   ];
 
   const { rows: funcoes } = await client.query<FuncaoSql>(

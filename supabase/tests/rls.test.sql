@@ -8809,6 +8809,215 @@ select tests.ok('sem push',
 reset role;
 select tests.logout();
 
+-- ============================== grupo: o celular de teste (C08, migration 68)
+--
+-- O envio de teste ia para os dez aparelhos vistos por último, clientes
+-- inclusive. Agora só para celulares PAREADOS pelo lojista, com um código de
+-- uso único que o painel mostra e o app apresenta.
+
+reset role;
+select tests.logout();
+
+insert into auth.users (email, raw_user_meta_data, email_confirmed_at) values
+  ('ct-dono@teste.local',   '{"company_name":"Celular Teste"}'::jsonb, now()),
+  ('ct-membro@teste.local', '{"company_name":"Celular Membro"}'::jsonb, now()),
+  ('ct-outro@teste.local',  '{"company_name":"Celular Outro"}'::jsonb, now());
+
+drop table if exists tests.ct;
+create table tests.ct as
+select (select id from auth.users where email = 'ct-dono@teste.local') as u_dono,
+       (select m.org_id from public.memberships m join auth.users u on u.id = m.user_id
+         where u.email = 'ct-dono@teste.local') as org,
+       extensions.gen_random_uuid() as instalacao;
+insert into public.memberships (org_id, user_id, role)
+select org, (select id from auth.users where email = 'ct-membro@teste.local'), 'member' from tests.ct;
+insert into public.stores (org_id, name, primary_url)
+select org, 'Loja Celular Teste', 'https://celular-teste.teste' from tests.ct;
+alter table tests.ct add column app uuid;
+update tests.ct set app = (select a.id from public.apps a join public.stores s on s.id = a.store_id
+                            where s.name = 'Loja Celular Teste');
+
+drop table if exists tests.ct_codigo;
+create table tests.ct_codigo (codigo text);
+grant select on tests.ct to anon, authenticated, service_role;
+grant select, insert on tests.ct_codigo to authenticated, service_role;
+
+-- O celular do lojista abriu o app (é o aparelho que o código vai achar).
+select * from public.registrar_aparelho(
+  p_app_id => (select app from tests.ct), p_platform => 'ios',
+  p_install_id => (select instalacao from tests.ct));
+
+select tests.login('ct-dono@teste.local');
+set role authenticated;
+
+insert into tests.ct_codigo
+select codigo from public.criar_codigo_de_teste((select app from tests.ct), 'Meu celular');
+
+select tests.ok('celular de teste',
+  (select codigo ~ '^[A-HJ-NP-Z2-9]{8}$' from tests.ct_codigo),
+  'o dono gera o código: oito caracteres, sem os que se confundem');
+
+select tests.ok('celular de teste',
+  tests.erro_com($q$select * from public.criar_codigo_de_teste((select app from tests.ct), '   ')$q$,
+    'Dê um nome ao celular'),
+  'o celular precisa de nome');
+
+select tests.ok('celular de teste',
+  tests.erro('select * from public.test_device_codes')
+  and tests.erro($q$select public.parear_celular_de_teste(
+    (select app from tests.ct), 'QUALQUER', (select instalacao from tests.ct))$q$),
+  'mas não lê os códigos nem pareia pela sessão: quem pareia é o app, pela rota assinada');
+
+reset role;
+select tests.login('ct-membro@teste.local');
+set role authenticated;
+
+select tests.ok('celular de teste',
+  tests.erro_com($q$select * from public.criar_codigo_de_teste((select app from tests.ct), 'Meu')$q$,
+    'Só o proprietário ou um administrador'),
+  'o membro não gera código: quem manda campanha é dono ou administrador');
+
+reset role;
+select tests.login('ct-outro@teste.local');
+set role authenticated;
+
+select tests.ok('celular de teste',
+  tests.erro($q$select * from public.criar_codigo_de_teste((select app from tests.ct), 'Intruso')$q$),
+  'nem outra empresa, sabendo o id do app');
+
+reset role;
+select tests.logout();
+set role service_role;
+
+select tests.ok('celular de teste',
+  (select public.parear_celular_de_teste((select app from tests.ct), 'ERRADO23',
+     (select instalacao from tests.ct))) = 'codigo_invalido',
+  'código errado não pareia');
+
+select tests.ok('celular de teste',
+  (select public.parear_celular_de_teste((select app from tests.ct),
+     (select codigo from tests.ct_codigo), extensions.gen_random_uuid())) = 'aparelho_desconhecido',
+  'celular que nunca abriu o app não pareia — e o código continua valendo');
+
+select tests.ok('celular de teste',
+  (select public.parear_celular_de_teste((select app from tests.ct),
+     lower((select codigo from tests.ct_codigo)), (select instalacao from tests.ct))) = 'pareado',
+  'o app aberto pelo QR pareia (maiúscula ou minúscula, como for digitado)');
+
+select tests.ok('celular de teste',
+  (select public.parear_celular_de_teste((select app from tests.ct),
+     (select codigo from tests.ct_codigo), (select instalacao from tests.ct))) = 'codigo_invalido',
+  'e o código é de uso único');
+
+reset role;
+
+select tests.ok('celular de teste',
+  (select count(*) from public.test_devices t join tests.ct on t.app_id = tests.ct.app
+    where t.nome = 'Meu celular') = 1
+  and (select count(*) from public.audit_logs l
+        where l.entity = 'test_devices' and l.action = 'create'
+          and l.actor_id = (select u_dono from tests.ct)) = 1,
+  'o celular entra com o nome, e a trilha diz QUEM gerou o código — e não "o sistema"');
+
+-- O mesmo celular, pareado de novo com outro nome: só troca o nome.
+select tests.login('ct-dono@teste.local');
+set role authenticated;
+insert into tests.ct_codigo
+select codigo from public.criar_codigo_de_teste((select app from tests.ct), 'Celular da Ana');
+reset role;
+select tests.logout();
+-- Fica só o código novo (o primeiro já foi usado).
+delete from tests.ct_codigo c
+ where encode(extensions.digest(c.codigo, 'sha256'), 'hex') in (
+   select code_hash from public.test_device_codes where used_at is not null);
+
+set role service_role;
+select tests.ok('celular de teste',
+  (select public.parear_celular_de_teste((select app from tests.ct),
+     (select codigo from tests.ct_codigo), (select instalacao from tests.ct))) = 'pareado',
+  'o mesmo celular pareia de novo, com outro código');
+reset role;
+
+select tests.ok('celular de teste',
+  (select count(*) from public.test_devices t join tests.ct on t.app_id = tests.ct.app) = 1
+  and (select t.nome from public.test_devices t join tests.ct on t.app_id = tests.ct.app) = 'Celular da Ana'
+  and (select count(*) from public.audit_logs l
+        where l.entity = 'test_devices' and l.action = 'update'
+          and l.entity_id = (select t.id from public.test_devices t join tests.ct on t.app_id = tests.ct.app)
+          and l.diff -> 'nome' ->> 'de' = 'Meu celular'
+          and l.diff -> 'nome' ->> 'para' = 'Celular da Ana') = 1,
+  'e só troca o nome: sem celular repetido, e a trilha guarda o nome de antes');
+
+-- Um código vencido, gravado como o painel gravaria dez minutos atrás.
+insert into public.test_device_codes (app_id, code_hash, nome, expires_at)
+select app, encode(extensions.digest('VENCIDO2', 'sha256'), 'hex'), 'Velho', now() - interval '1 minute'
+  from tests.ct;
+
+set role service_role;
+select tests.ok('celular de teste',
+  (select public.parear_celular_de_teste((select app from tests.ct), 'VENCIDO2',
+     (select instalacao from tests.ct))) = 'codigo_invalido',
+  'código vencido não pareia');
+reset role;
+
+select tests.login('ct-membro@teste.local');
+set role authenticated;
+
+select tests.ok('celular de teste',
+  tests.contar($q$select count(*) from public.test_devices where app_id = (select app from tests.ct)$q$) = 1
+  and tests.bloqueado($q$delete from public.test_devices where app_id = (select app from tests.ct)$q$),
+  'o membro vê o celular de teste, mas não o remove');
+
+select tests.ok('celular de teste',
+  tests.erro($q$insert into public.test_devices (app_id, device_id, nome)
+    select app, (select id from public.devices where install_id = instalacao), 'Meu' from tests.ct$q$),
+  'e ninguém cria celular de teste pela sessão: só o pareamento');
+
+reset role;
+select tests.login('ct-outro@teste.local');
+set role authenticated;
+
+select tests.ok('celular de teste',
+  tests.contar($q$select count(*) from public.test_devices where app_id = (select app from tests.ct)$q$) = 0,
+  'outra empresa nem vê');
+
+reset role;
+select tests.login('ct-dono@teste.local');
+set role authenticated;
+
+select tests.ok('celular de teste',
+  tests.permitido($q$delete from public.test_devices where app_id = (select app from tests.ct)$q$),
+  'o dono remove o celular de teste');
+
+reset role;
+select tests.logout();
+
+select tests.ok('celular de teste',
+  (select count(*) from public.audit_logs l
+    where l.entity = 'test_devices' and l.action = 'delete'
+      and l.actor_id = (select u_dono from tests.ct)) = 1,
+  'e a remoção também vai para a trilha, com o nome dele');
+
+select tests.ok('celular de teste',
+  (select count(distinct l.entity_id) from public.audit_logs l
+    where l.entity = 'test_devices' and l.org_id = (select org from tests.ct)) = 1,
+  'e parear, renomear e remover falam do MESMO celular na trilha');
+
+-- Gerar um código novo leva embora os vencidos da loja (o VENCIDO2, lá de cima).
+select tests.login('ct-dono@teste.local');
+set role authenticated;
+select count(*) from public.criar_codigo_de_teste((select app from tests.ct), 'Mais um');
+reset role;
+select tests.logout();
+
+select tests.ok('celular de teste',
+  not exists (
+    select 1 from public.test_device_codes c join tests.ct on c.app_id = tests.ct.app
+     where c.expires_at < now())
+  and (select count(*) from public.test_device_codes c join tests.ct on c.app_id = tests.ct.app
+        where c.nome = 'Mais um') = 1,
+  'o código novo leva embora os vencidos da loja: a tabela não cresce para sempre');
+
 -- ============================== grupo: varredura de segurança (Fase 8)
 --
 -- Duas travas que valem para o schema inteiro, e não para uma tabela: uma

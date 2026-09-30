@@ -5,7 +5,7 @@ import { notFound } from 'next/navigation';
 import { ChevronLeft } from 'lucide-react';
 import { exigirContextoCliente } from '@/lib/contexto';
 import { criarClientServidor } from '@/lib/supabase/server';
-import { aparelhosRecentes, appDaLoja, buscarCampanha, contarAparelhos } from '@/lib/push-servidor';
+import { appDaLoja, buscarCampanha, celularesDeTeste, contarAparelhos } from '@/lib/push-servidor';
 import { criarClientServiceRole } from '@/lib/supabase/admin';
 import { estadoDasNotificacoes } from '@/lib/ativar-push';
 import { podeEditar } from '@/lib/campanha';
@@ -28,8 +28,8 @@ export default async function PaginaDeEdicao({ params }: { params: Promise<{ id:
   const campanha = await buscarCampanha(supabase, app.id, id);
   if (campanha == null) notFound();
 
-  const [aparelhos, alcance, notificacoes] = await Promise.all([
-    aparelhosRecentes(supabase, app.id),
+  const [celulares, alcance, notificacoes] = await Promise.all([
+    celularesDeTeste(supabase, app.id),
     contarAparelhos(supabase, app.id),
     // Service role porque precisa saber se os SEGREDOS existem; volta só
     // booleano e texto (ver a página da lista).
@@ -91,7 +91,7 @@ export default async function PaginaDeEdicao({ params }: { params: Promise<{ id:
         urlDaLoja={lojaAtiva.primary_url}
         fuso={lojaAtiva.timezone}
         nomeDoFuso={nomeDoFuso(lojaAtiva.timezone)}
-        aparelhos={aparelhos}
+        celulares={celulares}
         alcance={alcance}
         notificacoesLigadas={notificacoes.ligado}
         iniciais={{

@@ -10,6 +10,7 @@ import 'server-only';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '@storefy/db';
 import { ehTipoDeAutomacao, type TipoDeAutomacao } from '@/lib/automacao';
+import type { CelularDeTeste } from '@/lib/celular-de-teste';
 import type { StatusDaCampanha } from '@/lib/campanha';
 import { urlDaImagemDoPush } from '@/lib/imagem-do-push';
 import { publicoDoSegmento, type Publico } from '@/lib/publico-do-push';
@@ -284,46 +285,34 @@ export async function chaveDoWebhook(
       };
 }
 
-export interface AparelhoParaTeste {
-  id: string;
-  subscriptionId: string;
-  platform: 'ios' | 'android';
-  appVersion: string | null;
-  lastSeenAt: string;
-}
-
 /**
- * Os aparelhos vistos mais recentemente, para o envio de teste.
+ * Os celulares de teste do lojista (C08), os pareados por último primeiro.
  *
- * O lojista instala o próprio app, abre, e ele aparece no topo da lista. É
- * assim que ele manda a notificação para o PRÓPRIO celular antes de mandar
- * para dez mil pessoas — e é a última chance de ver o texto cortado, o link
- * errado ou o emoji que não renderiza.
+ * Só eles recebem o envio de teste. Antes a lista eram os dez aparelhos
+ * vistos por último — clientes inclusive —, e depois do lançamento "testar"
+ * mandava uma notificação sem revisão para o celular de um cliente.
  *
- * Poucos de propósito: a lista existe para o lojista se achar nela, não para
- * navegar pela base de clientes.
+ * A inscrição do push não sai daqui: a tela só precisa saber se ela existe.
  */
-export async function aparelhosRecentes(
-  supabase: Client,
-  appId: string,
-  limite = 10,
-): Promise<AparelhoParaTeste[]> {
+export async function celularesDeTeste(supabase: Client, appId: string): Promise<CelularDeTeste[]> {
   const { data, error } = await supabase
-    .from('devices')
-    .select('id, onesignal_subscription_id, platform, app_version, last_seen_at')
+    .from('test_devices')
+    .select(
+      // `!inner`: o celular cujo aparelho a RLS de `devices` esconder fica fora da lista.
+      'id, nome, paired_at, devices!inner(platform, app_version, last_seen_at, onesignal_subscription_id)',
+    )
     .eq('app_id', appId)
-    // Sem inscrição (app sem push, ou antes de o SDK criá-la), não há para onde mandar.
-    .not('onesignal_subscription_id', 'is', null)
-    .order('last_seen_at', { ascending: false })
-    .limit(limite);
-  falhouAoLer('os aparelhos', error);
+    .order('paired_at', { ascending: false });
+  falhouAoLer('os celulares de teste', error);
 
   return (data ?? []).map((linha) => ({
     id: linha.id,
-    subscriptionId: linha.onesignal_subscription_id,
-    platform: linha.platform,
-    appVersion: linha.app_version,
-    lastSeenAt: linha.last_seen_at,
+    nome: linha.nome,
+    platform: linha.devices.platform,
+    appVersion: linha.devices.app_version,
+    lastSeenAt: linha.devices.last_seen_at,
+    recebePush: linha.devices.onesignal_subscription_id !== null,
+    pareadoEm: linha.paired_at,
   }));
 }
 

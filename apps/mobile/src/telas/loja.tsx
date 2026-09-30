@@ -48,6 +48,8 @@ import { AjustesDoApp, EntradaDosAjustes } from './ajustes';
 import { CampoDeBusca } from './campo-de-busca';
 import { textoDaVersao, urlDaPolitica } from '../push/ajustes';
 import { credenciaisDe } from '../push/api';
+import { codigoDoPareamento } from '../push/pareamento';
+import { CelularDeTeste } from './celular-de-teste';
 import { CaixaDeAvisos } from './caixa-de-avisos';
 import { ContaProtegida } from './conta-protegida';
 import { FaixaDeAviso } from './faixa-de-aviso';
@@ -200,8 +202,17 @@ export function Loja({
 
   /* ------------------------------------------------------ deep links */
 
+  /** O código do QR do celular de teste (C08), quando o link veio dele. */
+  const [pareamento, setPareamento] = useState<string | null>(null);
+
   const abrirCaminho = useCallback(
     (url: string): void => {
+      // O QR do painel abre o pareamento, e não uma página da loja.
+      const codigo = codigoDoPareamento(url);
+      if (codigo !== null) {
+        setPareamento(codigo);
+        return;
+      }
       let caminho: string;
       try {
         // Query e fragmento vão junto: `destinoDoPush` os preserva de
@@ -696,6 +707,15 @@ export function Loja({
         tema={config.theme}
         aoAceitar={push.aceitarNoPrePrompt}
         aoRecusar={push.recusarNoPrePrompt}
+      />
+      <CelularDeTeste
+        codigo={pareamento}
+        ambiente={ambiente}
+        tema={config.theme}
+        pushAtivo={contextoDasAcoes.push}
+        aoFechar={() => {
+          setPareamento(null);
+        }}
       />
       <AjustesDoApp
         visivel={ajustesAbertos}

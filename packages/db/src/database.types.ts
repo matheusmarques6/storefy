@@ -1594,6 +1594,89 @@ export type Database = {
           },
         ];
       };
+      test_device_codes: {
+        Row: {
+          id: string;
+          app_id: string;
+          code_hash: string;
+          nome: string;
+          created_by: string | null;
+          created_at: string;
+          expires_at: string;
+          used_at: string | null;
+        };
+        Insert: {
+          id?: string;
+          app_id: string;
+          code_hash: string;
+          nome: string;
+          created_by?: string | null;
+          created_at?: string;
+          expires_at: string;
+          used_at?: string | null;
+        };
+        Update: {
+          id?: string;
+          app_id?: string;
+          code_hash?: string;
+          nome?: string;
+          created_by?: string | null;
+          created_at?: string;
+          expires_at?: string;
+          used_at?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "test_device_codes_app_id_fkey";
+            columns: ["app_id"];
+            referencedRelation: "apps";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      test_devices: {
+        Row: {
+          id: string;
+          app_id: string;
+          device_id: string;
+          nome: string;
+          created_by: string | null;
+          created_at: string;
+          paired_at: string;
+        };
+        Insert: {
+          id?: string;
+          app_id: string;
+          device_id: string;
+          nome: string;
+          created_by?: string | null;
+          created_at?: string;
+          paired_at?: string;
+        };
+        Update: {
+          id?: string;
+          app_id?: string;
+          device_id?: string;
+          nome?: string;
+          created_by?: string | null;
+          created_at?: string;
+          paired_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "test_devices_app_id_fkey";
+            columns: ["app_id"];
+            referencedRelation: "apps";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "test_devices_device_id_fkey";
+            columns: ["device_id"];
+            referencedRelation: "devices";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
     };
     Views: Record<never, never>;
     Functions: {
@@ -1729,6 +1812,10 @@ export type Database = {
         Args: { p_id: string; p_ok: boolean };
         Returns: unknown;
       };
+      criar_codigo_de_teste: {
+        Args: { p_app_id: string; p_nome: string };
+        Returns: { codigo: string | null; expira_em: string | null }[];
+      };
       criar_minha_organizacao: {
         Args: { p_nome: string };
         Returns: string;
@@ -1828,6 +1915,10 @@ export type Database = {
       outros_superadmins: {
         Args: { p_exceto: string };
         Returns: number;
+      };
+      parear_celular_de_teste: {
+        Args: { p_app_id: string; p_codigo: string; p_install_id?: string; p_subscription?: string };
+        Returns: string;
       };
       publicar_config: {
         Args: { p_app_id: string };

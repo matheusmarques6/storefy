@@ -1,7 +1,7 @@
 'use client';
 
 import { FormularioDaCampanha, type ValoresDoEnvio, type ValoresIniciais } from '../../formulario';
-import type { AparelhoParaTeste } from '@/lib/push-servidor';
+import type { CelularDeTeste } from '@/lib/celular-de-teste';
 import { atualizarRascunho, editarCampanha } from '../../acoes';
 
 /**
@@ -18,7 +18,7 @@ export function EditarCampanha({
   urlDaLoja,
   fuso,
   nomeDoFuso,
-  aparelhos,
+  celulares,
   alcance,
   notificacoesLigadas,
   iniciais,
@@ -29,7 +29,7 @@ export function EditarCampanha({
   urlDaLoja: string;
   fuso: string;
   nomeDoFuso: string;
-  aparelhos: AparelhoParaTeste[];
+  celulares: CelularDeTeste[];
   alcance: number | null;
   notificacoesLigadas: boolean;
   iniciais: ValoresIniciais;
@@ -40,7 +40,7 @@ export function EditarCampanha({
       urlDaLoja={urlDaLoja}
       fuso={fuso}
       nomeDoFuso={nomeDoFuso}
-      aparelhos={aparelhos}
+      celulares={celulares}
       alcance={alcance}
       notificacoesLigadas={notificacoesLigadas}
       rotuloDoEnvio={

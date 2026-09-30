@@ -64,6 +64,28 @@ export const CorpoDoAparelho = z
     message: 'o aparelho precisa da inscrição ou da instalação',
   });
 
+/**
+ * O app, aberto pelo QR do painel, pareia o celular como celular de teste (C08).
+ *
+ * O código tem o formato que o banco gera — oito caracteres, sem 0/O e 1/I —,
+ * em qualquer caixa: o lojista pode tê-lo digitado. Fora do formato é recusado
+ * aqui, sem gastar tentativa no banco.
+ */
+export const CorpoDoPareamento = z
+  .object({
+    appId: uuid,
+    codigo: z
+      .string()
+      .trim()
+      .regex(/^[A-HJ-NP-Z2-9]{8}$/i, { message: 'código fora do formato' }),
+    installId: z.uuid({ message: 'installId inválido' }).optional(),
+    subscriptionId: inscricao.optional(),
+  })
+  // É por uma das duas que a Storefy acha o celular: sem nenhuma, não há o que parear.
+  .refine((corpo) => corpo.subscriptionId !== undefined || corpo.installId !== undefined, {
+    message: 'o aparelho precisa da inscrição ou da instalação',
+  });
+
 export const CorpoDoEvento = z.object({
   appId: uuid,
   subscriptionId: inscricao,
@@ -125,6 +147,7 @@ export const CorpoDoAviso = z.object({
 });
 
 export type DadosDoAparelho = z.infer<typeof CorpoDoAparelho>;
+export type DadosDoPareamento = z.infer<typeof CorpoDoPareamento>;
 export type DadosDoEvento = z.infer<typeof CorpoDoEvento>;
 export type DadosDoAviso = z.infer<typeof CorpoDoAviso>;
 
@@ -375,5 +398,29 @@ export function respostaDoEvento(linha: {
   return {
     status: 200,
     corpo: { eventId: linha.event_id, agendou: linha.agendou, cancelou: linha.cancelou },
+  };
+}
+
+/** O que `parear_celular_de_teste` responde e o app sabe mostrar. */
+const RESULTADOS_DO_PAREAMENTO = ['pareado', 'codigo_invalido', 'aparelho_desconhecido'] as const;
+
+/**
+ * Traduz o retorno de `parear_celular_de_teste` em resposta HTTP.
+ *
+ * Código errado e celular desconhecido saem com 200: a requisição deu certo, e
+ * é o app que diz ao lojista o que fazer (`apps/mobile/src/push/pareamento.ts`).
+ * `limitado` vira 429, como nas outras rotas; qualquer outra coisa é erro do
+ * servidor, e não um "código inválido" inventado.
+ */
+export function respostaDoPareamento(dados: unknown): Resposta {
+  if (dados === 'limitado') {
+    return { status: 429, corpo: { erro: 'muitas_requisicoes' }, motivo: 'limite do pareamento' };
+  }
+  const resultado = RESULTADOS_DO_PAREAMENTO.find((conhecido) => conhecido === dados);
+  if (resultado === undefined) return INDISPONIVEL;
+  return {
+    status: 200,
+    corpo: { resultado },
+    ...(resultado === 'pareado' ? {} : { motivo: `pareamento: ${resultado}` }),
   };
 }

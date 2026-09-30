@@ -41,7 +41,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { PreviaDaNotificacao } from './previa-da-notificacao';
 import { EnvioDeTeste } from './envio-de-teste';
-import type { AparelhoParaTeste } from '@/lib/push-servidor';
+import type { CelularDeTeste } from '@/lib/celular-de-teste';
 import type { EstadoDoPush } from './acoes';
 import { SeletorDoCatalogo } from './catalogo/seletor';
 import { CampoDaImagem, type ImagemDaCampanha } from './campo-da-imagem';
@@ -84,8 +84,8 @@ interface Props {
    * marcar 23:00 "para compensar" um fuso que já estava certo.
    */
   nomeDoFuso: string;
-  /** Aparelhos para o envio de teste. */
-  aparelhos: readonly AparelhoParaTeste[];
+  /** Os celulares de teste do lojista, os únicos que recebem o envio de teste. */
+  celulares: readonly CelularDeTeste[];
   /** Quantos aparelhos têm o app: o tamanho do envio, dito na confirmação. */
   alcance: number | null;
   /** Sem as notificações ligadas, "agora" quer dizer "assim que ligar". */
@@ -141,7 +141,7 @@ export function FormularioDaCampanha({
   urlDaLoja,
   fuso,
   nomeDoFuso,
-  aparelhos,
+  celulares,
   alcance,
   notificacoesLigadas,
   iniciais,
@@ -470,7 +470,7 @@ export function FormularioDaCampanha({
         </fieldset>
 
         <EnvioDeTeste
-          aparelhos={aparelhos}
+          celulares={celulares}
           valores={{
             title: valores.title,
             body: valores.body,

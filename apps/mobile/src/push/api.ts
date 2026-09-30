@@ -163,6 +163,23 @@ export function registrarAparelho(
   return enviar(credenciais, '/api/public/devices', { ...dados }, opcoes);
 }
 
+/** O que a rota do pareamento responde (C08). */
+export interface RespostaDoPareamento {
+  resultado?: unknown;
+}
+
+/**
+ * Pareia este celular como celular de teste do lojista, com o código que o
+ * painel mostrou no QR (`pareamento.ts`).
+ */
+export function parearCelularDeTeste(
+  credenciais: Credenciais,
+  dados: { codigo: string; installId?: string; subscriptionId?: string },
+  opcoes: Opcoes = {},
+): Promise<Resultado<RespostaDoPareamento>> {
+  return enviar(credenciais, '/api/public/test-device', { ...dados }, opcoes);
+}
+
 /** Conta o que aconteceu com o carrinho. */
 export function enviarEventoDeCarrinho(
   credenciais: Credenciais,

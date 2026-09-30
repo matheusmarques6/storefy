@@ -62,6 +62,7 @@ vi.mock('@/lib/supabase/admin', () => ({
 const { POST: postarAparelho } = await import('@/app/api/public/devices/route');
 const { POST: postarEvento } = await import('@/app/api/public/events/route');
 const { POST: postarErro } = await import('@/app/api/public/errors/route');
+const { POST: postarPareamento } = await import('@/app/api/public/test-device/route');
 
 let chaveOriginal: string | undefined;
 let avisos: MockInstance<typeof console.warn>;
@@ -448,5 +449,62 @@ describe('POST /api/public/errors', () => {
     const linha = JSON.parse(String(erros.mock.calls[0]?.[0])) as Record<string, unknown>;
     expect(linha).toMatchObject({ evento: 'app-erros.teto-indisponivel', nivel: 'erro' });
     erros.mockRestore();
+  });
+});
+
+describe('POST /api/public/test-device', () => {
+  const INSTALACAO = '3f6c1a2e-8d4b-4c7a-9e10-5b2f8a7c6d41';
+  const corpo = JSON.stringify({ appId: APP, codigo: 'abcd2345', installId: INSTALACAO });
+
+  it('pareia o celular e passa o código e a instalação para a função', async () => {
+    retornoDaRpc = { data: 'pareado', error: null };
+
+    const resposta = await postarPareamento(
+      requisicao('/api/public/test-device', corpo, assinado(corpo)),
+    );
+
+    expect(resposta.status).toBe(200);
+    await expect(resposta.json()).resolves.toEqual({ resultado: 'pareado' });
+    expect(resposta.headers.get('Cache-Control')).toBe('no-store');
+    expect(argumentosDaRpc).toEqual({
+      p_app_id: APP,
+      p_codigo: 'abcd2345',
+      p_install_id: INSTALACAO,
+      p_subscription: undefined,
+    });
+  });
+
+  it('código vencido chega ao app com 200, para ele explicar ao lojista', async () => {
+    retornoDaRpc = { data: 'codigo_invalido', error: null };
+    const resposta = await postarPareamento(
+      requisicao('/api/public/test-device', corpo, assinado(corpo)),
+    );
+    expect(resposta.status).toBe(200);
+    await expect(resposta.json()).resolves.toEqual({ resultado: 'codigo_invalido' });
+  });
+
+  it('sem a assinatura do app, nem chega ao banco', async () => {
+    const resposta = await postarPareamento(requisicao('/api/public/test-device', corpo, null));
+    expect(resposta.status).toBe(401);
+    expect(argumentosDaRpc).toBeNull();
+  });
+
+  it('429 no limite de tentativas, e 503 em JSON quando o banco falha', async () => {
+    retornoDaRpc = { data: 'limitado', error: null };
+    let resposta = await postarPareamento(
+      requisicao('/api/public/test-device', corpo, assinado(corpo)),
+    );
+    expect(resposta.status).toBe(429);
+
+    retornoDaRpc = {
+      data: null,
+      error: { message: 'relation "test_device_codes" does not exist' },
+    };
+    resposta = await postarPareamento(
+      requisicao('/api/public/test-device', corpo, assinado(corpo)),
+    );
+    expect(resposta.status).toBe(503);
+    const texto = await resposta.text();
+    expect(texto).toBe(JSON.stringify({ erro: 'indisponivel' }));
   });
 });

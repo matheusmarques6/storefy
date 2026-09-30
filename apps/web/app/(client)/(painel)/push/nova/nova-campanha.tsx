@@ -2,7 +2,7 @@
 
 /** Liga o formulário da campanha às ações do servidor. */
 import { FormularioDaCampanha } from '../formulario';
-import type { AparelhoParaTeste } from '@/lib/push-servidor';
+import type { CelularDeTeste } from '@/lib/celular-de-teste';
 import { criarCampanha, salvarRascunhoDeCampanha } from '../acoes';
 
 export function NovaCampanha({
@@ -10,7 +10,7 @@ export function NovaCampanha({
   urlDaLoja,
   fuso,
   nomeDoFuso,
-  aparelhos,
+  celulares,
   alcance,
   notificacoesLigadas,
 }: {
@@ -18,7 +18,7 @@ export function NovaCampanha({
   urlDaLoja: string;
   fuso: string;
   nomeDoFuso: string;
-  aparelhos: AparelhoParaTeste[];
+  celulares: CelularDeTeste[];
   alcance: number | null;
   notificacoesLigadas: boolean;
 }) {
@@ -28,7 +28,7 @@ export function NovaCampanha({
       urlDaLoja={urlDaLoja}
       fuso={fuso}
       nomeDoFuso={nomeDoFuso}
-      aparelhos={aparelhos}
+      celulares={celulares}
       alcance={alcance}
       notificacoesLigadas={notificacoesLigadas}
       rotuloDoEnvio={{ agora: 'Enviar agora', agendado: 'Agendar campanha' }}
