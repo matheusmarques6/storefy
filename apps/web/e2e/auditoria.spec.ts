@@ -17,6 +17,7 @@ import {
   limparUsuariosDeTeste,
   tornarPlatformAdmin,
 } from './apoio';
+import { varrer } from './axe';
 
 test.skip(!SUPABASE_DISPONIVEL, MOTIVO_PULO);
 test.afterAll(limparUsuariosDeTeste);
@@ -57,6 +58,7 @@ test('a auditoria diz quem fez: o lojista pelo e-mail, e a A04 leva à trilha do
   await expect(paginaDaEquipe.getByText('Só as ações de', { exact: false })).toContainText(empresa);
   const linhaDaLoja = paginaDaEquipe.getByRole('row').filter({ hasText: 'stores' }).first();
   await expect(linhaDaLoja).toContainText(dono);
+  await varrer(paginaDaEquipe, 'A04 com a trilha');
 
   // A busca mantém o filtro do cliente.
   await paginaDaEquipe.getByRole('searchbox').fill('stores');
@@ -75,6 +77,7 @@ test('a auditoria diz quem fez: o lojista pelo e-mail, e a A04 leva à trilha do
     .insert({ app_id: app?.id ?? '', platform: 'ios', profile: 'production', status: 'queued' });
   await paginaDaEquipe.goto(`/admin/logs?org=${loja.org_id}`);
   await expect(paginaDaEquipe.getByRole('cell', { name: 'O sistema' }).first()).toBeVisible();
+  await varrer(paginaDaEquipe, 'A12 com a trilha do cliente');
 
   // Página depois da última (link antigo) volta para a primeira, com o filtro — sem tela de erro.
   await paginaDaEquipe.goto(`/admin/logs?org=${loja.org_id}&pagina=999`);

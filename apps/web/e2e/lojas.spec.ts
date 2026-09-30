@@ -11,6 +11,7 @@ import {
   limparUsuariosDeTeste,
   tornarPlatformAdmin,
 } from './apoio';
+import { varrer } from './axe';
 import { conectarShopify, webhookDoPedido } from './shopify-de-teste';
 
 test.skip(!SUPABASE_DISPONIVEL, MOTIVO_PULO);
@@ -353,6 +354,7 @@ test('C14 e A04: os avisos da Shopify que faltam e o acesso recusado aparecem', 
     page.getByText('Faltam avisos da Shopify: produtos de volta ao estoque', { exact: false }),
   ).toBeVisible();
   await expect(page.getByRole('button', { name: 'Registrar os avisos agora' })).toBeVisible();
+  await varrer(page, 'C14 com avisos faltando');
 
   // A Shopify recusou o token: o recado muda para "conecte de novo".
   await banco
@@ -362,6 +364,7 @@ test('C14 e A04: os avisos da Shopify que faltam e o acesso recusado aparecem', 
   await page.reload();
   await expect(page.getByText('Acesso recusado', { exact: true })).toBeVisible();
   await expect(page.getByText('A Shopify recusou o acesso da Storefy a esta loja.')).toBeVisible();
+  await varrer(page, 'C14 com o acesso recusado');
   await expect(page.getByRole('button', { name: 'Registrar os avisos agora' })).toHaveCount(0);
 
   // A equipe vê o mesmo na lista de lojas do cliente.
@@ -386,5 +389,6 @@ test('C14 e A04: os avisos da Shopify que faltam e o acesso recusado aparecem', 
     .eq('id', lojaId);
   await paginaAdmin.reload();
   await expect(linha.getByText('Faltam 1 aviso')).toBeVisible();
+  await varrer(paginaAdmin, 'A04 com a Shopify de cada loja');
   await contextoAdmin.close();
 });

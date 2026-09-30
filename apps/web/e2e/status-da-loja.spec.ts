@@ -17,6 +17,7 @@ import {
   entrar,
   limparUsuariosDeTeste,
 } from './apoio';
+import { varrer } from './axe';
 
 test.skip(!SUPABASE_DISPONIVEL, MOTIVO_PULO);
 test.afterAll(limparUsuariosDeTeste);
@@ -60,6 +61,7 @@ test('o status da loja segue o app: gerando, em revisão, recusado e no ar', asy
   await bancoDeTeste().from('builds').update({ status: 'rejected' }).eq('id', build.id);
   await status('Revisão recusada');
   await expect(suasLojas.getByText(/A revisão recusou o app/)).toBeVisible();
+  await varrer(page, 'início com a loja recusada');
 
   // Corrigido e aprovado: no ar, também na lista de lojas.
   await bancoDeTeste()
@@ -69,4 +71,5 @@ test('o status da loja segue o app: gerando, em revisão, recusado e no ar', asy
   await expect(suasLojas.getByText(/A revisão recusou o app/)).toHaveCount(0);
   await page.goto('/lojas');
   await expect(page.getByText('No ar', { exact: true })).toBeVisible();
+  await varrer(page, 'lojas com a loja no ar');
 });

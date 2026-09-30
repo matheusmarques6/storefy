@@ -19,6 +19,7 @@ import {
   limparUsuariosDeTeste,
   tornarPlatformAdmin,
 } from './apoio';
+import { varrer } from './axe';
 
 test.skip(!SUPABASE_DISPONIVEL, MOTIVO_PULO);
 
@@ -82,6 +83,7 @@ test('fechar o cadastro e avisar todos os lojistas, pela A13, com auditoria', as
   await expect(page.getByLabel('Prévia do aviso')).toContainText('Manutenção programada');
   await page.getByRole('button', { name: 'Salvar chaves' }).click();
   await expect(page.getByText('Chaves salvas.')).toBeVisible();
+  await varrer(page, 'A13 com o aviso salvo');
   // A tela continua dizendo o que foi gravado: o React limpa o formulário no
   // fim da ação, e a caixa voltava a aparecer marcada com o cadastro fechado.
   await expect(page.getByLabel('Cadastro aberto')).not.toBeChecked();
@@ -99,6 +101,7 @@ test('fechar o cadastro e avisar todos os lojistas, pela A13, com auditoria', as
   // E quem chega agora vê o cadastro fechado, sem formulário.
   await visitante.goto('/cadastrar');
   await expect(visitante.getByText('Cadastros fechados por enquanto')).toBeVisible();
+  await varrer(visitante, 'o cadastro fechado');
   await expect(visitante.getByLabel('Nome da sua empresa')).toHaveCount(0);
 
   // Todo lojista vê o aviso no topo do painel.
@@ -134,6 +137,7 @@ test('fechar o cadastro e avisar todos os lojistas, pela A13, com auditoria', as
   await expect(visitante.getByLabel('Nome da sua empresa')).toBeVisible();
   await lojista.reload();
   await expect(lojista.getByRole('heading', { name: 'Olá, Empresa Avisada' })).toBeVisible();
+  await varrer(lojista, 'o início com o aviso da Storefy');
   await expect(lojista.getByText('Manutenção programada')).toHaveCount(0);
 
   // Salvar sem mudar nada não grava trilha.
@@ -223,6 +227,7 @@ test('atualização obrigatória: só a versão aprovada nas duas lojas, e ela c
   const bloco = equipe.getByRole('region', { name: 'App e push' });
   await expect(bloco.getByText('Exige 1.0.9')).toBeVisible();
   await expect(bloco.getByText('1.0.12', { exact: true })).toBeVisible();
+  await varrer(equipe, 'A04 com a versão mínima');
   await expect(bloco.getByText('1.0.9', { exact: true })).toBeVisible();
   // A config no ar, com a data — e não o rascunho que o editor abriu depois.
   await expect(bloco.getByText(/^Versão \d+, \d{2}\/\d{2}\/\d{4}/)).toBeVisible();

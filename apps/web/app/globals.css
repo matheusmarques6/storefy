@@ -17,10 +17,20 @@
   --color-secondary: oklch(96.7% 0.001 286.4);
   --color-secondary-foreground: oklch(21% 0.006 285.9);
   --color-muted: oklch(96.7% 0.001 286.4);
-  --color-muted-foreground: oklch(55.2% 0.014 285.9);
+  /*
+   * Um pouco mais escuro que o zinc-500 de fábrica: o texto de apoio sobre o
+   * fundo cinza (a mensagem do chamado, a chave da A13) dava 4,40:1, abaixo
+   * do AA. Com 53%: 4,80 sobre o cinza e 5,28 sobre o branco.
+   */
+  --color-muted-foreground: oklch(53% 0.014 285.9);
   --color-accent: oklch(96.7% 0.001 286.4);
   --color-accent-foreground: oklch(21% 0.006 285.9);
-  --color-destructive: oklch(57.7% 0.215 27.3);
+  /*
+   * O red-700, e não o red-600: o texto vermelho sobre o fundo vermelho-claro
+   * do alerta (a cobrança travada) dava 4,13:1. Com o 700: 5,3 sobre o alerta,
+   * e o branco do botão de excluir sobe de 4,6 para 6,2.
+   */
+  --color-destructive: oklch(50.5% 0.213 27.518);
   --color-destructive-foreground: oklch(98.5% 0 0);
   --color-border: oklch(92% 0.004 286.3);
   --color-input: oklch(92% 0.004 286.3);

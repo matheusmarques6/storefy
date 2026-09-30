@@ -11,6 +11,7 @@ import {
   limparUsuariosDeTeste,
   tornarPlatformAdmin,
 } from './apoio';
+import { varrer } from './axe';
 import { cifrarComoOServidor } from './shopify-de-teste';
 
 test.skip(!SUPABASE_DISPONIVEL, MOTIVO_PULO);
@@ -296,6 +297,7 @@ test('A06: o próximo passo de cada revisão, sem alarme falso no Android', asyn
     .getByRole('row', { name: new RegExp(`Loja Revisao ${sufixo}`) })
     .filter({ hasText: 'Apple' });
   await expect(iphone.getByText('Corrigir a ficha do app')).toBeVisible();
+  await varrer(page, 'A06 com as revisões');
   await expect(iphone.getByRole('link', { name: `Empresa Revisao ${sufixo}` })).toHaveAttribute(
     'href',
     `/admin/organizacoes/${vinculo?.org_id ?? ''}`,
@@ -366,6 +368,7 @@ test('A07: revalidar a credencial marca o erro com o motivo e fica na auditoria'
   await expect(
     linhaGoogle.getByText('Esse arquivo não é um JSON válido', { exact: false }),
   ).toBeVisible();
+  await varrer(page, 'A07 com as contas');
 
   const { data: conta } = await banco
     .from('developer_accounts')
@@ -430,6 +433,7 @@ test('A10: o preset nasce de uma loja no ar, com o tema dela, e chega ao lojista
   const linha = admin.getByRole('row', { name: new RegExp(preset) });
   await expect(linha).toContainText('Dawn');
   await expect(linha.getByText('Visível')).toBeVisible();
+  await varrer(admin, 'A10 com o preset');
 
   // A curadoria fica na trilha, com quem da equipe fez.
   const { data: criado } = await bancoDeTeste()
@@ -552,6 +556,7 @@ test('A05: a fila de builds filtra por loja, cliente e plataforma', async ({ pag
   await expect(page).toHaveURL(/q=Loja/);
   await expect(linhas).toHaveCount(1);
   await expect(linhas.first()).toContainText('Falhou no ios da Alfa');
+  await varrer(page, 'A05 com builds');
 
   // Trocar a situação não perde os outros recortes.
   await page
@@ -579,6 +584,7 @@ test('A05: a fila de builds filtra por loja, cliente e plataforma', async ({ pag
   await page.getByRole('link', { name: 'Ver todos os builds deste cliente' }).click();
   await expect(page).toHaveURL(new RegExp(`org=${orgAlfa}`));
   await expect(page.getByText(`Só os builds de Empresa Alfa ${sufixo}`)).toBeVisible();
+  await varrer(page, 'A04 com os builds');
   await expect(linhas).toHaveCount(2);
   await page.getByRole('link', { name: 'Ver de todos os clientes' }).click();
   await expect(page).not.toHaveURL(/org=/);
@@ -632,6 +638,7 @@ test('A05: o build parado aparece com problema, e a equipe o encerra', async ({ 
   // O lojista lê que pode ter parado, e não "esperando a vez".
   await paginaCliente.goto('/publicacao');
   await expect(paginaCliente.getByText('Está demorando mais que o normal')).toBeVisible();
+  await varrer(paginaCliente, 'C12 com o build demorando');
   await expect(paginaCliente.getByText('Esperando a vez.')).toHaveCount(0);
 
   // A equipe o vê em "Com problema", o recorte com que a A05 abre.
@@ -644,11 +651,13 @@ test('A05: o build parado aparece com problema, e a equipe o encerra', async ({ 
   await paginaAdmin.goto(`/admin/builds?q=${encodeURIComponent(`Loja Parada ${sufixo}`)}`);
   const linha = paginaAdmin.getByRole('row', { name: new RegExp(`Loja Parada ${sufixo}`) });
   await expect(linha.getByText(/Parado · Na fila há 2 h/)).toBeVisible();
+  await varrer(paginaAdmin, 'A05 com o build parado');
 
   // Encerrar pede confirmação, e "Voltar" não mexe em nada.
   await linha.getByRole('button', { name: 'Encerrar' }).click();
   const confirmacao = paginaAdmin.getByRole('alertdialog');
   await expect(confirmacao).toContainText('confira nos logs');
+  await varrer(paginaAdmin, 'A05 com a confirmação de encerrar');
   await confirmacao.getByRole('button', { name: 'Voltar' }).click();
   await linha.getByRole('button', { name: 'Encerrar' }).click();
   await confirmacao.getByRole('button', { name: 'Encerrar build' }).click();
@@ -684,6 +693,7 @@ test('A05: o build parado aparece com problema, e a equipe o encerra', async ({ 
   // O lojista vê o motivo, e a publicação deixa de estar travada.
   await paginaCliente.goto('/publicacao');
   await expect(paginaCliente.getByText('encerrada pela equipe da Storefy')).toBeVisible();
+  await varrer(paginaCliente, 'C12 com o build encerrado');
   await expect(paginaCliente.getByText('Está demorando mais que o normal')).toHaveCount(0);
 
   await contextoCliente.close();
@@ -759,6 +769,7 @@ test('A-OTA: a rodada parada trava a próxima correção até a equipe encerrá-
     await expect(page.getByRole('button', { name: 'Publicar em todas as lojas' })).toHaveCount(0);
     const parada = page.getByRole('listitem').filter({ hasText: `Rodada parada ${sufixo}` });
     await expect(parada.getByText('Parada · Na fila há 2 h')).toBeVisible();
+    await varrer(page, 'A-OTA com a rodada parada');
 
     // Encerrar pede confirmação, e "Voltar" não mexe em nada.
     await parada.getByRole('button', { name: 'Encerrar' }).click();

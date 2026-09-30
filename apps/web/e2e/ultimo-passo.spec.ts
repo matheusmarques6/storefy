@@ -18,6 +18,7 @@ import {
   limparUsuariosDeTeste,
   tornarPlatformAdmin,
 } from './apoio';
+import { varrer } from './axe';
 
 test.skip(!SUPABASE_DISPONIVEL, MOTIVO_PULO);
 test.afterAll(limparUsuariosDeTeste);
@@ -104,12 +105,14 @@ test('a vez do lojista aparece no alto da Publicação, e some quando a loja ass
   await expect(
     page.getByText('Está no teste interno da Play Store. Falta você publicar em produção.'),
   ).toBeVisible();
+  await varrer(page, 'C12 com a vez do lojista');
   await expect(page.getByText('Agora é aguardar a revisão')).toHaveCount(0);
 
   // O painel inicial manda fazer o passo, e não esperar.
   await page.goto('/');
   await page.waitForLoadState('networkidle');
   await expect(page.getByRole('link', { name: 'Fazer o último passo' })).toBeVisible();
+  await varrer(page, 'início com o último passo');
 
   // O lojista mandou: a Apple está revisando. O cartão da Apple sai; o do Google fica.
   await mudarBuild(idDo('ios'), { status: 'in_review', store_state: 'IN_REVIEW' });
@@ -128,6 +131,7 @@ test('a vez do lojista aparece no alto da Publicação, e some quando a loja ass
   await expect(
     page.getByText('Em produção na Play Store, aberto para os clientes baixarem.'),
   ).toBeVisible();
+  await varrer(page, 'C12 em revisão na Apple');
 
   // E a loja está no ar — o status segue os builds.
   const { data: loja } = await banco.from('stores').select('status').eq('id', lojaId).single();
@@ -168,4 +172,5 @@ test('A06: a equipe vê que a vez é do lojista, e não "esperar a Apple"', asyn
   await expect(linha).toContainText('Não enviado para a revisão');
   await expect(linha).toContainText('Lojista enviar para a revisão');
   await expect(linha).not.toContainText('Esperar a Apple');
+  await varrer(page, 'A06 com a vez do lojista');
 });

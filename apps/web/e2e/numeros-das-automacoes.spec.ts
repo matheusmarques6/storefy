@@ -20,6 +20,7 @@ import {
   entrar,
   limparUsuariosDeTeste,
 } from './apoio';
+import { varrer } from './axe';
 import { SEGREDO_DO_WORKFLOW, doApp, lojaComApp, postar } from './app-assinado';
 
 test.skip(!SUPABASE_DISPONIVEL, MOTIVO_PULO);
@@ -163,6 +164,7 @@ test('a automação conta as aberturas pelo app, e o detalhe mostra o funil e o 
     'Não saíram porque o aparelho não recebe mais notificações',
   );
   await expect(naoSairam).toContainText('Esperando a hora de sair');
+  await varrer(page, 'C10 da automação com o funil');
   await expect(page.getByText('not subscribed')).toHaveCount(0);
 
   // O período vai na URL.
@@ -254,6 +256,7 @@ test('o C07 pagina as campanhas, e o total do topo conta todas', async ({ page }
   await expect(lista.getByRole('listitem')).toHaveCount(20);
   // As mais novas primeiro: o rascunho é a mais nova.
   await expect(lista.getByRole('listitem').first()).toContainText('Campanha 23');
+  await varrer(page, 'C07 paginado');
   await expect(page.getByText('Página 1 de 2 · 23 resultados')).toBeVisible();
 
   await page.getByRole('link', { name: 'Próxima' }).click();

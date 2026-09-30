@@ -20,6 +20,7 @@ import {
   limparUsuariosDeTeste,
   tornarPlatformAdmin,
 } from './apoio';
+import { varrer } from './axe';
 
 test.skip(!SUPABASE_DISPONIVEL, MOTIVO_PULO);
 
@@ -91,12 +92,14 @@ test('o proprietário convida, a pessoa cria a conta pelo link e entra só nesta
   await page.reload();
   await expect(page.getByText(emailConvidado, { exact: true })).toBeVisible();
   await expect(page.getByText('Vence em 7 dias')).toBeVisible();
+  await varrer(page, 'C16 com o convite pendente');
 
   // Quem recebeu o link, sem conta nenhuma.
   const convidado = await novaPagina(browser);
   await convidado.goto(link);
   await expect(convidado.getByText('Convite para a equipe de Empresa do Convite')).toBeVisible();
   await expect(convidado.getByText(/Administrador: Cria e edita lojas/)).toBeVisible();
+  await varrer(convidado, 'o convite aberto');
   await expect(convidado.getByLabel('E-mail')).toHaveValue(emailConvidado);
   // Nome faltando: erro no campo, e a senha digitada não volta.
   await convidado.getByLabel('Crie uma senha').fill(SENHA_PADRAO);
@@ -135,6 +138,7 @@ test('o proprietário convida, a pessoa cria a conta pelo link e entra só nesta
   await page.goto('/configuracoes/equipe');
   await page.getByLabel('Papel de Pessoa Convidada').selectOption('member');
   await expect(page.getByRole('alertdialog')).toContainText('Só vê.');
+  await varrer(page, 'C16 com a confirmação de mudar o papel');
   await page.getByRole('button', { name: 'Mudar papel' }).click();
   await expect(page.getByText('Papel alterado para Membro.')).toBeVisible();
 

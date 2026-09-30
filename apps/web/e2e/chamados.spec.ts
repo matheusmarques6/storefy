@@ -19,6 +19,7 @@ import {
   limparUsuariosDeTeste,
   tornarPlatformAdmin,
 } from './apoio';
+import { varrer } from './axe';
 
 test.skip(!SUPABASE_DISPONIVEL, MOTIVO_PULO);
 
@@ -109,6 +110,7 @@ test('o lojista abre um chamado, a equipe responde, e a conversa segue até fech
   await expect(page.getByText('Aguardando a Storefy')).toBeVisible();
   const conversa = page.getByRole('list', { name: 'Mensagens do chamado' });
   await expect(conversa.getByText('O que eu faço?')).toBeVisible();
+  await varrer(page, 'C17 com o chamado aberto');
 
   // A equipe: o chamado aparece na visão geral e na fila de quem espera.
   const equipe = await novaPagina(browser);
@@ -130,6 +132,7 @@ test('o lojista abre um chamado, a equipe responde, e a conversa segue até fech
   await equipe.waitForURL(`/admin/chamados/${chamadoId}`);
   await expect(equipe.getByText(`aberto por ${emailLojista}`, { exact: false })).toBeVisible();
   await expect(equipe.getByRole('link', { name: 'Empresa do Chamado' })).toBeVisible();
+  await varrer(equipe, 'A14 com a fila');
 
   // Resposta vazia não sai.
   await equipe.getByRole('button', { name: 'Responder' }).click();
@@ -142,6 +145,7 @@ test('o lojista abre um chamado, a equipe responde, e a conversa segue até fech
   await expect(equipe.getByText('Resposta enviada.')).toBeVisible();
   await expect(equipe.getByLabel('Resposta da equipe')).toHaveValue('');
   await expect(equipe.getByText('Aguardando o cliente')).toBeVisible();
+  await varrer(equipe, 'A14 com a conversa respondida');
 
   // O lojista lê a resposta como da equipe, sem o e-mail de quem atendeu.
   await page.reload();
@@ -155,6 +159,7 @@ test('o lojista abre um chamado, a equipe responde, e a conversa segue até fech
   await page.getByRole('button', { name: 'Enviar' }).click();
   await expect(page.getByText('Mensagem enviada.')).toBeVisible();
   await expect(page.getByText('Aguardando a Storefy')).toBeVisible();
+  await varrer(page, 'C17 com a resposta da equipe');
 
   // Fechar pede confirmação; "Voltar" não fecha.
   await page.getByRole('button', { name: 'Fechar chamado' }).click();

@@ -22,6 +22,7 @@ import {
   entrar,
   limparUsuariosDeTeste,
 } from './apoio';
+import { varrer } from './axe';
 import { conectarShopify, webhookDoPedido } from './shopify-de-teste';
 
 test.skip(!SUPABASE_DISPONIVEL, MOTIVO_PULO);
@@ -166,6 +167,7 @@ test('o pedido que veio de um toque aparece na lista, no funil e na automação'
   await expect(linha.getByText('1 pedido', { exact: true })).toBeVisible();
   await expect(linha.getByText('12', { exact: true })).toBeVisible();
   await expect(linha.getByText('12% abriram')).toBeVisible();
+  await varrer(page, 'C07 com números e receita');
 
   // C10: o funil, etapa por etapa, e a receita com o ticket médio.
   await linha.getByRole('link', { name: 'Liquida de primavera' }).click();
@@ -181,12 +183,14 @@ test('o pedido que veio de um toque aparece na lista, no funil e na automação'
   const receita = await textoDe(page, 'receita-da-campanha');
   expect(receita).toContain('R$ 149,90');
   expect(receita).toContain('1 pedido, ticket médio de R$ 149,90.');
+  await varrer(page, 'C10 com o funil e a receita');
 
   // C09: o card da automação diz o que ela fez nos últimos 30 dias.
   await page.goto('/push/automacoes');
   const resultado = carrinho.getByRole('region', { name: 'Últimos 30 dias' });
   // Enviadas, aberturas (traço: o app ainda não contou toque nenhum), pedidos e receita.
   await expect(resultado.locator('dd')).toHaveText(['1', '—', '1', /^R\$\s59,90$/]);
+  await varrer(page, 'C09 com o resultado da automação');
 
   // No celular, os números da campanha cabem numa linha embaixo do texto.
   await page.setViewportSize({ width: 390, height: 844 });

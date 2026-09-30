@@ -20,6 +20,7 @@ import {
   limparUsuariosDeTeste,
   tornarPlatformAdmin,
 } from './apoio';
+import { varrer } from './axe';
 
 test.skip(!SUPABASE_DISPONIVEL, MOTIVO_PULO);
 
@@ -136,6 +137,7 @@ test('a equipe publica os planos; o lojista assina, paga, troca de plano e cance
   await equipe.pagina.getByLabel('Preço por mês (R$)').fill('199,90');
   await equipe.pagina.getByRole('button', { name: 'Criar plano' }).click();
   await expect(equipe.pagina.getByText(`Plano ${CRESCIMENTO} criado.`)).toBeVisible();
+  await varrer(equipe.pagina, 'A09 com os planos');
   await expect(equipe.pagina.getByRole('row', { name: new RegExp(ESSENCIAL) })).toContainText(
     'Até 2 lojas',
   );
@@ -151,6 +153,7 @@ test('a equipe publica os planos; o lojista assina, paga, troca de plano e cance
   await page.waitForURL('/configuracoes/plano');
   await expect(page.getByText('Teste grátis', { exact: true })).toBeVisible();
   await expect(page.getByText('Faltam 14 dias')).toBeVisible();
+  await varrer(page, 'C15 no teste grátis');
 
   const cartaoEssencial = page.getByRole('listitem').filter({ hasText: ESSENCIAL });
   await cartaoEssencial.getByRole('button', { name: `Assinar ${ESSENCIAL}` }).click();
@@ -172,6 +175,7 @@ test('a equipe publica os planos; o lojista assina, paga, troca de plano e cance
   await dialogo.getByLabel('CPF ou CNPJ').fill('11.222.333/0001-81');
   await dialogo.getByRole('button', { name: 'Assinar', exact: true }).click();
   await expect(dialogo.getByRole('heading', { name: 'Assinatura criada' })).toBeVisible();
+  await varrer(page, 'C15 com a assinatura criada');
 
   // A primeira cobrança vence no fim do teste: quem assina cedo não perde dias.
   const { data: org } = await bancoDeTeste()
@@ -215,6 +219,7 @@ test('a equipe publica os planos; o lojista assina, paga, troca de plano e cance
   await expect(page.getByText('Aguardando o primeiro pagamento')).toBeVisible();
   await expect(page.getByRole('cell', { name: 'Aguardando pagamento' })).toBeVisible();
   await expect(page.getByText('CNPJ final 0181')).toBeVisible();
+  await varrer(page, 'C15 aguardando o primeiro pagamento');
   // O documento inteiro não fica no painel.
   const { data: quemPaga } = await bancoDeTeste()
     .from('billing_customers')
@@ -251,6 +256,7 @@ test('a equipe publica os planos; o lojista assina, paga, troca de plano e cance
   await expect(page.getByText('Em dia', { exact: true })).toBeVisible();
   await expect(page.getByText(/^Pago até \d{2}\/\d{2}\/\d{4}\.$/)).toBeVisible();
   await expect(page.getByRole('cell', { name: 'Paga' })).toBeVisible();
+  await varrer(page, 'C15 em dia, com a fatura paga');
 
   // ----------------------------------------------------- trocar de plano
   const cartaoCrescimento = page.getByRole('listitem').filter({ hasText: CRESCIMENTO });
@@ -283,6 +289,7 @@ test('a equipe publica os planos; o lojista assina, paga, troca de plano e cance
   expect(asaas.pedidos.some((p) => p.metodo === 'DELETE')).toBe(true);
   await expect(page.getByText('Cancelada', { exact: true })).toBeVisible();
   await expect(page.getByText(/^Cancelada\. O que já foi pago vale até/)).toBeVisible();
+  await varrer(page, 'C15 cancelada');
   // Pago, e ainda no período: nada travou.
   await expect(page.getByText('estão parados')).toHaveCount(0);
 
@@ -292,6 +299,7 @@ test('a equipe publica os planos; o lojista assina, paga, troca de plano e cance
   await expect(cobranca.getByText('Liberado', { exact: true })).toBeVisible();
   await expect(cobranca.getByText('PAYMENT_RECEIVED')).toBeVisible();
   await expect(cobranca.getByText('CNPJ final 0181', { exact: false })).toBeVisible();
+  await varrer(equipe.pagina, 'A04 com a cobrança');
 
   // ---------------------------------------------------------- a trilha
   const { data: trilha } = await bancoDeTeste()
@@ -342,6 +350,7 @@ test('o teste acaba: o painel avisa, trava o que custa, e a equipe estende o tes
   await page.goto('/configuracoes/plano');
   await expect(page.getByText('Acabou', { exact: true })).toBeVisible();
   await expect(page.getByText(/estão parados/).first()).toBeVisible();
+  await varrer(page, 'C15 com o teste acabado');
 
   // A equipe estende o teste pela ficha do cliente.
   const equipe = await superadmin(browser, 'cob-estende');
