@@ -24,6 +24,41 @@ export interface DependenciasDaSessao {
   appVersion: string;
   /** App ID do OneSignal deste build. `null` desliga o push por inteiro. */
   oneSignalAppId: string | null;
+  /**
+   * O identificador desta instalação (`instalacao.ts`), com ou sem push. É o
+   * que faz o aparelho contar nos números mesmo num app sem notificação.
+   */
+  lerInstalacao: () => Promise<string | null>;
+}
+
+/** A instalação, sem deixar uma falha do disco derrubar a abertura. */
+async function instalacaoDe(dependencias: DependenciasDaSessao): Promise<string | null> {
+  try {
+    return await dependencias.lerInstalacao();
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Conta esta abertura num app SEM push.
+ *
+ * Antes, sem push não havia registro nenhum: o painel da loja mostrava zero
+ * instalações, zero ativos e zero MAU com o app sendo usado. Agora o aparelho
+ * conta pela instalação — só não recebe notificação, porque não há como.
+ */
+export async function registrarAbertura(dependencias: DependenciasDaSessao): Promise<boolean> {
+  const { credenciais } = dependencias;
+  if (credenciais === null) return false;
+  const instalacao = await instalacaoDe(dependencias);
+  if (instalacao === null) return false;
+
+  const resposta = await registrarAparelho(credenciais, {
+    installId: instalacao,
+    platform: dependencias.plataforma,
+    appVersion: dependencias.appVersion,
+  });
+  return resposta.ok;
 }
 
 export interface ResultadoDoInicio {
@@ -42,14 +77,17 @@ export interface ResultadoDoInicio {
  *
  * A ordem é: inicia o SDK → pega o ID de inscrição → registra na Storefy. O ID
  * pode ainda não existir (o SDK conversa com o servidor do OneSignal antes de
- * ter um), e nesse caso o registro espera o `aoMudarInscricao` — registrar com
- * ID nulo criaria uma linha que nunca corresponde a aparelho nenhum.
+ * ter um): aí o aparelho é registrado só pela instalação, e a inscrição chega
+ * pelo `aoMudarInscricao`. Sem nenhum dos dois, não há registro — seria uma
+ * linha que nunca corresponde a aparelho nenhum.
  */
 export async function iniciarPush(dependencias: DependenciasDaSessao): Promise<ResultadoDoInicio> {
   const { notificador, oneSignalAppId, credenciais } = dependencias;
 
   if (oneSignalAppId === null) {
-    return { iniciou: false, inscricao: null, registrou: false, motivo: 'sem app do OneSignal' };
+    // Sem push, a abertura ainda conta: é o que o painel e a cobrança leem.
+    const registrou = await registrarAbertura(dependencias);
+    return { iniciou: false, inscricao: null, registrou, motivo: 'sem app do OneSignal' };
   }
 
   try {
@@ -73,7 +111,12 @@ export async function iniciarPush(dependencias: DependenciasDaSessao): Promise<R
     inscricao = null;
   }
 
-  if (inscricao === null) {
+  if (credenciais === null) {
+    return { iniciou: true, inscricao, registrou: false, motivo: 'build sem credencial da API' };
+  }
+
+  const instalacao = await instalacaoDe(dependencias);
+  if (inscricao === null && instalacao === null) {
     return {
       iniciou: true,
       inscricao: null,
@@ -81,12 +124,10 @@ export async function iniciarPush(dependencias: DependenciasDaSessao): Promise<R
       motivo: 'inscrição ainda não existe',
     };
   }
-  if (credenciais === null) {
-    return { iniciou: true, inscricao, registrou: false, motivo: 'build sem credencial da API' };
-  }
 
   const resposta = await registrarAparelho(credenciais, {
-    subscriptionId: inscricao,
+    ...(inscricao === null ? {} : { subscriptionId: inscricao }),
+    ...(instalacao === null ? {} : { installId: instalacao }),
     platform: dependencias.plataforma,
     appVersion: dependencias.appVersion,
   });
@@ -115,18 +156,24 @@ export function registrarQuandoAssinar(
 
   notificador.aoMudarInscricao((id) => {
     if (id === null || id === '') return;
-    void registrarAparelho(credenciais, {
-      subscriptionId: id,
-      platform: dependencias.plataforma,
-      appVersion: dependencias.appVersion,
-    }).then(
-      (resultado) => {
-        aoRegistrar?.(resultado);
-      },
-      () => {
-        /* `registrarAparelho` já não lança; este ramo é cinto de segurança. */
-      },
-    );
+    // Com a instalação, a inscrição vai para o aparelho que já conta — e não vira outro.
+    void instalacaoDe(dependencias)
+      .then((instalacao) =>
+        registrarAparelho(credenciais, {
+          subscriptionId: id,
+          ...(instalacao === null ? {} : { installId: instalacao }),
+          platform: dependencias.plataforma,
+          appVersion: dependencias.appVersion,
+        }),
+      )
+      .then(
+        (resultado) => {
+          aoRegistrar?.(resultado);
+        },
+        () => {
+          /* `registrarAparelho` já não lança; este ramo é cinto de segurança. */
+        },
+      );
   });
 }
 
@@ -258,8 +305,10 @@ export async function vincularCliente(
   const id = (customerId ?? '').trim();
   if (credenciais === null || inscricao === null || id === '') return false;
 
+  const instalacao = await instalacaoDe(dependencias);
   const resposta = await registrarAparelho(credenciais, {
     subscriptionId: inscricao,
+    ...(instalacao === null ? {} : { installId: instalacao }),
     platform: dependencias.plataforma,
     appVersion: dependencias.appVersion,
     externalId: id,

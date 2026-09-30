@@ -124,6 +124,30 @@ describe('POST /api/public/devices', () => {
     expect(resposta.headers.get('Cache-Control')).toBe('no-store');
   });
 
+  it('o app sem push manda só a instalação, e ela vira o argumento da função', async () => {
+    retornoDaRpc = {
+      data: [{ device_id: DEVICE, limitado: false, novo: true, boas_vindas: false }],
+      error: null,
+    };
+    const semPush = JSON.stringify({
+      appId: APP,
+      installId: '3f6c1a2e-8d4b-4c7a-9e10-5b2f8a7c6d41',
+      platform: 'android',
+    });
+
+    const resposta = await postarAparelho(
+      requisicao('/api/public/devices', semPush, assinado(semPush)),
+    );
+
+    expect(resposta.status).toBe(200);
+    expect(argumentosDaRpc).toMatchObject({
+      p_app_id: APP,
+      p_install_id: '3f6c1a2e-8d4b-4c7a-9e10-5b2f8a7c6d41',
+      p_platform: 'android',
+    });
+    expect(argumentosDaRpc?.p_subscription).toBeUndefined();
+  });
+
   it('traduz os campos do corpo para os argumentos da função', async () => {
     retornoDaRpc = {
       data: [{ device_id: DEVICE, limitado: false, novo: false, boas_vindas: false }],

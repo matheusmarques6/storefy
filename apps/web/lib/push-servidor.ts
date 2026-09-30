@@ -312,6 +312,8 @@ export async function aparelhosRecentes(
     .from('devices')
     .select('id, onesignal_subscription_id, platform, app_version, last_seen_at')
     .eq('app_id', appId)
+    // Sem inscrição (app sem push, ou antes de o SDK criá-la), não há para onde mandar.
+    .not('onesignal_subscription_id', 'is', null)
     .order('last_seen_at', { ascending: false })
     .limit(limite);
   falhouAoLer('os aparelhos', error);
@@ -335,7 +337,9 @@ export async function contarAparelhos(supabase: Client, appId: string): Promise<
   const { count, error } = await supabase
     .from('devices')
     .select('id', { count: 'exact', head: true })
-    .eq('app_id', appId);
+    .eq('app_id', appId)
+    // O aparelho sem inscrição conta nas instalações, mas não recebe push.
+    .not('onesignal_subscription_id', 'is', null);
 
   // `null` quer dizer "não conseguimos contar", e a tela mostra um traço.
   // Zero é uma afirmação — "ninguém instalou" — e só se diz quando é verdade.

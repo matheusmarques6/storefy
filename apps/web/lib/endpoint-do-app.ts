@@ -39,19 +39,30 @@ const uuid = z.uuid({ message: 'appId inválido' });
  */
 const inscricao = z.string().trim().min(1).max(128);
 
-export const CorpoDoAparelho = z.object({
-  appId: uuid,
-  subscriptionId: inscricao,
-  platform: z.enum(['ios', 'android']),
-  appVersion: z.string().trim().min(1).max(32).optional(),
-  externalId: z.string().trim().min(1).max(128).optional(),
-  /** Hash do e-mail, nunca o e-mail (regra 3 do CLAUDE.md). Hex de sha256. */
-  emailHash: z
-    .string()
-    .trim()
-    .regex(/^[0-9a-f]{64}$/, { message: 'emailHash deve ser um sha256 em hexadecimal' })
-    .optional(),
-});
+export const CorpoDoAparelho = z
+  .object({
+    appId: uuid,
+    /** A inscrição do push. Ausente num app sem push, ou antes de o SDK criá-la. */
+    subscriptionId: inscricao.optional(),
+    /**
+     * O identificador que o app gera na primeira abertura. É por ele que o
+     * aparelho conta nos números (C05, C11, C15) com ou sem push.
+     */
+    installId: z.uuid({ message: 'installId inválido' }).optional(),
+    platform: z.enum(['ios', 'android']),
+    appVersion: z.string().trim().min(1).max(32).optional(),
+    externalId: z.string().trim().min(1).max(128).optional(),
+    /** Hash do e-mail, nunca o e-mail (regra 3 do CLAUDE.md). Hex de sha256. */
+    emailHash: z
+      .string()
+      .trim()
+      .regex(/^[0-9a-f]{64}$/, { message: 'emailHash deve ser um sha256 em hexadecimal' })
+      .optional(),
+  })
+  // Sem nenhuma das duas, o aparelho não é ninguém: seria uma linha que nada acha de novo.
+  .refine((corpo) => corpo.subscriptionId !== undefined || corpo.installId !== undefined, {
+    message: 'o aparelho precisa da inscrição ou da instalação',
+  });
 
 export const CorpoDoEvento = z.object({
   appId: uuid,

@@ -16,6 +16,7 @@ import {
   gravarHistorico,
   gravarLidos,
   gravarToque,
+  idDaInstalacao,
   lerHistoricoDoDisco,
   lerLidosDoDisco,
   lerToqueDoDisco,
@@ -38,6 +39,7 @@ import {
   iniciarPush,
   ouvirToques,
   pedidoConcluido,
+  registrarAbertura,
   registrarQuandoAssinar,
   vincularCliente,
   type DependenciasDaSessao,
@@ -146,6 +148,7 @@ export function usarPush({ ambiente, config, ativo, navegar }: Opcoes): UsoDoPus
       plataforma: Platform.OS === 'ios' ? 'ios' : 'android',
       appVersion: ambiente.appVersion,
       oneSignalAppId: ativo ? ambiente.oneSignalAppId : null,
+      lerInstalacao: idDaInstalacao,
     }),
     [ambiente.appVersion, ambiente.oneSignalAppId, ativo, credenciais],
   );
@@ -197,6 +200,9 @@ export function usarPush({ ambiente, config, ativo, navegar }: Opcoes): UsoDoPus
         // Sem push neste build não há o que ler; liberar a marca evita deixar
         // a pergunta de abertura presa para sempre.
         setSistemaLido(true);
+        // Mas a abertura conta: instalações, ativos e o MAU da loja não
+        // dependem de o app ter notificação.
+        void registrarAbertura(dependencias);
         return;
       }
 

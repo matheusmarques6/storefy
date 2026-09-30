@@ -517,22 +517,35 @@ export async function enviarTeste(entrada: {
    * que decide se aquele usuário enxerga aquele aparelho — um id forjado de
    * outra loja simplesmente não volta.
    */
-  const { data: aparelho } = await base.supabase
+  const { data: aparelho, error: erroDoAparelho } = await base.supabase
     .from('devices')
     .select('onesignal_subscription_id')
     .eq('id', entrada.deviceId)
     .eq('app_id', base.app.id)
     .maybeSingle();
 
+  // Falha ao ler não é "aparelho não encontrado": a tela mandaria recarregar sem razão.
+  if (erroDoAparelho != null) {
+    return { mensagem: mensagemDaFalha('push.teste', erroDoAparelho, FALHA_GENERICA) };
+  }
   if (aparelho == null) {
     return { mensagem: 'Não encontramos esse aparelho. Recarregue a página e tente de novo.' };
   }
+  if (aparelho.onesignal_subscription_id === null) {
+    return {
+      mensagem:
+        'Esse aparelho ainda não recebe notificações. Abra o app nele e aceite as notificações, e tente de novo.',
+    };
+  }
 
-  const { data: credenciais } = await criarClientServiceRole()
+  const { data: credenciais, error: erroDasCredenciais } = await criarClientServiceRole()
     .from('apps')
     .select('onesignal_app_id, onesignal_api_key_enc')
     .eq('id', base.app.id)
     .maybeSingle();
+  if (erroDasCredenciais != null) {
+    return { mensagem: mensagemDaFalha('push.teste', erroDasCredenciais, FALHA_GENERICA) };
+  }
 
   const falta = faltaConfiguracao(
     credenciais?.onesignal_app_id ?? null,

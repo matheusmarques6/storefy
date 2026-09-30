@@ -714,35 +714,38 @@ export type Database = {
         Row: {
           id: string;
           app_id: string;
-          onesignal_subscription_id: string;
+          onesignal_subscription_id: string | null;
           platform: Database["public"]["Enums"]["device_platform"];
           app_version: string | null;
           external_id: string | null;
           customer_email_hash: string | null;
           last_seen_at: string;
           created_at: string;
+          install_id: string | null;
         };
         Insert: {
           id?: string;
           app_id: string;
-          onesignal_subscription_id: string;
+          onesignal_subscription_id?: string | null;
           platform: Database["public"]["Enums"]["device_platform"];
           app_version?: string | null;
           external_id?: string | null;
           customer_email_hash?: string | null;
           last_seen_at?: string;
           created_at?: string;
+          install_id?: string | null;
         };
         Update: {
           id?: string;
           app_id?: string;
-          onesignal_subscription_id?: string;
+          onesignal_subscription_id?: string | null;
           platform?: Database["public"]["Enums"]["device_platform"];
           app_version?: string | null;
           external_id?: string | null;
           customer_email_hash?: string | null;
           last_seen_at?: string;
           created_at?: string;
+          install_id?: string | null;
         };
         Relationships: [
           {
@@ -1843,7 +1846,7 @@ export type Database = {
         Returns: { pedidos: number | null; receita_cents: number | null }[];
       };
       registrar_aparelho: {
-        Args: { p_app_id: string; p_subscription: string; p_platform: Database["public"]["Enums"]["device_platform"]; p_app_version?: string; p_external_id?: string; p_email_hash?: string };
+        Args: { p_app_id: string; p_subscription?: string; p_platform?: Database["public"]["Enums"]["device_platform"]; p_app_version?: string; p_external_id?: string; p_email_hash?: string; p_install_id?: string };
         Returns: { device_id: string | null; limitado: boolean | null; novo: boolean | null; boas_vindas: boolean | null }[];
       };
       registrar_app_na_apple: {

@@ -13,7 +13,9 @@
  * de abrir.
  */
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { randomUUID } from 'expo-crypto';
 import { lerAtributoDoPush, valorDoAtributoDoPush, type ToqueNoPush } from '@storefy/config-schema';
+import { lerOuCriarInstalacao } from './instalacao.ts';
 import { HISTORICO_VAZIO, lerHistorico, type HistoricoDoPrePrompt } from './permissao.ts';
 import { lerLidos } from './caixa.ts';
 
@@ -97,4 +99,20 @@ export async function gravarToque(toque: ToqueNoPush): Promise<void> {
   } catch {
     /* O toque vale nesta sessão do mesmo jeito; só não sobrevive a fechar o app. */
   }
+}
+
+let instalacao: Promise<string | null> | null = null;
+
+/**
+ * O identificador desta instalação (`instalacao.ts`), lido UMA vez por
+ * abertura do app.
+ *
+ * Na primeira abertura, a contagem da abertura e a chegada da inscrição do
+ * push pedem o identificador quase juntas. Sem a promessa guardada, as duas
+ * achariam o disco vazio e gerariam DOIS — e o mesmo aparelho contaria como
+ * duas instalações.
+ */
+export function idDaInstalacao(): Promise<string | null> {
+  instalacao ??= lerOuCriarInstalacao(AsyncStorage, randomUUID);
+  return instalacao;
 }

@@ -15,6 +15,7 @@ import {
   iniciarPush,
   ouvirToques,
   pedidoConcluido,
+  registrarAbertura,
   registrarQuandoAssinar,
   vincularCliente,
   type DependenciasDaSessao,
@@ -28,6 +29,7 @@ const CREDENCIAIS = {
   appId: '11111111-1111-4111-8111-111111111111',
   segredo: 'segredo',
 };
+const INSTALACAO = '3f6c1a2e-8d4b-4c7a-9e10-5b2f8a7c6d41';
 
 /** Um SDK de mentira que guarda tudo que recebeu. */
 function fingirNotificador(inscricao: string | null = 'sub-1'): {
@@ -104,6 +106,7 @@ function dependencias(
     plataforma: 'ios',
     appVersion: '1.0.0',
     oneSignalAppId: 'os-app-1',
+    lerInstalacao: () => Promise.resolve(INSTALACAO),
     ...extra,
   };
 }
@@ -119,7 +122,11 @@ describe('iniciarPush', () => {
     expect(registro.iniciadoCom).toEqual(['os-app-1']);
     expect(r).toEqual({ iniciou: true, inscricao: 'sub-1', registrou: true, motivo: undefined });
     expect(enviados[0]?.url).toContain('/api/public/devices');
-    expect(enviados[0]?.corpo).toMatchObject({ subscriptionId: 'sub-1', platform: 'ios' });
+    expect(enviados[0]?.corpo).toMatchObject({
+      subscriptionId: 'sub-1',
+      installId: INSTALACAO,
+      platform: 'ios',
+    });
 
     vi.unstubAllGlobals();
   });
@@ -140,26 +147,57 @@ describe('iniciarPush', () => {
    * o registro assim mesmo criaria uma linha em `devices` que não corresponde
    * a aparelho nenhum — e o push dela nunca chegaria a ninguém.
    */
-  it('NÃO registra enquanto não há ID de inscrição', async () => {
+  /*
+   * Sem inscrição ainda, a abertura conta pela instalação — a inscrição chega
+   * depois, pelo `aoMudarInscricao`, e vai para o mesmo aparelho.
+   */
+  it('sem inscrição ainda, registra pela instalação', async () => {
     const { notificador } = fingirNotificador(null);
     const { buscador, enviados } = fingirRede();
     vi.stubGlobal('fetch', buscador);
 
     const r = await iniciarPush(dependencias(notificador));
 
-    expect(r.iniciou).toBe(true);
-    expect(r.registrou).toBe(false);
+    expect(r).toMatchObject({ iniciou: true, inscricao: null, registrou: true });
+    expect(enviados[0]?.corpo).toMatchObject({ installId: INSTALACAO, platform: 'ios' });
+    expect(enviados[0]?.corpo).not.toHaveProperty('subscriptionId');
+
+    vi.unstubAllGlobals();
+  });
+
+  /*
+   * Sem nenhum dos dois, não há registro: seria uma linha em `devices` que
+   * não corresponde a aparelho nenhum.
+   */
+  it('NÃO registra sem inscrição e sem instalação', async () => {
+    const { notificador } = fingirNotificador(null);
+    const { buscador, enviados } = fingirRede();
+    vi.stubGlobal('fetch', buscador);
+
+    const r = await iniciarPush(
+      dependencias(notificador, { lerInstalacao: () => Promise.resolve(null) }),
+    );
+
+    expect(r).toMatchObject({ iniciou: true, registrou: false });
     expect(enviados).toHaveLength(0);
 
     vi.unstubAllGlobals();
   });
 
-  it('não faz nada sem app do OneSignal no build', async () => {
+  /* O defeito da auditoria: sem push, o app não aparecia em número nenhum. */
+  it('sem app do OneSignal no build, não liga o push — mas a abertura conta', async () => {
     const { notificador, registro } = fingirNotificador();
+    const { buscador, enviados } = fingirRede();
+    vi.stubGlobal('fetch', buscador);
+
     const r = await iniciarPush(dependencias(notificador, { oneSignalAppId: null }));
 
-    expect(r.iniciou).toBe(false);
+    expect(r).toMatchObject({ iniciou: false, inscricao: null, registrou: true });
     expect(registro.iniciadoCom).toEqual([]);
+    expect(enviados[0]?.corpo).toMatchObject({ installId: INSTALACAO });
+    expect(enviados[0]?.corpo).not.toHaveProperty('subscriptionId');
+
+    vi.unstubAllGlobals();
   });
 
   it('inicia o SDK mesmo sem credencial da API, só não registra', async () => {
@@ -214,6 +252,53 @@ describe('iniciarPush', () => {
   });
 });
 
+describe('registrarAbertura', () => {
+  it('conta a abertura pela instalação, sem inscrição', async () => {
+    const { notificador } = fingirNotificador();
+    const { buscador, enviados } = fingirRede();
+    vi.stubGlobal('fetch', buscador);
+
+    await expect(registrarAbertura(dependencias(notificador))).resolves.toBe(true);
+    expect(enviados[0]?.corpo).toMatchObject({
+      installId: INSTALACAO,
+      platform: 'ios',
+      appVersion: '1.0.0',
+    });
+
+    vi.unstubAllGlobals();
+  });
+
+  it('sem credencial, sem instalação ou com o disco quebrado, não registra e não lança', async () => {
+    const { notificador } = fingirNotificador();
+    const { buscador, enviados } = fingirRede();
+    vi.stubGlobal('fetch', buscador);
+
+    await expect(registrarAbertura(dependencias(notificador, { credenciais: null }))).resolves.toBe(
+      false,
+    );
+    await expect(
+      registrarAbertura(dependencias(notificador, { lerInstalacao: () => Promise.resolve(null) })),
+    ).resolves.toBe(false);
+    await expect(
+      registrarAbertura(
+        dependencias(notificador, { lerInstalacao: () => Promise.reject(new Error('disco')) }),
+      ),
+    ).resolves.toBe(false);
+    expect(enviados).toHaveLength(0);
+
+    vi.unstubAllGlobals();
+  });
+
+  it('a rede fora do ar não derruba a abertura', async () => {
+    const { notificador } = fingirNotificador();
+    const { buscador } = fingirRede(503);
+    vi.stubGlobal('fetch', buscador);
+
+    await expect(registrarAbertura(dependencias(notificador))).resolves.toBe(false);
+    vi.unstubAllGlobals();
+  });
+});
+
 describe('registrarQuandoAssinar', () => {
   /*
    * Quem acaba de aceitar a notificação ganha um ID que não existia na
@@ -234,7 +319,8 @@ describe('registrarQuandoAssinar', () => {
       expect(aoRegistrar).toHaveBeenCalled();
     });
 
-    expect(enviados[0]?.corpo).toMatchObject({ subscriptionId: 'sub-nova' });
+    // A instalação vai junto: a inscrição entra no aparelho que já conta.
+    expect(enviados[0]?.corpo).toMatchObject({ subscriptionId: 'sub-nova', installId: INSTALACAO });
     vi.unstubAllGlobals();
   });
 
@@ -814,6 +900,7 @@ describe('vincularCliente', () => {
     expect(enviados[0]?.url).toContain('/api/public/devices');
     expect(enviados[0]?.corpo).toMatchObject({
       subscriptionId: 'sub-1',
+      installId: INSTALACAO,
       platform: 'ios',
       externalId: '7654321',
     });

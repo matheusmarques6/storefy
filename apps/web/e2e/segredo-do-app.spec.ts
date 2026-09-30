@@ -160,6 +160,50 @@ test('o build recebe o segredo do app, e o aparelho assinado com ele se registra
   });
   expect(recusada.status).toBeGreaterThanOrEqual(400);
 
+  /*
+   * O app sem push (ou antes de o SDK criar a inscrição) conta pela
+   * instalação: antes ele não aparecia em número nenhum (C05, C11 e C15).
+   */
+  const instalacao = '3f6c1a2e-8d4b-4c7a-9e10-5b2f8a7c6d41';
+  const semPush = JSON.stringify({ appId: app.id, installId: instalacao, platform: 'ios' });
+  const aberto = await postar(page, '/api/public/devices', semPush, {
+    'x-storefy-signature': assinatura(segredo, semPush),
+  });
+  expect(aberto.status, JSON.stringify(aberto.corpo)).toBeLessThan(300);
+
+  const { data: pelaInstalacao } = await bancoDeTeste()
+    .from('devices')
+    .select('id, onesignal_subscription_id')
+    .eq('app_id', app.id)
+    .eq('install_id', instalacao)
+    .single();
+  expect(pelaInstalacao?.onesignal_subscription_id).toBeNull();
+  const { count: dias } = await bancoDeTeste()
+    .from('device_days')
+    .select('device_id', { count: 'exact', head: true })
+    .eq('device_id', pelaInstalacao?.id ?? '');
+  expect(dias).toBe(1);
+
+  // A inscrição chega depois e vai para o MESMO aparelho: nada conta duas vezes.
+  const comPush = JSON.stringify({
+    appId: app.id,
+    installId: instalacao,
+    subscriptionId: 'inscricao-que-chegou-depois',
+    platform: 'ios',
+  });
+  const inscrito = await postar(page, '/api/public/devices', comPush, {
+    'x-storefy-signature': assinatura(segredo, comPush),
+  });
+  expect(inscrito.status, JSON.stringify(inscrito.corpo)).toBeLessThan(300);
+  const { data: aposInscricao } = await bancoDeTeste()
+    .from('devices')
+    .select('id, onesignal_subscription_id')
+    .eq('app_id', app.id)
+    .eq('install_id', instalacao);
+  expect(aposInscricao).toEqual([
+    { id: pelaInstalacao?.id, onesignal_subscription_id: 'inscricao-que-chegou-depois' },
+  ]);
+
   // O build da outra plataforma leva o MESMO segredo: os dois apps assinam igual.
   const segundo = await postar(
     page,

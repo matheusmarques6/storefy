@@ -47,6 +47,40 @@ function comAssinatura(corpo: string, segredo = SEGREDO, quando = AGORA): string
   return assinar(segredo, quando, corpo);
 }
 
+describe('o corpo do aparelho (C05, C11 e C15)', () => {
+  const INSTALACAO = '3f6c1a2e-8d4b-4c7a-9e10-5b2f8a7c6d41';
+
+  /* O app sem push conta pela instalação: antes ele não aparecia em número nenhum. */
+  it('aceita só a instalação, sem a inscrição do push', async () => {
+    const corpo = JSON.stringify({ appId: APP, installId: INSTALACAO, platform: 'android' });
+    const r = await autorizar(CorpoDoAparelho, corpo, comAssinatura(corpo), banco, AGORA);
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      expect(r.dados.installId).toBe(INSTALACAO);
+      expect(r.dados.subscriptionId).toBeUndefined();
+    }
+  });
+
+  it('aceita as duas juntas, e só a inscrição, como o app de antes', async () => {
+    for (const extra of [{ installId: INSTALACAO }, {}]) {
+      const corpo = corpoDeAparelho(extra);
+      const r = await autorizar(CorpoDoAparelho, corpo, comAssinatura(corpo), banco, AGORA);
+      expect(r.ok).toBe(true);
+    }
+  });
+
+  it('recusa o aparelho sem nenhuma das duas, e a instalação fora do formato', async () => {
+    for (const corpo of [
+      JSON.stringify({ appId: APP, platform: 'ios' }),
+      JSON.stringify({ appId: APP, platform: 'ios', installId: 'nao-e-uuid' }),
+    ]) {
+      const r = await autorizar(CorpoDoAparelho, corpo, comAssinatura(corpo), banco, AGORA);
+      expect(r.ok, corpo).toBe(false);
+      if (!r.ok) expect(r.resposta.status).toBe(400);
+    }
+  });
+});
+
 describe('autorizar', () => {
   it('aceita um corpo bem assinado', async () => {
     const corpo = corpoDeAparelho({ appVersion: '1.2.0' });

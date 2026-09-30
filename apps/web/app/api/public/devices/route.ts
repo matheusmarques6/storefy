@@ -57,7 +57,8 @@ async function decidir(requisicao: NextRequest): Promise<Resposta> {
   );
   if (!autorizacao.ok) return autorizacao.resposta;
 
-  const { appId, subscriptionId, platform, appVersion, externalId, emailHash } = autorizacao.dados;
+  const { appId, subscriptionId, installId, platform, appVersion, externalId, emailHash } =
+    autorizacao.dados;
 
   try {
     const supabase = criarClientServiceRole();
@@ -68,6 +69,8 @@ async function decidir(requisicao: NextRequest): Promise<Resposta> {
       p_app_version: appVersion,
       p_external_id: externalId,
       p_email_hash: emailHash,
+      // Com ou sem push, a instalação faz o aparelho contar nos números.
+      p_install_id: installId,
     });
 
     if (error != null) {

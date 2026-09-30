@@ -25,7 +25,13 @@ export interface Credenciais {
 }
 
 export interface DadosDoAparelho {
-  subscriptionId: string;
+  /** A inscrição do push. Ausente sem push no app, ou antes de o SDK criá-la. */
+  subscriptionId?: string;
+  /**
+   * O identificador desta instalação (`instalacao.ts`). É por ele que o
+   * aparelho conta nos números, com ou sem push.
+   */
+  installId?: string;
   platform: 'ios' | 'android';
   appVersion?: string;
   /** `customerId` da loja, quando o cliente está logado. */
