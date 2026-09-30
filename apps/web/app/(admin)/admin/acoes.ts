@@ -13,6 +13,7 @@ import {
   type ErrosDeCampo,
   type ValoresDigitados,
 } from '@/lib/validacao';
+import { log } from '@/lib/log';
 
 export interface EstadoAdmin {
   erros?: ErrosDeCampo;
@@ -53,7 +54,10 @@ export async function entrarAdmin(_anterior: EstadoAdmin, dados: FormData): Prom
  */
 export async function sairDoAdmin(): Promise<void> {
   const supabase = await criarClientServidor();
-  await supabase.auth.signOut();
+  const { error: erroAoSair } = await supabase.auth.signOut();
+  // A sessão sai deste navegador mesmo assim (o supabase-js apaga o cookie); o
+  // que falhou foi derrubá-la no servidor, e isso precisa aparecer no log.
+  if (erroAoSair != null) log.aviso('admin.saida-sem-revogar', { falha: erroAoSair });
 
   const armazem = await cookies();
   armazem.delete(COOKIE_VISITA);

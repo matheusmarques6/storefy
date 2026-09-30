@@ -207,9 +207,11 @@ test('quem perde o celular é destravado por um superadmin; o suporte não redef
   await expect(linha.getByText('Falta ativar')).toBeVisible();
   await expect(linha.getByRole('button', { name: 'Redefinir verificação' })).toHaveCount(0);
 
-  // O navegador do suporte perdeu a sessão na hora, e não quando o token vencer.
+  // O navegador do suporte perdeu a sessão na hora, e não quando o token vencer —
+  // e o login diz por que ela está ali.
   await suporte.goto('/admin/equipe');
-  await suporte.waitForURL('**/admin/entrar');
+  await suporte.waitForURL('**/admin/entrar?aviso=sessao-encerrada');
+  await expect(suporte.getByText(/Sua sessão terminou/)).toBeVisible();
 
   // Entrando de novo, a senha leva ao cadastro de um app novo.
   await suporte.getByLabel('E-mail').fill(emailSuporte);

@@ -19,6 +19,7 @@ import {
   type ErrosDeCampo,
   type ValoresDigitados,
 } from '@/lib/validacao';
+import { log } from '@/lib/log';
 
 export interface EstadoFormulario {
   erros?: ErrosDeCampo;
@@ -99,7 +100,10 @@ export async function cadastrar(
 
 export async function sair(): Promise<void> {
   const supabase = await criarClientServidor();
-  await supabase.auth.signOut();
+  const { error: erroAoSair } = await supabase.auth.signOut();
+  // A sessão sai deste navegador mesmo assim (o supabase-js apaga o cookie); o
+  // que falhou foi derrubá-la no servidor, e isso precisa aparecer no log.
+  if (erroAoSair != null) log.aviso('auth.saida-sem-revogar', { falha: erroAoSair });
 
   // Uma visita ao painel de cliente aberta não sobrevive à saída da conta: o
   // próximo a entrar neste navegador não pode herdá-la.

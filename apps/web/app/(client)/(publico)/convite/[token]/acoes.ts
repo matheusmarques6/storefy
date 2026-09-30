@@ -176,7 +176,10 @@ export async function cadastrarPeloConvite(
  */
 export async function sairParaTrocarDeConta(token: string): Promise<EstadoDoConvite> {
   const supabase = await criarClientServidor();
-  await supabase.auth.signOut();
+  const { error: erroAoSair } = await supabase.auth.signOut();
+  // A sessão sai deste navegador mesmo assim (o supabase-js apaga o cookie); o
+  // que falhou foi derrubá-la no servidor, e isso precisa aparecer no log.
+  if (erroAoSair != null) log.aviso('convite.saida-sem-revogar', { falha: erroAoSair });
 
   const armazem = await cookies();
   armazem.delete(COOKIE_VISITA);

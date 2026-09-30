@@ -49,6 +49,7 @@ const paginasAssincronas = arquivos.filter(
  */
 const SEM_CARREGAMENTO: Record<string, string> = {
   '(admin)/admin/ativar-2fa/page.tsx': 'decide por redirect, lendo só a sessão',
+  '(admin)/admin/entrar/page.tsx': 'só lê o endereço (searchParams)',
   '(admin)/admin/verificar/page.tsx': 'decide por redirect, lendo só a sessão',
   '(client)/(publico)/confirmar-email/page.tsx': 'só lê o endereço (searchParams)',
   '(client)/(publico)/entrar/page.tsx': 'só lê o endereço (searchParams)',

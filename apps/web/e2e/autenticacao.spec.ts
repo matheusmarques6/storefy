@@ -26,6 +26,15 @@ test('rota protegida manda para o login e volta depois de entrar', async ({ page
 
   // Volta para onde o usuário queria ir, não para a raiz.
   await expect(page).toHaveURL('/lojas');
+
+  // Com a busca junto: o período escolhido no Analytics volta escolhido.
+  await page.context().clearCookies();
+  await page.goto('/analytics?periodo=90');
+  await expect(page).toHaveURL(/\/entrar\?proximo=%2Fanalytics%3Fperiodo%3D90$/);
+  await page.getByLabel('E-mail').fill(email);
+  await page.getByLabel('Senha').fill(SENHA_PADRAO);
+  await page.getByRole('button', { name: 'Entrar', exact: true }).click();
+  await expect(page).toHaveURL(/\/analytics\?periodo=90$/);
 });
 
 /*

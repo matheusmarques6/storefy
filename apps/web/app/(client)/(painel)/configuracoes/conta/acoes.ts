@@ -167,7 +167,10 @@ export async function excluirMinhaConta(
   );
   if (erroTrilha != null) log.erro('conta.exclusao-sem-trilha', { falha: erroTrilha });
 
-  await supabase.auth.signOut();
+  const { error: erroAoSair } = await supabase.auth.signOut();
+  // A sessão sai deste navegador mesmo assim (o supabase-js apaga o cookie); o
+  // que falhou foi derrubá-la no servidor, e isso precisa aparecer no log.
+  if (erroAoSair != null) log.aviso('conta.saida-sem-revogar', { falha: erroAoSair });
   const armazem = await cookies();
   for (const nome of [COOKIE_ORG, COOKIE_LOJA, COOKIE_VISITA, COOKIE_LOJA_DA_VISITA]) {
     armazem.delete(nome);

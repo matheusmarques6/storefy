@@ -20,6 +20,7 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { carregarUsuario } from '@/lib/supabase/middleware';
 import { env, supabaseConfigurado } from '@/lib/env';
+import { AVISO_DA_SESSAO_ENCERRADA } from '@/lib/sessao-encerrada';
 import {
   COOKIE_LOJA_DA_VISITA,
   COOKIE_VISITA,
@@ -44,6 +45,50 @@ const PUBLICAS_CLIENTE = [
 
 /** Rotas do painel admin que não exigem login. */
 const PUBLICAS_ADMIN = ['/admin/entrar'];
+
+/**
+ * O cookie da sessão do Supabase (`sb-<projeto>-auth-token`, às vezes em
+ * pedaços `.0`, `.1`) no pedido de quem não tem sessão: ela EXISTIA e não vale
+ * mais — a pessoa saiu em outra aba, trocou a senha em outro aparelho. Quem
+ * nunca entrou, ou saiu por aqui, não tem o cookie.
+ */
+function tinhaSessao(request: NextRequest): boolean {
+  return request.cookies.getAll().some(({ name }) => /^sb-.+-auth-token(\.\d+)?$/.test(name));
+}
+
+/**
+ * Manda ao login quem chegou sem sessão.
+ *
+ * Numa AÇÃO do servidor (salvar um formulário, o rascunho do editor), a pessoa
+ * estava numa tela do painel e a sessão acabou no meio. Um redirect comum ali
+ * quebrava a tela: o navegador repetia o POST no login, recebia uma página no
+ * lugar da resposta da ação, e o React mostrava "An unexpected response was
+ * received from the server" — em inglês, com o que ela digitou perdido, e o
+ * editor dizia "sem conexão" para sempre. A ação recebe o redirect do jeito
+ * que o próprio Next manda o dele (`x-action-redirect`, sem corpo: o
+ * navegador carrega o login inteiro), e o login diz o que houve e depois volta
+ * para a tela em que ela estava — o endereço da ação É o da tela.
+ *
+ * Fora das ações, um POST sem sessão (formulário sem JavaScript) segue com
+ * 303, para o navegador não repetir o POST no login.
+ */
+function paraOLogin(request: NextRequest, login: string, proximo: string | null): NextResponse {
+  const url = request.nextUrl.clone();
+  url.pathname = login;
+  url.search = '';
+  const ehAcao = request.headers.has('next-action');
+  if (ehAcao || tinhaSessao(request)) url.searchParams.set('aviso', AVISO_DA_SESSAO_ENCERRADA);
+  if (proximo !== null && proximo !== '/') url.searchParams.set('proximo', proximo);
+
+  if (ehAcao) {
+    return new NextResponse(null, {
+      status: 200,
+      headers: { 'x-action-redirect': `${url.pathname}${url.search};replace` },
+    });
+  }
+  const leitura = request.method === 'GET' || request.method === 'HEAD';
+  return NextResponse.redirect(url, leitura ? 307 : 303);
+}
 
 function ehHost(hostname: string, configurado: string): boolean {
   return configurado !== '' && hostname === configurado;
@@ -76,9 +121,7 @@ export async function proxy(request: NextRequest) {
       : `/admin${caminho === '/' ? '' : caminho}`;
 
     if (usuario == null && !PUBLICAS_ADMIN.includes(caminhoAdmin)) {
-      const url = nextUrl.clone();
-      url.pathname = '/entrar';
-      return NextResponse.redirect(url);
+      return paraOLogin(request, '/entrar', null);
     }
 
     if (caminhoAdmin !== caminho) {
@@ -102,9 +145,7 @@ export async function proxy(request: NextRequest) {
   // ------------------------------------------- admin por caminho (Vercel)
   if (caminho.startsWith('/admin')) {
     if (usuario == null && !PUBLICAS_ADMIN.includes(caminho)) {
-      const url = nextUrl.clone();
-      url.pathname = '/admin/entrar';
-      return NextResponse.redirect(url);
+      return paraOLogin(request, '/admin/entrar', null);
     }
     return response;
   }
@@ -147,11 +188,9 @@ export async function proxy(request: NextRequest) {
   );
 
   if (usuario == null && !ehPublica) {
-    const url = nextUrl.clone();
-    url.pathname = '/entrar';
-    // Volta para onde o usuário queria ir depois do login.
-    if (caminho !== '/') url.searchParams.set('proximo', caminho);
-    return NextResponse.redirect(url);
+    // Volta para onde a pessoa queria ir depois do login, com a busca junto
+    // (`/analytics?periodo=90` volta nos 90 dias).
+    return paraOLogin(request, '/entrar', `${caminho}${nextUrl.search}`);
   }
 
   // Já logado não precisa ver a tela de login.
