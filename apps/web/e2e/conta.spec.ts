@@ -15,6 +15,7 @@ import {
   entrar,
   limparUsuariosDeTeste,
 } from './apoio';
+import { varrer } from './axe';
 
 test.skip(!SUPABASE_DISPONIVEL, MOTIVO_PULO);
 
@@ -86,6 +87,7 @@ test('o único dono sai e o administrador herda; o último a sair leva a empresa
   await dialogo.getByLabel('Sua senha').fill('senha-errada-123');
   await dialogo.getByRole('button', { name: 'Excluir para sempre' }).click();
   await expect(dialogo.getByText('Senha incorreta.')).toBeVisible();
+  await varrer(page, 'excluir a conta, com a senha errada');
   // O e-mail digitado continua lá; a senha, não.
   await expect(dialogo.getByLabel(`Para confirmar, digite ${emailDono}`)).toHaveValue(emailDono);
   await expect(dialogo.getByLabel('Sua senha')).toHaveValue('');

@@ -17,6 +17,7 @@ import {
   entrar,
   limparUsuariosDeTeste,
 } from './apoio';
+import { varrer } from './axe';
 import { pngDeCorLisa } from './imagens';
 
 test.skip(!SUPABASE_DISPONIVEL, MOTIVO_PULO);
@@ -119,6 +120,7 @@ test('o rascunho se salva sozinho, e o botão de publicar conta as mudanças', a
   await publicar.click();
   const aoPublicar = page.getByRole('alertdialog');
   await expect(aoPublicar.getByText('O que vai ao ar:')).toBeVisible();
+  await varrer(page, 'a confirmação de publicar, com o que vai ao ar');
   await expect(aoPublicar.getByText(`Cor principal: ${corOriginal} → #be123c`)).toBeVisible();
   await expect(aoPublicar.getByText('Aba “Buscar” agora se chama “Procurar”')).toBeVisible();
   await aoPublicar.getByRole('button', { name: 'Publicar agora' }).click();

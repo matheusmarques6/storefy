@@ -10,6 +10,7 @@
  */
 import { expect, test } from '@playwright/test';
 import { MOTIVO_PULO, SUPABASE_DISPONIVEL, bancoDeTeste, limparUsuariosDeTeste } from './apoio';
+import { varrer } from './axe';
 import { SEGREDO_DO_WORKFLOW, doApp, lojaComApp, postar } from './app-assinado';
 
 test.skip(!SUPABASE_DISPONIVEL, MOTIVO_PULO);
@@ -67,6 +68,7 @@ test('o lojista pareia o próprio celular pelo QR, testa só nele e o remove', a
   const codigo = (await qr.getAttribute('data-codigo')) ?? '';
   expect(codigo).toMatch(/^[A-HJ-NP-Z2-9]{8}$/);
   await expect(dialogo.getByText('Esperando o celular')).toBeVisible();
+  await varrer(page, 'o QR do celular de teste');
   await expect(dialogo.getByRole('link', { name: 'Toque aqui para abrir o app' })).toHaveAttribute(
     'href',
     `storefy-${lojaId}://celular-de-teste?codigo=${codigo}`,
@@ -129,6 +131,7 @@ test('o lojista pareia o próprio celular pelo QR, testa só nele e o remove', a
   await expect(caixa.getByRole('radio')).toHaveCount(1);
   await expect(caixa.getByText('Celular da Ana')).toBeVisible();
   await expect(caixa.getByText('Android · versão 1.0.3 · visto agora')).toBeVisible();
+  await varrer(page, 'C08 com o celular de teste');
 
   // O código é de uso único.
   const deNovo = await doApp(page, segredo, '/api/public/test-device', {

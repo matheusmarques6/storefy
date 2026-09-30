@@ -18,6 +18,7 @@ import {
   entrar,
   limparUsuariosDeTeste,
 } from './apoio';
+import { varrer } from './axe';
 
 test.skip(!SUPABASE_DISPONIVEL, MOTIVO_PULO);
 test.afterAll(limparUsuariosDeTeste);
@@ -182,6 +183,7 @@ test('a chave do webhook: gerar, receber, trocar e desativar', async ({ page }) 
   await expect(page.getByText('Chave gerada. Copie agora: ela não aparece de novo.')).toBeVisible();
   const chave = await chaveMostrada(page);
   await expect(card.getByText(`••••${chave.slice(-4)}`)).toBeVisible();
+  await varrer(page, 'C09 com a chave do webhook');
 
   const { data: gravada } = await bancoDeTeste()
     .from('automation_webhooks')

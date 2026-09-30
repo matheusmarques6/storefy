@@ -17,6 +17,7 @@ import {
   entrar,
   limparUsuariosDeTeste,
 } from './apoio';
+import { varrer } from './axe';
 
 test.skip(!SUPABASE_DISPONIVEL, MOTIVO_PULO);
 
@@ -66,6 +67,7 @@ test('o lojista liga o Face ID, publica, e a ficha e a política passam a contar
   // Sem push configurado, nada de prometer notificação ao revisor.
   expect(texto).not.toMatch(/notification/i);
   await expect(notas.getByText(`${String(texto.length)}/4000`)).toBeVisible();
+  await varrer(page, 'C12 com as notas de revisão');
 
   // A política pública conta o Face ID, e que a biometria não sai do celular.
   await page.goto(`/privacy/${lojaId}`);

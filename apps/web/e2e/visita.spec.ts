@@ -18,6 +18,7 @@ import {
   limparUsuariosDeTeste,
   tornarPlatformAdmin,
 } from './apoio';
+import { varrer } from './axe';
 
 test.skip(!SUPABASE_DISPONIVEL, MOTIVO_PULO);
 test.afterAll(limparUsuariosDeTeste);
@@ -103,6 +104,7 @@ test('a equipe lê o painel do cliente, não escreve nada, e tudo fica na audito
   // A tela não oferece escrita.
   await admin.goto('/push');
   await expect(admin.getByRole('heading', { name: 'Notificações', exact: true })).toBeVisible();
+  await varrer(admin, 'C07 em visita, com a faixa da visita');
   await expect(admin.getByRole('link', { name: 'Nova campanha' })).toHaveCount(0);
 
   /*

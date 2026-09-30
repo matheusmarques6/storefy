@@ -18,6 +18,7 @@ import {
   entrar,
   limparUsuariosDeTeste,
 } from './apoio';
+import { varrer } from './axe';
 import { pngDeCorLisa } from './imagens';
 
 test.skip(!SUPABASE_DISPONIVEL, MOTIVO_PULO);
@@ -195,6 +196,7 @@ test('enviar agora pede confirmação, e "Voltar" não envia nada', async ({ pag
   await expect(dialogo).toContainText('Enviar agora para todos?');
   // Sem as chaves da loja, a confirmação diz a verdade: fica na fila.
   await expect(dialogo).toContainText('ainda não estão ligadas');
+  await varrer(page, 'a confirmação de enviar para todos');
 
   await dialogo.getByRole('button', { name: 'Voltar' }).click();
   await expect(dialogo).toHaveCount(0);

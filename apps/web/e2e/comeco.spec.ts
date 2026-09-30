@@ -18,6 +18,7 @@ import {
   limparUsuariosDeTeste,
   tornarPlatformAdmin,
 } from './apoio';
+import { varrer } from './axe';
 
 test.skip(!SUPABASE_DISPONIVEL, MOTIVO_PULO);
 
@@ -102,6 +103,7 @@ test('cadastro, visual rápido, o app no celular e o checklist até o app ir ao 
   ).toBeVisible();
   await page.getByRole('button', { name: 'Gerar código' }).click();
   await expect(page.getByRole('img', { name: 'Código QR da prévia' })).toBeVisible();
+  await varrer(page, 'C04 com o QR da prévia');
 
   // O checklist com o estado de verdade: só o cadastro feito.
   await expect(page.getByText('1 de 7 passos feitos.', { exact: false })).toBeVisible();
@@ -113,6 +115,7 @@ test('cadastro, visual rápido, o app no celular e o checklist até o app ir ao 
   const primeiros = page.getByRole('region', { name: 'Primeiros passos de Loja do Começo' });
   await expect(primeiros.getByText('1 de 7')).toBeVisible();
   await expect(primeiros.getByRole('link', { name: 'Publicar no editor' })).toBeVisible();
+  await varrer(page, 'o início com os primeiros passos');
 
   // Pular não grava nada: a segunda loja segue com o rascunho de nascença.
   const outraId = await criarLojaPelaTela(page, 'Loja Pulada', 'loja-pulada.com.br');
