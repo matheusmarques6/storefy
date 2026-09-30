@@ -1085,7 +1085,7 @@ select tests.ok('segredo',
       join pg_class c on c.oid = a.attrelid
       join pg_namespace n on n.oid = c.relnamespace
      where n.nspname = 'public' and c.relkind = 'r'
-       and c.relname in ('stores', 'developer_accounts')
+       and c.relname = 'stores'
        and a.attnum > 0 and not a.attisdropped
        and a.attname not like '%\_enc'
        -- Só o servidor grava: quem conecta é a rota, com a resposta da Shopify.
@@ -1101,6 +1101,19 @@ select tests.ok('segredo',
             and has_column_privilege('authenticated', c.oid, a.attnum, 'update'))
   ),
   'e toda coluna que NÃO é segredo continua gravável pelo painel');
+
+-- As contas Apple e Google são o contrário (migration 65): o painel conecta e
+-- desconecta pelo servidor, que confere a chave antes de gravar, e
+-- "verificada" é a palavra da Storefy. Pela sessão, nenhuma coluna se escreve.
+select tests.ok('segredo',
+  not exists (
+    select 1 from pg_attribute a
+     where a.attrelid = 'public.developer_accounts'::regclass
+       and a.attnum > 0 and not a.attisdropped
+       and (has_column_privilege('authenticated', a.attrelid, a.attnum, 'insert')
+         or has_column_privilege('authenticated', a.attrelid, a.attnum, 'update'))
+  ),
+  'nas contas Apple e Google, a sessão não grava coluna nenhuma');
 
 -- `apps` é o contrário (migration 51): o app nasce com a loja, e o que ele tem
 -- — identificador, nome, projeto do Expo, app do OneSignal, vínculo dos links —
@@ -8378,6 +8391,146 @@ select tests.ok('A10 tema',
   'e não muda o tema dela');
 
 update public.stores set shopify_theme = null where id = (select loja_a from tests.lojas);
+select tests.logout();
+
+-- ============================== grupo: as colunas que só o servidor grava (migration 65)
+--
+-- A campanha nasce pela sessão do lojista, mas o que diz como ela foi — o
+-- envio, os números, quando saiu, quem criou — é do servidor. Um número
+-- estranho ali parava a conta de TODAS as lojas; um status inventado passava
+-- por cima da cobrança; "verificada" numa conta Apple é a Storefy quem diz.
+
+reset role;
+select tests.logout();
+
+insert into auth.users (email, raw_user_meta_data, email_confirmed_at) values
+  ('col-dono@teste.local', '{"company_name":"Colunas Dono"}'::jsonb, now());
+
+drop table if exists tests.col;
+create table tests.col as
+select
+  (select id from auth.users where email = 'col-dono@teste.local') as u_dono,
+  (select m.org_id from public.memberships m
+     join auth.users u on u.id = m.user_id where u.email = 'col-dono@teste.local') as org_dono;
+
+insert into public.stores (org_id, name, primary_url)
+select org_dono, 'Loja Colunas', 'https://loja-colunas.com.br' from tests.col;
+
+alter table tests.col add column app uuid, add column fuso text;
+update tests.col set
+  app = (select a.id from public.apps a join public.stores s on s.id = a.store_id
+          where s.name = 'Loja Colunas'),
+  fuso = (select coalesce(s.timezone, 'UTC') from public.stores s where s.name = 'Loja Colunas');
+grant select on tests.col to anon, authenticated, service_role;
+
+insert into public.developer_accounts (org_id, platform, status)
+select org_dono, 'apple', 'pending' from tests.col;
+
+select tests.login('col-dono@teste.local');
+set role authenticated;
+
+select tests.ok('colunas do servidor',
+  tests.permitido($q$insert into public.push_campaigns (app_id, title, body)
+    select app, 'Rascunho', 'Do painel' from tests.col$q$)
+  and tests.contar($q$select count(*) from public.push_campaigns
+    where title = 'Rascunho' and created_by = (select u_dono from tests.col)$q$) = 1,
+  'o dono cria o rascunho, como o painel faz, e ele fica com o nome de quem criou');
+
+select tests.ok('colunas do servidor',
+  tests.bloqueado($q$insert into public.push_campaigns (app_id, title, body, status)
+    select app, 'Direto no envio', 'Pula a cobrança', 'sending' from tests.col$q$)
+  and tests.bloqueado($q$insert into public.push_campaigns (app_id, title, body, status)
+    select app, 'Já enviada', 'Pula a cobrança', 'sent' from tests.col$q$),
+  'mas NÃO cria a campanha já "enviando" ou "enviada" (a fila a mandaria sem passar pela cobrança)');
+
+select tests.ok('colunas do servidor',
+  tests.erro($q$insert into public.push_campaigns (app_id, title, body, stats, sent_at)
+    select app, 'Com números', 'Inventados', '{"enviados":"x"}'::jsonb, now() from tests.col$q$)
+  and tests.erro($q$insert into public.push_campaigns (app_id, title, body, created_by)
+    select app, 'Em nome de outro', 'Autor inventado', (select u_a_owner from tests.ids) from tests.col$q$),
+  'nem nasce com números, data de envio ou outro autor');
+
+select tests.ok('colunas do servidor',
+  tests.erro($q$update public.push_campaigns set stats = '{"enviados":"x"}'::jsonb
+    where title = 'Rascunho'$q$)
+  and tests.erro($q$update public.push_campaigns set sent_at = now() where title = 'Rascunho'$q$)
+  and tests.erro($q$update public.push_campaigns set onesignal_notification_id = 'x'
+    where title = 'Rascunho'$q$)
+  and tests.erro($q$update public.push_campaigns set created_by = null where title = 'Rascunho'$q$),
+  'nem muda depois os números, a data de envio, o envio na OneSignal ou quem criou');
+
+select tests.ok('colunas do servidor',
+  tests.permitido($q$update public.push_campaigns set title = 'Rascunho editado', body = 'Texto novo'
+    where title = 'Rascunho'$q$)
+  and tests.permitido($q$update public.push_campaigns set status = 'canceled'
+    where title = 'Rascunho editado'$q$),
+  'editar o texto e cancelar continuam como o painel faz');
+
+-- O `upsert` do painel regrava a chave no ON CONFLICT: as duas vezes passam.
+select tests.ok('colunas do servidor',
+  tests.permitido($q$insert into public.push_automations (app_id, type, enabled, delay_minutes, title, body)
+    select app, 'welcome', false, 0, 'Oi', 'Bem-vindo' from tests.col
+    on conflict (app_id, type) do update set app_id = excluded.app_id, type = excluded.type,
+      enabled = excluded.enabled, delay_minutes = excluded.delay_minutes,
+      title = excluded.title, body = excluded.body$q$)
+  and tests.permitido($q$insert into public.push_automations (app_id, type, enabled, delay_minutes, title, body)
+    select app, 'welcome', true, 0, 'Oi de novo', 'Bem-vindo' from tests.col
+    on conflict (app_id, type) do update set app_id = excluded.app_id, type = excluded.type,
+      enabled = excluded.enabled, delay_minutes = excluded.delay_minutes,
+      title = excluded.title, body = excluded.body$q$),
+  'a automação nasce e é regravada pelo upsert do painel');
+
+select tests.ok('colunas do servidor',
+  tests.erro($q$update public.push_automations set stats = '{"x":1}'::jsonb
+    where app_id = (select app from tests.col)$q$),
+  'mas os números da automação são do servidor');
+
+select tests.ok('colunas do servidor',
+  tests.erro($q$update public.developer_accounts set status = 'verified', verified_at = now()$q$)
+  and tests.erro($q$insert into public.developer_accounts (org_id, platform, status)
+    select org_dono, 'google', 'verified' from tests.col$q$)
+  and tests.contar($q$select count(*) from public.developer_accounts where status = 'pending'$q$) = 1,
+  'o dono lê a conta Apple, mas NÃO se declara verificado: quem diz é a Storefy');
+
+reset role;
+select tests.logout();
+
+-- O que já estiver gravado (de antes da trava) não pode parar a conta de
+-- ninguém: número que não é número, número gigante e rascunho com data.
+insert into public.push_campaigns (app_id, title, body, status, sent_at, stats)
+select app, 'Enviada certa', 'Da OneSignal', 'sent', now(),
+       '{"enviados": 40, "abertos": 7}'::jsonb from tests.col;
+insert into public.push_campaigns (app_id, title, body, status, sent_at, stats)
+select app, 'Enviada estranha', 'Fora do formato', 'sent', now(),
+       '{"enviados": "x", "abertos": "99999999999999999999", "entregues": "99999999999999999999"}'::jsonb
+  from tests.col;
+insert into public.push_campaigns (app_id, title, body, status, sent_at, stats)
+select app, 'Rascunho com data', 'Nunca saiu', 'draft', now(), '{"enviados": 1000}'::jsonb
+  from tests.col;
+
+set role service_role;
+
+select tests.ok('colunas do servidor',
+  tests.permitido('select public.consolidar_analytics(2)'),
+  'a consolidação dos números passa por cima do valor estranho');
+
+select tests.ok('colunas do servidor',
+  tests.contar($q$select d.push_sent from public.analytics_daily d, tests.col c
+    where d.app_id = c.app and d.day = (now() at time zone c.fuso)::date$q$) = 40
+  and tests.contar($q$select d.push_opened from public.analytics_daily d, tests.col c
+    where d.app_id = c.app and d.day = (now() at time zone c.fuso)::date$q$) = 7,
+  'e conta só o que a campanha enviada tem de número (o rascunho com data não entra)');
+
+reset role;
+
+select tests.login('equipe@teste.local');
+set role authenticated;
+
+select tests.ok('colunas do servidor',
+  tests.permitido('select * from public.push_do_admin(30)'),
+  'o push global da equipe (A08) não estoura com o número gigante');
+
+reset role;
 select tests.logout();
 
 -- ============================== grupo: varredura de segurança (Fase 8)

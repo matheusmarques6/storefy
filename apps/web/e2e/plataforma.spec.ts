@@ -305,7 +305,20 @@ test('C13: o vídeo do passo a passo, gravado na A13, aparece no cartão da cont
   // Sem o vídeo, o cartão fica só com os passos escritos — e não um player vazio.
   await videoDaApple.fill('');
   await salvar.click();
-  await expect(equipe.getByText('Chaves salvas.')).toBeVisible();
+  /*
+   * O "Chaves salvas." do envio anterior continua na tela enquanto este
+   * grava: esperar por ele não espera nada. Quem diz que gravou é o banco.
+   */
+  await expect
+    .poll(async () => {
+      const { data } = await bancoDeTeste()
+        .from('platform_settings')
+        .select('valor')
+        .eq('chave', 'video_da_apple')
+        .maybeSingle();
+      return data?.valor;
+    })
+    .toBe('');
   await lojista.reload();
   await expect(lojista.getByTitle('Vídeo: como conectar a conta Apple')).toHaveCount(0);
   await expect(lojista.getByText('Usuários e Acesso', { exact: false })).toBeVisible();
