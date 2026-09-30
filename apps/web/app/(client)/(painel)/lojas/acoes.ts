@@ -310,7 +310,7 @@ export async function excluirLoja(lojaId: string): Promise<void> {
   if (erroDasImagens != null) {
     log.erro('loja-excluida.imagens-nao-apagadas', {
       loja: lojaId,
-      motivo: erroDasImagens.message,
+      falha: erroDasImagens,
     });
   }
 

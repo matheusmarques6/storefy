@@ -60,7 +60,9 @@ export async function garantirRascunho(
     .eq('id', storeId)
     .maybeSingle();
 
-  if (erroLoja != null) return { ok: false, motivo: erroLoja.message };
+  if (erroLoja != null) {
+    return { ok: false, motivo: mensagemDaFalha('configs', erroLoja, FALHA_GENERICA) };
+  }
   if (loja == null) return { ok: false, motivo: 'Loja não encontrada.' };
 
   const { data: app, error: erroApp } = await supabase
@@ -69,7 +71,9 @@ export async function garantirRascunho(
     .eq('store_id', storeId)
     .maybeSingle();
 
-  if (erroApp != null) return { ok: false, motivo: erroApp.message };
+  if (erroApp != null) {
+    return { ok: false, motivo: mensagemDaFalha('configs', erroApp, FALHA_GENERICA) };
+  }
   if (app == null) {
     // O trigger `on_store_created` cria o app junto com a loja; chegar aqui
     // sem ele significa que a loja foi criada por fora do fluxo normal.

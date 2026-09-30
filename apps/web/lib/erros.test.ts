@@ -113,8 +113,8 @@ describe('nenhuma tela mostra a mensagem crua de uma falha', () => {
     const suspeitos = [
       // mensagem: `Não foi possível salvar: ${error.message}`
       /(mensagem|motivo)\s*:\s*`[^`]*\$\{\s*\w+\.message\s*\}/,
-      // motivo: error.message
-      /(mensagem|motivo)\s*:\s*(error|erro|falha)\.message\b/,
+      // motivo: error.message — e erroDaLoja.message, falhaDoBanco.message…
+      /(mensagem|motivo)\s*:\s*(error|erro|falha)\w*\.message\b/,
       // return mensagem !== '' ? mensagem : '…'
       /mensagem\s*!==\s*''\s*\?\s*mensagem/,
     ];
