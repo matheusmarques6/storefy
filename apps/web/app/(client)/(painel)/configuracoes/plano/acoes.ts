@@ -21,21 +21,19 @@ import {
   cobrancaConfigurada,
   criarAssinatura,
   criarCliente,
-  faturasDaAssinatura,
   mudarValorDaAssinatura,
 } from '@/lib/asaas';
 import {
   assinaturaSchema,
-  centavosDaAsaas,
   finalDoDocumento,
   formatarDia,
   normalizarDocumento,
   primeiroVencimento,
   quemPagaSchema,
-  situacaoDaFatura,
   tipoDoDocumento,
 } from '@/lib/cobranca';
 import { cancelarAssinaturaDaEmpresa, lerSituacaoDaCobranca } from '@/lib/cobranca-servidor';
+import { conferirFaturas } from '@/lib/conferencia-das-faturas';
 import { FALHA_GENERICA, mensagemDaFalha } from '@/lib/erros';
 import {
   extrairErros,
@@ -89,29 +87,12 @@ async function recusaDoLimite(orgId: string): Promise<string | null> {
  * assinar quer o link para pagar agora. O aviso, quando chegar, só confirma.
  */
 async function gravarFaturasDaAssinatura(assinatura: string): Promise<string | undefined> {
-  const faturas = await faturasDaAssinatura(assinatura);
-  if (!faturas.ok) return undefined;
-
-  const servico = criarClientServiceRole();
-  let link: string | undefined;
-  for (const fatura of faturas.dados) {
-    const situacao = situacaoDaFatura(fatura.status);
-    if (situacao === null) continue;
-    const { error } = await servico.rpc('registrar_fatura', {
-      p_provider: 'asaas',
-      p_fatura: fatura.id,
-      p_assinatura: assinatura,
-      p_valor_centavos: centavosDaAsaas(fatura.value),
-      p_status: situacao,
-      p_vencimento: fatura.dueDate,
-      ...(fatura.invoiceUrl === null ? {} : { p_link: fatura.invoiceUrl }),
-    });
-    if (error != null) {
-      log.erro('cobranca.fatura-nao-gravada', { fatura: fatura.id, falha: error });
-    }
-    if (situacao === 'pending' && fatura.invoiceUrl !== null) link ??= fatura.invoiceUrl;
-  }
-  return link;
+  const conferencia = await conferirFaturas(criarClientServiceRole(), assinatura);
+  if (!conferencia.ok) return undefined;
+  return (
+    conferencia.faturas.find((fatura) => fatura.situacao === 'pending' && fatura.link !== null)
+      ?.link ?? undefined
+  );
 }
 
 export async function assinarPlano(
@@ -408,4 +389,81 @@ export async function atualizarQuemPaga(
 
   revalidatePath('/configuracoes/plano');
   return { ok: true, mensagem: 'Dados de cobrança atualizados.', valores: {} };
+}
+
+/** Conferências por empresa, por hora: cada uma fala com a Asaas. */
+const CONFERENCIAS_POR_HORA = 6;
+
+export interface EstadoDaConferencia {
+  ok?: boolean;
+  /** A Asaas confirmou um pagamento que estava em aberto aqui. */
+  pago?: boolean;
+  mensagem: string;
+}
+
+/**
+ * "Já paguei": as faturas conferidas direto na Asaas, sem esperar o aviso.
+ *
+ * O Pix cai em minutos, mas o aviso da Asaas às vezes não chega — e quem pagou
+ * não pode ficar travado esperando por ele. Proprietário e administrador, os
+ * que veem a cobrança; na visita ao painel, nada.
+ */
+export async function conferirPagamento(): Promise<EstadoDaConferencia> {
+  const { organizacao, papel, visita } = await exigirContextoCliente();
+  if (visita != null) return { mensagem: NA_VISITA };
+  if (papel !== 'owner' && papel !== 'admin') {
+    return { mensagem: 'Só o proprietário ou um administrador confere o pagamento.' };
+  }
+  if (!cobrancaConfigurada()) {
+    return {
+      mensagem: 'A cobrança pelo painel ainda não está ligada. Fale com a equipe pela Ajuda.',
+    };
+  }
+
+  const servico = criarClientServiceRole();
+  const { data: cabe, error: erroDoLimite } = await servico.rpc('consumir_limite', {
+    p_chave: `conferencia:${organizacao.id}`,
+    p_maximo: CONFERENCIAS_POR_HORA,
+    p_janela_segundos: 3600,
+  });
+  if (erroDoLimite != null) {
+    return { mensagem: mensagemDaFalha('cobranca', erroDoLimite, FALHA_GENERICA) };
+  }
+  if (!cabe)
+    return { mensagem: 'Você já conferiu várias vezes nesta hora. Espere alguns minutos.' };
+
+  const { data: assinatura, error } = await servico
+    .from('subscriptions')
+    .select('external_id')
+    .eq('org_id', organizacao.id)
+    .eq('provider', 'asaas')
+    .maybeSingle();
+  if (error != null) return { mensagem: mensagemDaFalha('cobranca', error, FALHA_GENERICA) };
+  if (assinatura == null) return { mensagem: 'A empresa ainda não tem assinatura para conferir.' };
+
+  const conferencia = await conferirFaturas(servico, assinatura.external_id);
+  if (!conferencia.ok) return { mensagem: conferencia.motivo };
+
+  revalidatePath('/configuracoes/plano');
+  // A faixa de cobrança atrasada aparece em todo o painel.
+  revalidatePath('/', 'layout');
+
+  if (conferencia.naoGravadas > 0) {
+    return {
+      mensagem:
+        'A Asaas respondeu, mas não conseguimos atualizar tudo. Tente de novo em instantes.',
+    };
+  }
+  if (conferencia.pagasAgora > 0) {
+    return { ok: true, pago: true, mensagem: 'Pagamento confirmado pela Asaas. Obrigado!' };
+  }
+  const emAberto = conferencia.faturas.some(
+    (fatura) => fatura.situacao === 'pending' || fatura.situacao === 'overdue',
+  );
+  return {
+    ok: true,
+    mensagem: emAberto
+      ? 'A Asaas ainda não recebeu o pagamento. O Pix costuma cair em minutos; o boleto, em até 3 dias úteis.'
+      : 'Tudo certo: as faturas estão em dia com a Asaas.',
+  };
 }

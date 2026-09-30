@@ -12,11 +12,12 @@
  *
  * Função pura: a página só busca os dados, e o teste prova as fronteiras.
  */
+import type { NomeDoJob } from '@/lib/jobs';
 
 export type EstadoDoComponente = 'operacional' | 'instavel' | 'parado' | 'aguardando';
 
 export interface JobDoStatus {
-  job: 'dispatch-push' | 'push-stats' | 'review-status' | 'analytics' | 'inactive-devices';
+  job: NomeDoJob;
   nome: string;
   descricao: string;
   /** De quanto em quanto tempo o cron chama, em minutos (`vercel.json`). */
@@ -53,6 +54,12 @@ export const JOBS_DO_STATUS: readonly JobDoStatus[] = [
     job: 'review-status',
     nome: 'Acompanhamento da revisão',
     descricao: 'A aprovação do app na App Store e na Play Store.',
+    intervaloMin: 60,
+  },
+  {
+    job: 'invoice-sync',
+    nome: 'Conferência das faturas',
+    descricao: 'Os pagamentos conferidos direto com a Asaas.',
     intervaloMin: 60,
   },
 ];

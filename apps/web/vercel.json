@@ -20,6 +20,10 @@
     {
       "path": "/api/jobs/inactive-devices",
       "schedule": "41 * * * *"
+    },
+    {
+      "path": "/api/jobs/invoice-sync",
+      "schedule": "53 * * * *"
     }
   ]
 }

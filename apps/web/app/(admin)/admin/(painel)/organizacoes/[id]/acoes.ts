@@ -20,6 +20,8 @@ import { FALHA_GENERICA, mensagemDaFalha } from '@/lib/erros';
 import { log } from '@/lib/log';
 import { criarClientServiceRole } from '@/lib/supabase/admin';
 import { conferirNota } from '@/lib/notas-internas';
+import { cobrancaConfigurada } from '@/lib/asaas';
+import { conferirFaturas } from '@/lib/conferencia-das-faturas';
 import { DURACAO_DA_VISITA_MS, conferirMotivo, criarToken } from '@/lib/visita';
 import { urlDoSite } from '@/lib/env';
 import type { ValoresDigitados } from '@/lib/validacao';
@@ -232,4 +234,73 @@ export async function estenderTeste(
 
   revalidatePath(`/admin/organizacoes/${orgId}`);
   return { ok: true, mensagem: `Teste estendido até ${formatarDia(ate)}.`, valores: {} };
+}
+
+export interface EstadoDaConferenciaNaAsaas {
+  ok?: boolean;
+  mensagem: string;
+}
+
+/**
+ * As faturas do cliente conferidas direto na Asaas (A04): é o que o suporte
+ * faz ao telefone com quem pagou e continua travado, porque o aviso da Asaas
+ * não chegou. Qualquer pessoa da equipe; fica na trilha, com quem pediu e o
+ * que mudou.
+ */
+export async function conferirCobrancaNaAsaas(orgId: string): Promise<EstadoDaConferenciaNaAsaas> {
+  const usuario = await exigirPlatformAdmin();
+  if (!cobrancaConfigurada()) {
+    return { mensagem: 'A cobrança não está configurada: falta a chave da Asaas (veja a A13).' };
+  }
+
+  const servico = criarClientServiceRole({ ator: usuario.id });
+  const { data: assinatura, error } = await servico
+    .from('subscriptions')
+    .select('external_id')
+    .eq('org_id', orgId)
+    .eq('provider', 'asaas')
+    .maybeSingle();
+  if (error != null) return { mensagem: mensagemDaFalha('cobranca', error, FALHA_GENERICA) };
+  if (assinatura == null) return { mensagem: 'Este cliente não tem assinatura na Asaas.' };
+
+  const conferencia = await conferirFaturas(servico, assinatura.external_id);
+  if (!conferencia.ok) return { mensagem: conferencia.motivo };
+
+  const { error: erroDaTrilha } = await servico.from('audit_logs').insert({
+    actor_id: usuario.id,
+    org_id: orgId,
+    action: 'update',
+    entity: 'invoices',
+    entity_id: null,
+    diff: {
+      conferencia_na_asaas: {
+        de: null,
+        para: { faturas: conferencia.faturas.length, pagas_agora: conferencia.pagasAgora },
+      },
+    },
+  });
+  // A conferência já foi feita; a trilha que faltar precisa chegar à equipe.
+  if (erroDaTrilha != null) {
+    log.erro('admin-cobranca.conferencia-sem-auditoria', { org: orgId, falha: erroDaTrilha });
+  }
+
+  revalidatePath(`/admin/organizacoes/${orgId}`);
+  if (conferencia.naoGravadas > 0) {
+    return {
+      mensagem: `A Asaas respondeu, mas ${String(conferencia.naoGravadas)} ${
+        conferencia.naoGravadas === 1 ? 'fatura não foi gravada' : 'faturas não foram gravadas'
+      }. Tente de novo em instantes.`,
+    };
+  }
+  return {
+    ok: true,
+    mensagem:
+      conferencia.pagasAgora > 0
+        ? `Conferido: ${String(conferencia.pagasAgora)} ${
+            conferencia.pagasAgora === 1
+              ? 'pagamento que não tinha chegado'
+              : 'pagamentos que não tinham chegado'
+          } pelo aviso.`
+        : 'Conferido com a Asaas. As faturas abaixo já estão atualizadas.',
+  };
 }

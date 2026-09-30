@@ -26,6 +26,7 @@ import {
 import { NavegacaoConfiguracoes } from '../navegacao-configuracoes';
 import { EscolherPlano } from './escolher-plano';
 import { CancelarAssinatura } from './cancelar-assinatura';
+import { ConferirPagamento } from './conferir-pagamento';
 import { AlterarQuemPaga } from './quem-paga';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
@@ -134,6 +135,13 @@ export default async function PaginaPlano() {
                   <ExternalLink aria-hidden />
                 </a>
               </Button>
+            )}
+            {/*
+              Quem pagou não espera o aviso da Asaas: confere na hora. Só com
+              fatura em aberto — é ela que pode estar paga lá e não aqui.
+            */}
+            {aberta === undefined || !veCobranca || visita != null || !cobrancaLigada ? null : (
+              <ConferirPagamento />
             )}
             {assinaturaViva && podeMexer ? (
               <CancelarAssinatura

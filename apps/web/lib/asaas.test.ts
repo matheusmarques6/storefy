@@ -6,6 +6,7 @@ import {
   configuracaoDaAsaas,
   criarAssinatura,
   criarCliente,
+  faturaDaAsaas,
   faturasDaAssinatura,
   motivoDaRecusa,
   mudarValorDaAssinatura,
@@ -156,7 +157,7 @@ describe('o que vai para a Asaas', () => {
   });
 
   it('as faturas vêm da lista da assinatura, e linha torta fica de fora', async () => {
-    const { buscador } = asaasQueResponde(200, {
+    const { pedidos, buscador } = asaasQueResponde(200, {
       data: [
         {
           id: 'pay_1',
@@ -169,6 +170,8 @@ describe('o que vai para a Asaas', () => {
       ],
     });
     const resposta = await faturasDaAssinatura('sub_9', buscador);
+    // A página inteira (100, o máximo): a padrão, de 10, esconderia as novas.
+    expect(pedidos[0]?.url).toBe(`${URL_DA_ASAAS}/subscriptions/sub_9/payments?limit=100`);
     expect(resposta.ok && resposta.dados).toEqual([
       {
         id: 'pay_1',
@@ -178,8 +181,42 @@ describe('o que vai para a Asaas', () => {
         invoiceUrl: 'https://x/i/1',
         clientPaymentDate: null,
         paymentDate: null,
+        deleted: false,
       },
     ]);
+  });
+
+  /*
+   * A fatura aberta que a lista não trouxe (removida, ou numa página que não
+   * foi lida) é lida pelo id. 404 é "não existe mais", e não uma falha: é o
+   * que fecha a fatura cujo aviso de remoção se perdeu.
+   */
+  it('uma fatura pelo id; a que a Asaas não tem mais volta vazia, e não como falha', async () => {
+    const achou = asaasQueResponde(200, {
+      id: 'pay_7',
+      value: 49,
+      status: 'RECEIVED',
+      dueDate: '2026-09-13',
+      paymentDate: '2026-09-15',
+      deleted: false,
+    });
+    const lida = await faturaDaAsaas('pay_7', achou.buscador);
+    expect(achou.pedidos[0]?.url).toBe(`${URL_DA_ASAAS}/payments/pay_7`);
+    expect(lida.ok && lida.dados).toMatchObject({
+      id: 'pay_7',
+      status: 'RECEIVED',
+      paymentDate: '2026-09-15',
+      deleted: false,
+    });
+
+    const sumiu = asaasQueResponde(404, { errors: [{ code: 'not_found', description: 'x' }] });
+    expect(await faturaDaAsaas('pay_7', sumiu.buscador)).toEqual({ ok: true, dados: null });
+
+    const caiu = asaasQueResponde(503, null);
+    expect((await faturaDaAsaas('pay_7', caiu.buscador)).ok).toBe(false);
+
+    const torta = asaasQueResponde(200, { id: 'pay_7' });
+    expect((await faturaDaAsaas('pay_7', torta.buscador)).ok).toBe(false);
   });
 
   it('sem chave, nada sai para a rede', async () => {

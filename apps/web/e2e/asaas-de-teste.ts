@@ -28,6 +28,8 @@ export interface Pagamento {
   dueDate: string;
   invoiceUrl: string;
   deleted: boolean;
+  /** Quando o cliente pagou: a Asaas só manda nas cobranças recebidas. */
+  clientPaymentDate?: string;
 }
 
 interface Assinatura {
@@ -91,7 +93,8 @@ export class AsaasDeTeste {
     for await (const parte of pedido) partes.push(parte as Buffer);
     const texto = Buffer.concat(partes).toString('utf8');
     const corpo = texto === '' ? null : (JSON.parse(texto) as Record<string, unknown>);
-    const caminho = (pedido.url ?? '').replace(/^\/v3/, '');
+    // Sem a query (`?limit=100`): as rotas casam pelo caminho, como na Asaas.
+    const caminho = (pedido.url ?? '').replace(/^\/v3/, '').replace(/\?.*$/, '');
     const metodo = pedido.method ?? 'GET';
     const chave = pedido.headers.access_token;
     this.pedidos.push({
@@ -194,6 +197,20 @@ export class AsaasDeTeste {
     if (metodo === 'GET' && lista !== null) {
       const dados = this.pagamentos.filter((p) => p.subscription === lista[1] && !p.deleted);
       responder(200, { object: 'list', hasMore: false, totalCount: dados.length, data: dados });
+      return;
+    }
+
+    // Uma cobrança pelo id: a removida volta marcada, como na Asaas.
+    const umPagamento = /^\/payments\/([^/]+)$/.exec(caminho);
+    if (metodo === 'GET' && umPagamento !== null) {
+      const pagamento = this.pagamentos.find((p) => p.id === umPagamento[1]);
+      if (pagamento === undefined) {
+        responder(404, {
+          errors: [{ code: 'not_found', description: 'Cobrança não encontrada.' }],
+        });
+        return;
+      }
+      responder(200, { object: 'payment', ...pagamento });
       return;
     }
 

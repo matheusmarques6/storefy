@@ -14,6 +14,8 @@ import { criarClientServidor } from '@/lib/supabase/server';
 import { descreverDocumento, formatarDia, formatarPreco, somarDias } from '@/lib/cobranca';
 import { lerSituacaoDaCobranca, lerUsoDaEmpresa } from '@/lib/cobranca-servidor';
 import { FUSO_PADRAO, formatarDataHora } from '@/lib/fuso';
+import { cobrancaConfigurada } from '@/lib/asaas';
+import { ConferirNaAsaas } from './conferir-na-asaas';
 import { EstenderTeste } from './estender-teste';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -38,7 +40,7 @@ export async function CobrancaDaOrganizacao({
   papel: PlatformAdminRole;
 }) {
   const supabase = await criarClientServidor();
-  const [situacao, uso, faturas, quemPaga, avisos] = await Promise.all([
+  const [situacao, uso, faturas, quemPaga, avisos, assinatura] = await Promise.all([
     lerSituacaoDaCobranca(supabase, orgId),
     lerUsoDaEmpresa(supabase, orgId),
     supabase
@@ -58,12 +60,21 @@ export async function CobrancaDaOrganizacao({
       .eq('org_id', orgId)
       .order('recebido_em', { ascending: false })
       .limit(5),
+    supabase
+      .from('subscriptions')
+      .select('conferida_em')
+      .eq('org_id', orgId)
+      .eq('provider', 'asaas')
+      .maybeSingle(),
   ]);
   if (faturas.error != null) {
     throw new Error(`Não foi possível carregar as faturas: ${faturas.error.message}`);
   }
   if (avisos.error != null) {
     throw new Error(`Não foi possível carregar os avisos da Asaas: ${avisos.error.message}`);
+  }
+  if (assinatura.error != null) {
+    throw new Error(`Não foi possível carregar a assinatura: ${assinatura.error.message}`);
   }
 
   return (
@@ -211,6 +222,22 @@ export async function CobrancaDaOrganizacao({
             </ul>
           )}
         </div>
+
+        {/*
+          O aviso da Asaas às vezes não chega (ela pausa a fila depois de erros
+          seguidos). O job confere de hora em hora; ao telefone com quem pagou e
+          continua travado, o suporte confere na hora.
+        */}
+        {assinatura.data == null ? null : (
+          <div className="flex flex-wrap items-center gap-3">
+            <p className="text-muted-foreground text-sm">
+              {assinatura.data.conferida_em === null
+                ? 'Ainda não conferida direto na Asaas.'
+                : `Conferida direto na Asaas em ${formatarDataHora(assinatura.data.conferida_em, FUSO_PADRAO)}.`}
+            </p>
+            {cobrancaConfigurada() ? <ConferirNaAsaas orgId={orgId} /> : null}
+          </div>
+        )}
 
         {papel === 'superadmin' ? (
           <EstenderTeste orgId={orgId} hoje={situacao.hoje} maximo={somarDias(situacao.hoje, 90)} />

@@ -9575,6 +9575,67 @@ select tests.ok('ota por loja',
 reset role;
 select tests.logout();
 
+-- ============================== grupo: C15 — a conferência das faturas (migration 73)
+--
+-- O job de hora em hora confere as faturas direto na Asaas, sem depender do
+-- aviso: ele anota o batimento como os outros, e a assinatura guarda quando
+-- foi conferida. A data é do servidor: a empresa lê, e não grava.
+
+reset role;
+select tests.logout();
+
+insert into auth.users (email, raw_user_meta_data, email_confirmed_at) values
+  ('cf-dono@teste.local',  '{"company_name":"Conferida"}'::jsonb, now()),
+  ('cf-outro@teste.local', '{"company_name":"Outra da Conferida"}'::jsonb, now());
+
+drop table if exists tests.cf;
+create table tests.cf as
+select (select m.org_id from public.memberships m join auth.users u on u.id = m.user_id
+         where u.email = 'cf-dono@teste.local') as org,
+       (select id from auth.users where email = 'cf-dono@teste.local') as dono,
+       (select id from public.plans where nome = 'Essencial') as plano;
+grant select on tests.cf to anon, authenticated, service_role;
+
+set role service_role;
+select public.registrar_assinatura((select org from tests.cf), 'asaas', 'sub_cf_1',
+  (select plano from tests.cf), 9900, (select dono from tests.cf));
+update public.subscriptions set conferida_em = now() - interval '7 hours'
+ where org_id = (select org from tests.cf);
+select public.registrar_batimento('invoice-sync', true, 1500);
+reset role;
+
+select tests.ok('conferência das faturas',
+  (select last_success_at is not null and last_duration_ms = 1500
+     from public.job_heartbeats where job = 'invoice-sync'),
+  'o job da conferência anota o batimento, como os outros');
+
+select tests.login('cf-dono@teste.local');
+set role authenticated;
+
+select tests.ok('conferência das faturas',
+  (select conferida_em < now() - interval '6 hours'
+     from public.subscriptions where org_id = (select org from tests.cf)),
+  'a empresa lê quando as faturas dela foram conferidas');
+
+select tests.ok('conferência das faturas',
+  tests.bloqueado($q$update public.subscriptions set conferida_em = now()
+    where org_id = (select org from tests.cf)$q$),
+  'e não grava a data: quem confere é o servidor');
+
+reset role;
+select tests.logout();
+
+select tests.login('cf-outro@teste.local');
+set role authenticated;
+
+select tests.ok('conferência das faturas',
+  tests.contar($q$select count(*) from public.subscriptions
+    where org_id = (select org from tests.cf)$q$) = 0,
+  'outra empresa não vê a assinatura nem a conferência');
+
+reset role;
+select tests.logout();
+
 -- ============================== grupo: varredura de segurança (Fase 8)
 --
 -- Duas travas que valem para o schema inteiro, e não para uma tabela: uma

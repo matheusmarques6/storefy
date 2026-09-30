@@ -260,38 +260,70 @@ export interface FaturaDaAsaas {
   invoiceUrl: string | null;
   clientPaymentDate: string | null;
   paymentDate: string | null;
+  /** Removida na Asaas: não se paga mais. */
+  deleted: boolean;
 }
 
-/** As faturas da assinatura, para gravar a primeira sem esperar o aviso. */
+/** Uma cobrança no formato da API, ou `null` quando falta o essencial. */
+function lerFatura(item: unknown): FaturaDaAsaas | null {
+  if (typeof item !== 'object' || item === null) return null;
+  const f = item as Record<string, unknown>;
+  if (typeof f.id !== 'string' || typeof f.status !== 'string' || typeof f.dueDate !== 'string') {
+    return null;
+  }
+  return {
+    id: f.id,
+    value: typeof f.value === 'number' ? f.value : 0,
+    status: f.status,
+    dueDate: f.dueDate,
+    invoiceUrl: typeof f.invoiceUrl === 'string' ? f.invoiceUrl : null,
+    clientPaymentDate: typeof f.clientPaymentDate === 'string' ? f.clientPaymentDate : null,
+    paymentDate: typeof f.paymentDate === 'string' ? f.paymentDate : null,
+    deleted: f.deleted === true,
+  };
+}
+
+/**
+ * As faturas da assinatura: para gravar a primeira sem esperar o aviso, e
+ * para conferir as outras quando o aviso não chega. Uma página de 100 (o
+ * máximo da API; a padrão, de 10, esconderia as novas de uma assinatura com
+ * mais de dez meses); a fatura aberta que não vier nela é lida pelo id.
+ */
 export async function faturasDaAssinatura(
   id: string,
   buscador: typeof fetch = fetch,
 ): Promise<Resposta<FaturaDaAsaas[]>> {
   const resposta = await chamar<{ data?: unknown }>(
     'GET',
-    `/subscriptions/${encodeURIComponent(id)}/payments`,
+    `/subscriptions/${encodeURIComponent(id)}/payments?limit=100`,
     undefined,
     buscador,
   );
   if (!resposta.ok) return resposta;
   const lista = Array.isArray(resposta.dados.data) ? (resposta.dados.data as unknown[]) : [];
-  const faturas = lista.flatMap((item): FaturaDaAsaas[] => {
-    if (typeof item !== 'object' || item === null) return [];
-    const f = item as Record<string, unknown>;
-    if (typeof f.id !== 'string' || typeof f.status !== 'string' || typeof f.dueDate !== 'string') {
-      return [];
-    }
-    return [
-      {
-        id: f.id,
-        value: typeof f.value === 'number' ? f.value : 0,
-        status: f.status,
-        dueDate: f.dueDate,
-        invoiceUrl: typeof f.invoiceUrl === 'string' ? f.invoiceUrl : null,
-        clientPaymentDate: typeof f.clientPaymentDate === 'string' ? f.clientPaymentDate : null,
-        paymentDate: typeof f.paymentDate === 'string' ? f.paymentDate : null,
-      },
-    ];
-  });
+  const faturas = lista.map(lerFatura).filter((fatura) => fatura !== null);
   return { ok: true, dados: faturas };
+}
+
+/**
+ * Uma fatura pelo id. `null` quando a Asaas não a tem mais (404): foi
+ * removida, e não se paga — é o que fecha a fatura em aberto cujo aviso de
+ * remoção se perdeu.
+ */
+export async function faturaDaAsaas(
+  id: string,
+  buscador: typeof fetch = fetch,
+): Promise<Resposta<FaturaDaAsaas | null>> {
+  const resposta = await chamar<unknown>(
+    'GET',
+    `/payments/${encodeURIComponent(id)}`,
+    undefined,
+    buscador,
+  );
+  if (!resposta.ok) return resposta.status === 404 ? { ok: true, dados: null } : resposta;
+  const fatura = lerFatura(resposta.dados);
+  if (fatura === null) {
+    return { ok: false, status: 200, motivo: motivoDaRecusa(0, null) };
+  }
+  return { ok: true, dados: fatura };
 }

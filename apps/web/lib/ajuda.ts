@@ -457,6 +457,7 @@ export const ARTIGOS: readonly Artigo[] = [
         paragrafos: [
           'Depois do vencimento, há 7 dias para pagar sem nada parar; a faixa no topo mostra até quando. Passado o prazo, param o envio de campanhas, a publicação de mudanças no app, as versões novas para as lojas de aplicativos e as lojas novas. O app continua funcionando para os seus clientes, e as automações seguem saindo.',
           'Pague pelo botão "Pagar a fatura", em Plano e cobrança. Tudo volta quando a Asaas confirmar o pagamento.',
+          'Já pagou e continua travado? Toque em "Já paguei, conferir", ao lado do botão de pagar: o painel pergunta direto à Asaas. O Pix costuma cair em minutos; o boleto, em até 3 dias úteis.',
         ],
       },
       {

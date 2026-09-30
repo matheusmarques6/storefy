@@ -1478,6 +1478,7 @@ export type Database = {
           cancelada_em: string | null;
           created_at: string;
           updated_at: string;
+          conferida_em: string | null;
         };
         Insert: {
           org_id: string;
@@ -1491,6 +1492,7 @@ export type Database = {
           cancelada_em?: string | null;
           created_at?: string;
           updated_at?: string;
+          conferida_em?: string | null;
         };
         Update: {
           org_id?: string;
@@ -1504,6 +1506,7 @@ export type Database = {
           cancelada_em?: string | null;
           created_at?: string;
           updated_at?: string;
+          conferida_em?: string | null;
         };
         Relationships: [
           {

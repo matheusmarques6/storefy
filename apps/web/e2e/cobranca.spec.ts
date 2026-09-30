@@ -40,6 +40,7 @@ const asaas = new AsaasDeTeste(PORTA_DA_ASAAS, CHAVE);
 const sufixo = Math.random().toString(36).slice(2, 7);
 const ESSENCIAL = `E2E Essencial ${sufixo}`;
 const CRESCIMENTO = `E2E Crescimento ${sufixo}`;
+const CONFERIDO = `E2E Conferido ${sufixo}`;
 const equipeDeTeste: string[] = [];
 
 test.beforeAll(async () => {
@@ -54,7 +55,7 @@ test.afterAll(async () => {
   const { data: planos } = await banco
     .from('plans')
     .select('id')
-    .in('nome', [ESSENCIAL, CRESCIMENTO]);
+    .in('nome', [ESSENCIAL, CRESCIMENTO, CONFERIDO]);
   const ids = (planos ?? []).map((plano) => plano.id);
   if (ids.length > 0) {
     await banco.from('plans').delete().in('id', ids);
@@ -368,4 +369,86 @@ test('o teste acaba: o painel avisa, trava o que custa, e a equipe estende o tes
     .eq('entity', 'organizations')
     .eq('actor_id', equipe.id);
   expect(trilha?.some((linha) => 'trial_ends_at' in (linha.diff as object))).toBe(true);
+});
+
+test('o aviso do pagamento não chega: o lojista confere na hora, e a equipe também', async ({
+  page,
+  browser,
+}) => {
+  // Um plano só deste teste, para ele não depender da ordem dos outros.
+  const { error: erroDoPlano } = await bancoDeTeste()
+    .from('plans')
+    .insert({ nome: CONFERIDO, preco_centavos: 5990, disponivel: true });
+  if (erroDoPlano != null) throw new Error(erroDoPlano.message);
+
+  const emailDono = emailDeTeste('cob-conferencia');
+  const donoId = await criarUsuarioConfirmado(emailDono, 'Loja da Conferência');
+  const orgId = await orgDe(donoId);
+  await entrar(page, emailDono);
+  await page.goto('/configuracoes/plano');
+
+  const cartao = page.getByRole('listitem').filter({ hasText: CONFERIDO });
+  await cartao.getByRole('button', { name: `Assinar ${CONFERIDO}` }).click();
+  const dialogo = page.getByRole('dialog');
+  await dialogo.getByLabel('Nome ou razão social').fill('Loja da Conferência Ltda');
+  await dialogo.getByLabel('CPF ou CNPJ').fill('11.222.333/0001-81');
+  await dialogo.getByLabel('E-mail que recebe as faturas').fill('financeiro@conferencia.test');
+  await dialogo.getByRole('button', { name: 'Assinar', exact: true }).click();
+  await expect(dialogo.getByRole('heading', { name: 'Assinatura criada' })).toBeVisible();
+  await dialogo.getByRole('button', { name: 'Pronto' }).click();
+
+  const { data: assinatura } = await bancoDeTeste()
+    .from('subscriptions')
+    .select('external_id')
+    .eq('org_id', orgId)
+    .single();
+  const pagamento = asaas.pagamentos.find((p) => p.subscription === assinatura?.external_id);
+  expect(pagamento).toBeDefined();
+
+  // Ainda não pago: a conferência diz isso, sem erro e sem mudar nada.
+  const conferir = page.getByRole('button', { name: 'Já paguei, conferir' });
+  await conferir.click();
+  await expect(
+    page.getByText('A Asaas ainda não recebeu o pagamento.', { exact: false }),
+  ).toBeVisible();
+  await expect(page.getByRole('cell', { name: 'Aguardando pagamento' })).toBeVisible();
+
+  // Pago na Asaas, e o aviso nunca chega (a fila de avisos pausada).
+  if (pagamento !== undefined) {
+    pagamento.status = 'RECEIVED';
+    pagamento.clientPaymentDate = diaEmBrasilia(new Date());
+  }
+  await conferir.click();
+  await expect(page.getByText('Pagamento confirmado pela Asaas. Obrigado!')).toBeVisible();
+  await expect(page.getByText('Em dia', { exact: true })).toBeVisible();
+  await expect(page.getByRole('cell', { name: 'Paga' })).toBeVisible();
+  // Sem fatura em aberto, não há o que conferir.
+  await expect(conferir).toHaveCount(0);
+  const leituras = asaas.pedidos.filter(
+    (p) =>
+      p.metodo === 'GET' &&
+      p.caminho === `/subscriptions/${assinatura?.external_id ?? ''}/payments`,
+  );
+  expect(leituras.length).toBeGreaterThanOrEqual(3);
+
+  // A04: a equipe vê quando foi conferida e confere de novo, com a trilha.
+  const equipe = await superadmin(browser, 'cob-conferencia-equipe');
+  await equipe.pagina.goto(`/admin/organizacoes/${orgId}`);
+  const cobranca = equipe.pagina.getByRole('region', { name: /Cobrança/ });
+  await expect(cobranca.getByText('Conferida direto na Asaas em', { exact: false })).toBeVisible();
+  await cobranca.getByRole('button', { name: 'Conferir na Asaas' }).click();
+  await expect(
+    equipe.pagina.getByText('Conferido com a Asaas. As faturas abaixo já estão atualizadas.'),
+  ).toBeVisible();
+  await expect
+    .poll(async () => {
+      const { data } = await bancoDeTeste()
+        .from('audit_logs')
+        .select('actor_id')
+        .eq('org_id', orgId)
+        .eq('entity', 'invoices')
+        .eq('action', 'update');
+      return (data ?? []).map((linha) => linha.actor_id);
+    })
+    .toContain(equipe.id);
 });
