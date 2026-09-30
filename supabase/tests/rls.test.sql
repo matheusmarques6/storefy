@@ -1371,7 +1371,7 @@ begin
   foreach v_papel in array array['anon', 'authenticated'] loop
     foreach v_funcao in array array[
       'public.consumir_limite(text, integer, integer)',
-      'public.registrar_aparelho(uuid, text, public.device_platform, text, text, text)',
+      'public.registrar_aparelho(uuid, text, public.device_platform, text, text, text, uuid)',
       'public.registrar_evento_de_carrinho(uuid, text, public.cart_event_type, integer, text, integer, text)',
       'public.fora_do_silencio(timestamptz, text)'
     ] loop
@@ -1383,7 +1383,7 @@ begin
 
   perform tests.ok('permissões',
     has_function_privilege('service_role',
-      'public.registrar_aparelho(uuid, text, public.device_platform, text, text, text)', 'execute'),
+      'public.registrar_aparelho(uuid, text, public.device_platform, text, text, text, uuid)', 'execute'),
     'a service role executa: é por ela que o endpoint público entra');
 end
 $$;
@@ -8666,6 +8666,145 @@ select tests.ok('último passo',
   tests.bloqueado($q$update public.builds set store_state = 'READY_FOR_SALE'
     where id = (select android from tests.ult)$q$),
   'mas não escreve: "na loja" é a loja quem diz');
+
+reset role;
+select tests.logout();
+
+-- ============================== grupo: o aparelho sem push (C05, C11 e C15, migration 67)
+--
+-- O push é opcional na publicação, e o aparelho só existia pela inscrição da
+-- OneSignal: um app no ar sem push não contava instalação, ativo, sessão nem
+-- MAU. Agora ele conta pela instalação (um UUID que o app gera), e a inscrição
+-- chega quando existir. Sem ela, o aparelho conta mas não recebe push.
+
+reset role;
+select tests.logout();
+
+insert into auth.users (email, raw_user_meta_data, email_confirmed_at) values
+  ('semp-dono@teste.local', '{"company_name":"Sem Push"}'::jsonb, now());
+
+drop table if exists tests.semp;
+create table tests.semp as
+select (select m.org_id from public.memberships m
+          join auth.users u on u.id = m.user_id
+         where u.email = 'semp-dono@teste.local') as org,
+       extensions.gen_random_uuid() as instalacao,
+       extensions.gen_random_uuid() as instalacao_legada,
+       extensions.gen_random_uuid() as instalacao_antiga;
+
+insert into public.stores (org_id, name, primary_url)
+select org, 'Loja Sem Push', 'https://sem-push.teste' from tests.semp;
+alter table tests.semp add column app uuid;
+update tests.semp set app = (select a.id from public.apps a join public.stores s on s.id = a.store_id
+                              where s.name = 'Loja Sem Push');
+
+-- As boas-vindas ligadas: é por elas que se vê quem pode receber push.
+insert into public.push_automations (app_id, type, enabled, delay_minutes, title, body)
+select app, 'welcome', true, 0, 'Oi', 'Bem-vindo' from tests.semp;
+insert into public.push_automations (app_id, type, enabled, delay_minutes, title, body)
+select app, 'inactive_7d', true, 0, 'Volta', 'Sentimos sua falta' from tests.semp;
+
+grant select on tests.semp to service_role;
+set role service_role;
+
+select tests.ok('sem push',
+  (select novo and not boas_vindas and device_id is not null
+     from public.registrar_aparelho(
+       p_app_id => (select app from tests.semp), p_platform => 'android',
+       p_install_id => (select instalacao from tests.semp))),
+  'o app sem push registra o aparelho pela instalação — e sem inscrição, nada de boas-vindas');
+
+select tests.ok('sem push',
+  (select count(*) from public.devices
+    where install_id = (select instalacao from tests.semp)
+      and onesignal_subscription_id is null) = 1
+  and (select count(*) from public.device_days dd join public.devices d on d.id = dd.device_id
+        where d.install_id = (select instalacao from tests.semp)) = 1,
+  'o aparelho existe sem inscrição, e a abertura do dia conta (ativos, sessões e MAU)');
+
+select tests.ok('sem push',
+  (select not novo from public.registrar_aparelho(
+     p_app_id => (select app from tests.semp), p_platform => 'android',
+     p_install_id => (select instalacao from tests.semp))),
+  'abrir de novo é o mesmo aparelho, e não uma instalação nova');
+
+select tests.ok('sem push',
+  (select not novo and boas_vindas from public.registrar_aparelho(
+     p_app_id => (select app from tests.semp), p_subscription => 'sub-sem-push',
+     p_platform => 'android', p_install_id => (select instalacao from tests.semp))),
+  'quando a inscrição chega, é o mesmo aparelho — e agora ele pode receber as boas-vindas');
+
+select tests.ok('sem push',
+  (select count(*) from public.devices
+    where install_id = (select instalacao from tests.semp)
+      and onesignal_subscription_id = 'sub-sem-push') = 1,
+  'e a inscrição fica no aparelho da instalação');
+
+-- O app de antes do identificador: só a inscrição. Atualizado, ele manda os dois.
+select * from public.registrar_aparelho((select app from tests.semp), 'sub-legado', 'ios');
+
+select tests.ok('sem push',
+  (select not novo from public.registrar_aparelho(
+     p_app_id => (select app from tests.semp), p_subscription => 'sub-legado',
+     p_platform => 'ios', p_install_id => (select instalacao_legada from tests.semp))),
+  'o aparelho de antes é achado pela inscrição: nada conta duas vezes');
+
+-- Em outro comando: no mesmo, a leitura enxergaria a foto de antes da função.
+select tests.ok('sem push',
+  (select count(*) from public.devices
+    where onesignal_subscription_id = 'sub-legado'
+      and install_id = (select instalacao_legada from tests.semp)) = 1,
+  'e ganha a instalação, para ser achado por ela daqui em diante');
+
+select tests.ok('sem push',
+  tests.erro($q$select * from public.registrar_aparelho(
+     p_app_id => (select app from tests.semp), p_platform => 'ios')$q$)
+  and tests.erro($q$select * from public.registrar_aparelho(
+     p_app_id => (select app from tests.semp), p_install_id => extensions.gen_random_uuid())$q$),
+  'sem inscrição nem instalação, ou sem plataforma, não há aparelho');
+
+reset role;
+
+select tests.ok('sem push',
+  tests.erro($q$insert into public.devices (app_id, platform)
+    select app, 'ios' from tests.semp$q$),
+  'nem direto no banco: aparelho sem nenhuma identidade é recusado');
+
+-- Um cliente de meses, de quando o app não tinha push, ganhando a inscrição agora.
+insert into public.devices (app_id, install_id, platform, created_at, last_seen_at)
+select app, instalacao_antiga, 'android', now() - interval '60 days', now() - interval '1 day'
+  from tests.semp;
+
+set role service_role;
+
+select tests.ok('sem push',
+  (select not boas_vindas from public.registrar_aparelho(
+     p_app_id => (select app from tests.semp), p_subscription => 'sub-antigo',
+     p_platform => 'android', p_install_id => (select instalacao_antiga from tests.semp))),
+  'o cliente de meses que ganhou push agora não é recebido com "bem-vindo"');
+
+reset role;
+
+-- Um aparelho sem inscrição que sumiu há 8 dias: conta como inativo, mas não recebe push.
+insert into public.devices (app_id, install_id, platform, created_at, last_seen_at)
+select app, extensions.gen_random_uuid(), 'ios', now() - interval '20 days', now() - interval '8 days'
+  from tests.semp;
+insert into public.device_days (app_id, device_id, day, opens)
+select d.app_id, d.id, ((now() at time zone 'America/Sao_Paulo')::date - 8), 1
+  from public.devices d
+ where d.app_id = (select app from tests.semp)
+   and d.onesignal_subscription_id is null
+   and d.last_seen_at < now() - interval '7 days';
+
+set role service_role;
+select public.agendar_inativos();
+
+select tests.ok('sem push',
+  (select count(*) from public.automation_runs r
+     join public.devices d on d.id = r.device_id
+    where d.app_id = (select app from tests.semp)
+      and d.onesignal_subscription_id is null) = 0,
+  'e nenhum push é agendado para quem não tem inscrição: seria um envio para ninguém');
 
 reset role;
 select tests.logout();
