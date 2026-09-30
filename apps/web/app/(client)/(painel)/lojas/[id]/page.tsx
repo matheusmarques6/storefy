@@ -2,16 +2,20 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { ArrowLeft, CheckCircle2 } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, CheckCircle2 } from 'lucide-react';
+import { blocoDaLoja } from '@storefy/config-schema';
 import { ROTULO_STATUS_LOJA, podeEscrever, podeExcluir } from '@storefy/db';
 import { COLUNAS_DA_LOJA } from '@storefy/db';
 import { exigirContextoCliente } from '@/lib/contexto';
+import { versaoPublicada } from '@/lib/configs-servidor';
+import { diferencasDosDadosDaLoja } from '@/lib/diferencas-da-config';
 import { criarClientServidor } from '@/lib/supabase/server';
 import { gruposDeFusos, nomeDoFuso } from '@/lib/fuso';
 import { editarLoja } from '../acoes';
 import { FormularioLoja } from '../formulario-loja';
 import { ExcluirLoja } from './excluir-loja';
-import { Alert, AlertDescription } from '@/components/ui/alert';
+import { AbrirEditorDaLoja } from './abrir-editor-da-loja';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { lido } from '@/lib/leitura';
@@ -30,7 +34,7 @@ export default async function PaginaLoja({
   // Endereço que não é de loja nenhuma é 404, e não erro do banco.
   if (!ehUuid(id)) notFound();
   const avisos = await searchParams;
-  const { papel } = await exigirContextoCliente();
+  const { papel, lojaAtiva } = await exigirContextoCliente();
 
   const supabase = await criarClientServidor();
   // A RLS já limita ao que a organização do usuário pode ver: uma loja de outra
@@ -44,6 +48,29 @@ export default async function PaginaLoja({
   if (loja == null) notFound();
 
   const podeEditar = podeEscrever(papel);
+
+  /*
+   * O app no ar leva os dados da loja da última publicação. Mudar o nome ou o
+   * endereço aqui muda o rascunho — e os clientes seguem com os antigos (o
+   * endereço velho, que pode nem existir mais) até alguém publicar.
+   */
+  const { data: app } = lido(
+    await supabase.from('apps').select('id').eq('store_id', loja.id).maybeSingle(),
+    'o app da loja',
+  );
+  const noAr = app == null ? null : await versaoPublicada(supabase, app.id);
+  const foraDoAr =
+    noAr?.config == null
+      ? []
+      : diferencasDosDadosDaLoja(
+          noAr.config.store,
+          blocoDaLoja({
+            name: loja.name,
+            url: loja.primary_url,
+            shopDomain: loja.shop_domain,
+            platform: loja.platform,
+          }),
+        );
 
   return (
     <div className="mx-auto max-w-xl space-y-6">
@@ -61,6 +88,31 @@ export default async function PaginaLoja({
           <AlertDescription>Alterações salvas.</AlertDescription>
         </Alert>
       ) : null}
+
+      {noAr === null || foraDoAr.length === 0 ? null : (
+        <Alert variant="warning">
+          <AlertTriangle aria-hidden />
+          <AlertTitle>O app no ar ainda usa os dados antigos da loja</AlertTitle>
+          <AlertDescription className="space-y-2">
+            <p>
+              Os clientes seguem com o que foi publicado na versão {noAr.version}. Publique a
+              próxima versão no editor para o app passar a usar:
+            </p>
+            <ul className="list-disc space-y-0.5 pl-5">
+              {foraDoAr.map((diferenca) => (
+                <li key={diferenca.texto} className="wrap-anywhere">
+                  {diferenca.texto}
+                </li>
+              ))}
+            </ul>
+            {podeEditar ? (
+              <AbrirEditorDaLoja lojaId={loja.id} ativa={lojaAtiva?.id === loja.id} />
+            ) : (
+              <p>Peça a um proprietário ou administrador para publicar.</p>
+            )}
+          </AlertDescription>
+        </Alert>
+      )}
 
       <div className="flex items-start justify-between gap-4">
         {/* O endereço não tem onde quebrar: sem `min-w-0` e `wrap-anywhere`, um

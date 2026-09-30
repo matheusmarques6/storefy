@@ -392,3 +392,60 @@ test('C14 e A04: os avisos da Shopify que faltam e o acesso recusado aparecem', 
   await varrer(paginaAdmin, 'A04 com a Shopify de cada loja');
   await contextoAdmin.close();
 });
+
+test('a loja no ar que muda de endereço avisa que o app segue com o antigo até publicar', async ({
+  page,
+}) => {
+  test.setTimeout(90_000);
+  const email = emailDeTeste('loja-no-ar');
+  await criarUsuarioConfirmado(email, 'Empresa Loja no Ar');
+  await entrar(page, email);
+  const lojaId = await criarLojaPelaTela(page, 'Loja Antiga', 'loja-antiga-e2e.com.br');
+
+  // Publicada uma vez: o app no ar leva o nome e o endereço de agora.
+  await page.goto('/app');
+  await page.waitForLoadState('networkidle');
+  const barra = page.getByRole('region', { name: 'Publicação do app' });
+  await barra.getByRole('button', { name: /Publicar alterações/ }).click();
+  await page.getByRole('button', { name: 'Publicar agora' }).click();
+  await expect(page.getByText(/Versão \d+ publicada/)).toBeVisible();
+
+  // Sem mudança, a página da loja não tem o que avisar.
+  await page.goto(`/lojas/${lojaId}`);
+  const aviso = page
+    .getByRole('alert')
+    .filter({ hasText: 'O app no ar ainda usa os dados antigos da loja' });
+  await expect(page.getByLabel('Nome da loja')).toHaveValue('Loja Antiga');
+  await expect(aviso).toHaveCount(0);
+
+  // O nome e o endereço novos: salvos na loja, e o aviso diz o que o app ainda não tem.
+  await page.getByLabel('Nome da loja').fill('Loja Nova');
+  await page.getByLabel('Endereço da loja').fill('loja-nova-e2e.com.br');
+  await page.getByRole('button', { name: 'Salvar alterações' }).click();
+  await expect(page.getByText('Alterações salvas.')).toBeVisible();
+  await expect(aviso).toContainText('Os clientes seguem com o que foi publicado na versão 1.');
+  await expect(aviso).toContainText('Nome da loja: “Loja Nova”');
+  await expect(aviso).toContainText(/Endereço da loja: https:\/\/loja-nova-e2e\.com\.br/);
+  await varrer(page, 'a loja com o app no ar desatualizado');
+  // Esta é a loja ativa: o editor dela está a um link.
+  await expect(aviso.getByRole('link', { name: 'Abrir o editor' })).toHaveAttribute('href', '/app');
+
+  // Com outra loja ativa no painel, "Abrir o editor" troca para esta antes —
+  // e o que vai ao ar é o endereço novo.
+  await criarLojaPelaTela(page, 'Outra Loja no Ar', 'outra-loja-no-ar-e2e.com.br');
+  await page.goto(`/lojas/${lojaId}`);
+  await aviso.getByRole('button', { name: 'Abrir o editor' }).click();
+  await page.waitForURL((url) => url.pathname === '/app');
+  await barra.getByRole('button', { name: /Publicar alterações/ }).click();
+  const aoPublicar = page.getByRole('alertdialog');
+  await expect(
+    aoPublicar.getByText(/Endereço da loja: https:\/\/loja-nova-e2e\.com\.br/),
+  ).toBeVisible();
+  await aoPublicar.getByRole('button', { name: 'Publicar agora' }).click();
+  await expect(page.getByText(/Versão \d+ publicada/)).toBeVisible();
+
+  // Publicado, o aviso some.
+  await page.goto(`/lojas/${lojaId}`);
+  await expect(page.getByLabel('Nome da loja')).toHaveValue('Loja Nova');
+  await expect(aviso).toHaveCount(0);
+});

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { configInicial, type AppConfig } from '@storefy/config-schema';
-import { diferencasDaConfig } from '@/lib/diferencas-da-config';
+import { blocoDaLoja, configInicial, type AppConfig } from '@storefy/config-schema';
+import { diferencasDaConfig, diferencasDosDadosDaLoja } from '@/lib/diferencas-da-config';
 
 const NO_AR: AppConfig = configInicial(
   { name: 'Oak Vintage', url: 'https://oakvintage.com.br', shopDomain: null, platform: 'shopify' },
@@ -140,6 +140,26 @@ describe('diferencasDaConfig', () => {
     rascunho.store = { ...rascunho.store, name: 'Oak Vintage Store' };
     expect(diferencasDaConfig(NO_AR, rascunho)).toEqual([
       { secao: 'Dados da loja', texto: 'Nome da loja: “Oak Vintage Store”' },
+    ]);
+  });
+});
+
+describe('diferencasDosDadosDaLoja', () => {
+  const loja = (nome: string, url: string, shopDomain: string | null = null) =>
+    blocoDaLoja({ name: nome, url, shopDomain, platform: 'shopify' });
+
+  it('o mesmo bloco não tem o que avisar', () => {
+    const noAr = loja('Oak Vintage', 'https://oakvintage.com.br');
+    expect(diferencasDosDadosDaLoja(noAr, structuredClone(noAr))).toEqual([]);
+  });
+
+  it('o endereço novo e o nome novo, em frases; os domínios que seguem o endereço também', () => {
+    const noAr = loja('Oak Vintage', 'https://oakvintage.com.br');
+    const agora = loja('Oak & Co', 'https://oakeco.com.br');
+    expect(diferencasDosDadosDaLoja(noAr, agora).map((diferenca) => diferenca.texto)).toEqual([
+      'Nome da loja: “Oak & Co”',
+      'Endereço da loja: https://oakeco.com.br',
+      'Domínios da loja atualizados',
     ]);
   });
 });

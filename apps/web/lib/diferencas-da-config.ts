@@ -279,7 +279,15 @@ function diferencasDoAviso(de: Aviso | undefined, para: Aviso | undefined): Dife
   return lista;
 }
 
-function diferencasDosDadosDaLoja(de: AppConfig['store'], para: AppConfig['store']): Diferenca[] {
+/**
+ * O que mudou nos dados da loja (nome, endereço, domínios, plataforma) entre
+ * dois blocos `store`. Também diz, na página da loja, o que o app no ar ainda
+ * não tem: o bloco da versão publicada contra o da loja como está agora.
+ */
+export function diferencasDosDadosDaLoja(
+  de: AppConfig['store'],
+  para: AppConfig['store'],
+): Diferenca[] {
   const lista: Diferenca[] = [];
   if (de.name !== para.name) {
     lista.push({ secao: 'Dados da loja', texto: `Nome da loja: ${entreAspas(para.name)}` });
