@@ -6,6 +6,7 @@ import { cookies } from 'next/headers';
 import { COOKIE_LOJA_DA_VISITA, COOKIE_VISITA } from '@/lib/visita-nomes';
 import { criarClientServidor } from '@/lib/supabase/server';
 import { urlDoSite } from '@/lib/env';
+import { destinoSeguro } from '@/lib/redirecionar';
 import { traduzirErroAuth } from '@/lib/erros-do-auth';
 import { configuracoesDaPlataforma } from '@/lib/configuracoes-da-plataforma-servidor';
 import {
@@ -48,8 +49,7 @@ export async function entrar(
     return { mensagem: traduzirErroAuth(error.code, error.message), valores };
   }
 
-  const proximo = dados.get('proximo');
-  redirect(typeof proximo === 'string' && proximo.startsWith('/') ? proximo : '/');
+  redirect(destinoSeguro(dados.get('proximo')));
 }
 
 export async function cadastrar(

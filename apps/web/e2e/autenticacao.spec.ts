@@ -28,6 +28,32 @@ test('rota protegida manda para o login e volta depois de entrar', async ({ page
   await expect(page).toHaveURL('/lojas');
 });
 
+/*
+ * O golpe do `proximo`: um link para a página de login VERDADEIRA que, depois
+ * da senha, levaria a pessoa a uma cópia da Storefy pedindo a senha "de novo".
+ * Cada disfarce que o navegador leria como outro site vira o início.
+ */
+test('o "proximo" do login nunca leva para fora do site', async ({ page, baseURL }) => {
+  const email = emailDeTeste('proximo');
+  await criarUsuarioConfirmado(email, 'Empresa Próximo');
+  const nosso = new URL(baseURL ?? 'http://app.localhost:3000').host;
+
+  for (const disfarce of [
+    '//exemplo.test/entrar',
+    '/%5Cexemplo.test',
+    '/%09/exemplo.test',
+    '/..//exemplo.test',
+  ]) {
+    await page.context().clearCookies();
+    await page.goto(`/entrar?proximo=${disfarce}`);
+    await page.getByLabel('E-mail').fill(email);
+    await page.getByLabel('Senha').fill(SENHA_PADRAO);
+    await page.getByRole('button', { name: 'Entrar', exact: true }).click();
+    await page.waitForURL((url) => url.pathname === '/', { timeout: 10_000 });
+    expect(new URL(page.url()).host, disfarce).toBe(nosso);
+  }
+});
+
 test('login com senha errada mostra erro sem revelar se o e-mail existe', async ({ page }) => {
   const email = emailDeTeste('senha-errada');
   await criarUsuarioConfirmado(email, 'Empresa Senha');

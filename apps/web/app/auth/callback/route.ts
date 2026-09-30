@@ -10,21 +10,8 @@
 import type { NextRequest } from 'next/server';
 import { criarClientServidor } from '@/lib/supabase/server';
 import { configuracoesDaPlataforma } from '@/lib/configuracoes-da-plataforma-servidor';
-import { redirecionarPara } from '@/lib/redirecionar';
+import { destinoSeguro, redirecionarPara } from '@/lib/redirecionar';
 import { log } from '@/lib/log';
-
-/** Só caminho deste site: uma URL absoluta vinda da query seria open redirect. */
-function destinoSeguro(bruto: string | null): string {
-  if (
-    bruto == null ||
-    !bruto.startsWith('/') ||
-    bruto.startsWith('//') ||
-    bruto.startsWith('/\\')
-  ) {
-    return '/';
-  }
-  return bruto;
-}
 
 export async function GET(request: NextRequest) {
   const { searchParams } = request.nextUrl;
