@@ -11,6 +11,11 @@
  * o lojista compara duas alturas; separados, ele compararia duas escalas
  * diferentes e leria errado — que é o jeito clássico de um painel mentir sem
  * dado falso.
+ *
+ * CADA GRÁFICO TEM A SUA TABELA ("Ver os números em tabela"): o desenho não
+ * diz nada a um leitor de tela, e o lojista que quer o número exato de um dia
+ * não precisa caçar o ponto com o mouse. Com a tabela como o equivalente, o
+ * desenho sai da árvore de acessibilidade — e deixa de ser focável.
  */
 import {
   Area,
@@ -25,6 +30,7 @@ import {
   YAxis,
 } from 'recharts';
 import { comoNumero, comoReais, diaCurto, type DiaDeNumeros } from '@/lib/analytics';
+import { TabelaDoGrafico } from './tabela-do-grafico';
 
 /** Quantos rótulos cabem no eixo sem virar borrão em tela de celular. */
 const MAXIMO_DE_ROTULOS = 7;
@@ -71,53 +77,70 @@ export function GraficoDeReceita({ serie }: { serie: readonly DiaDeNumeros[] }) 
   const pontos = paraPontos(serie);
 
   return (
-    <div className="text-muted-foreground h-64 w-full">
-      <ResponsiveContainer width="100%" height="100%">
-        <AreaChart data={pontos} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
-          <defs>
-            <linearGradient id="cor-app" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="5%" stopColor="var(--color-primary)" stopOpacity={0.25} />
-              <stop offset="95%" stopColor="var(--color-primary)" stopOpacity={0} />
-            </linearGradient>
-          </defs>
-          <CartesianGrid strokeDasharray="3 3" opacity={0.25} vertical={false} />
-          <XAxis dataKey="dia" interval={intervaloDoEixo(pontos.length)} {...EIXO} />
-          <YAxis
-            {...EIXO}
-            width={72}
-            tickFormatter={(valor: number) => comoReais(valor).replace(/\s?,00$/, '')}
-          />
-          <Tooltip
-            formatter={(valor: unknown, nome: unknown) => [comoReais(numero(valor)), String(nome)]}
-            labelFormatter={(rotulo: unknown) => `Dia ${String(rotulo)}`}
-            contentStyle={{
-              background: 'var(--color-background)',
-              border: '1px solid var(--color-border)',
-              borderRadius: 8,
-              fontSize: 12,
-            }}
-          />
-          <Legend wrapperStyle={{ fontSize: 12 }} />
-          <Area
-            type="monotone"
-            dataKey="app"
-            name="Pelo app"
-            stroke="var(--color-primary)"
-            fill="url(#cor-app)"
-            strokeWidth={2}
-          />
-          <Area
-            type="monotone"
-            dataKey="site"
-            name="Pelo site"
-            stroke="currentColor"
-            fill="none"
-            strokeWidth={2}
-            strokeDasharray="4 4"
-          />
-        </AreaChart>
-      </ResponsiveContainer>
-    </div>
+    <figure>
+      <div aria-hidden className="text-muted-foreground h-64 w-full">
+        <ResponsiveContainer width="100%" height="100%">
+          <AreaChart
+            data={pontos}
+            margin={{ top: 8, right: 8, left: 0, bottom: 0 }}
+            accessibilityLayer={false}
+          >
+            <defs>
+              <linearGradient id="cor-app" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="5%" stopColor="var(--color-primary)" stopOpacity={0.25} />
+                <stop offset="95%" stopColor="var(--color-primary)" stopOpacity={0} />
+              </linearGradient>
+            </defs>
+            <CartesianGrid strokeDasharray="3 3" opacity={0.25} vertical={false} />
+            <XAxis dataKey="dia" interval={intervaloDoEixo(pontos.length)} {...EIXO} />
+            <YAxis
+              {...EIXO}
+              width={72}
+              tickFormatter={(valor: number) => comoReais(valor).replace(/\s?,00$/, '')}
+            />
+            <Tooltip
+              formatter={(valor: unknown, nome: unknown) => [
+                comoReais(numero(valor)),
+                String(nome),
+              ]}
+              labelFormatter={(rotulo: unknown) => `Dia ${String(rotulo)}`}
+              contentStyle={{
+                background: 'var(--color-background)',
+                border: '1px solid var(--color-border)',
+                borderRadius: 8,
+                fontSize: 12,
+              }}
+            />
+            <Legend wrapperStyle={{ fontSize: 12 }} />
+            <Area
+              type="monotone"
+              dataKey="app"
+              name="Pelo app"
+              stroke="var(--color-primary)"
+              fill="url(#cor-app)"
+              strokeWidth={2}
+            />
+            <Area
+              type="monotone"
+              dataKey="site"
+              name="Pelo site"
+              stroke="currentColor"
+              fill="none"
+              strokeWidth={2}
+              strokeDasharray="4 4"
+            />
+          </AreaChart>
+        </ResponsiveContainer>
+      </div>
+      <TabelaDoGrafico
+        titulo="Receita por dia, pelo app e pelo site"
+        colunas={['Pelo app', 'Pelo site']}
+        linhas={pontos.map((ponto) => ({
+          dia: ponto.dia,
+          valores: [comoReais(ponto.app), comoReais(ponto.site)],
+        }))}
+      />
+    </figure>
   );
 }
 
@@ -125,42 +148,59 @@ export function GraficoDeUso({ serie }: { serie: readonly DiaDeNumeros[] }) {
   const pontos = paraPontos(serie);
 
   return (
-    <div className="text-muted-foreground h-64 w-full">
-      <ResponsiveContainer width="100%" height="100%">
-        <LineChart data={pontos} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
-          <CartesianGrid strokeDasharray="3 3" opacity={0.25} vertical={false} />
-          <XAxis dataKey="dia" interval={intervaloDoEixo(pontos.length)} {...EIXO} />
-          <YAxis {...EIXO} width={48} allowDecimals={false} />
-          <Tooltip
-            formatter={(valor: unknown, nome: unknown) => [comoNumero(numero(valor)), String(nome)]}
-            labelFormatter={(rotulo: unknown) => `Dia ${String(rotulo)}`}
-            contentStyle={{
-              background: 'var(--color-background)',
-              border: '1px solid var(--color-border)',
-              borderRadius: 8,
-              fontSize: 12,
-            }}
-          />
-          <Legend wrapperStyle={{ fontSize: 12 }} />
-          <Line
-            type="monotone"
-            dataKey="ativos"
-            name="Aparelhos ativos"
-            stroke="var(--color-primary)"
-            strokeWidth={2}
-            dot={false}
-          />
-          <Line
-            type="monotone"
-            dataKey="sessoes"
-            name="Aberturas"
-            stroke="currentColor"
-            strokeWidth={2}
-            strokeDasharray="4 4"
-            dot={false}
-          />
-        </LineChart>
-      </ResponsiveContainer>
-    </div>
+    <figure>
+      <div aria-hidden className="text-muted-foreground h-64 w-full">
+        <ResponsiveContainer width="100%" height="100%">
+          <LineChart
+            data={pontos}
+            margin={{ top: 8, right: 8, left: 0, bottom: 0 }}
+            accessibilityLayer={false}
+          >
+            <CartesianGrid strokeDasharray="3 3" opacity={0.25} vertical={false} />
+            <XAxis dataKey="dia" interval={intervaloDoEixo(pontos.length)} {...EIXO} />
+            <YAxis {...EIXO} width={48} allowDecimals={false} />
+            <Tooltip
+              formatter={(valor: unknown, nome: unknown) => [
+                comoNumero(numero(valor)),
+                String(nome),
+              ]}
+              labelFormatter={(rotulo: unknown) => `Dia ${String(rotulo)}`}
+              contentStyle={{
+                background: 'var(--color-background)',
+                border: '1px solid var(--color-border)',
+                borderRadius: 8,
+                fontSize: 12,
+              }}
+            />
+            <Legend wrapperStyle={{ fontSize: 12 }} />
+            <Line
+              type="monotone"
+              dataKey="ativos"
+              name="Aparelhos ativos"
+              stroke="var(--color-primary)"
+              strokeWidth={2}
+              dot={false}
+            />
+            <Line
+              type="monotone"
+              dataKey="sessoes"
+              name="Aberturas"
+              stroke="currentColor"
+              strokeWidth={2}
+              strokeDasharray="4 4"
+              dot={false}
+            />
+          </LineChart>
+        </ResponsiveContainer>
+      </div>
+      <TabelaDoGrafico
+        titulo="Aparelhos ativos e aberturas por dia"
+        colunas={['Aparelhos ativos', 'Aberturas']}
+        linhas={pontos.map((ponto) => ({
+          dia: ponto.dia,
+          valores: [comoNumero(ponto.ativos), comoNumero(ponto.sessoes)],
+        }))}
+      />
+    </figure>
   );
 }

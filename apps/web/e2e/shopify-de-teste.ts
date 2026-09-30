@@ -48,6 +48,8 @@ export interface Pedido {
   total: string;
   /** O valor do `_storefy_push`, ou nada para o pedido que não veio de toque. */
   push?: string;
+  /** O pedido feito no site, e não no app: sem a marca `_storefy` que o app põe no carrinho. */
+  peloSite?: boolean;
   criadoEm?: Date;
 }
 
@@ -64,7 +66,7 @@ export async function webhookDoPedido(page: Page, dominio: string, pedido: Pedid
     currency: 'BRL',
     created_at: (pedido.criadoEm ?? new Date()).toISOString(),
     note_attributes: [
-      { name: '_storefy', value: '1' },
+      ...(pedido.peloSite === true ? [] : [{ name: '_storefy', value: '1' }]),
       ...(pedido.push === undefined ? [] : [{ name: '_storefy_push', value: pedido.push }]),
     ],
   });
