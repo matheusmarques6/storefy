@@ -57,6 +57,19 @@ function tinhaSessao(request: NextRequest): boolean {
 }
 
 /**
+ * Toda resposta que o proxy cria DEPOIS de carregar o usuário leva os cookies
+ * que o Supabase acabou de escrever na `sessao`: o token renovado, ou a
+ * sessão morta apagada. Sem isto, o navegador ficava com o refresh token
+ * velho — que o Supabase já trocou e, reusado depois do intervalo de
+ * tolerância, derruba a sessão inteira — ou com o cookie de uma sessão que
+ * não vale mais, tentando renová-la a cada tela.
+ */
+function comOsCookiesDa(sessao: NextResponse, resposta: NextResponse): NextResponse {
+  for (const cookie of sessao.cookies.getAll()) resposta.cookies.set(cookie);
+  return resposta;
+}
+
+/**
  * Manda ao login quem chegou sem sessão.
  *
  * Numa AÇÃO do servidor (salvar um formulário, o rascunho do editor), a pessoa
@@ -72,7 +85,12 @@ function tinhaSessao(request: NextRequest): boolean {
  * Fora das ações, um POST sem sessão (formulário sem JavaScript) segue com
  * 303, para o navegador não repetir o POST no login.
  */
-function paraOLogin(request: NextRequest, login: string, proximo: string | null): NextResponse {
+function paraOLogin(
+  request: NextRequest,
+  sessao: NextResponse,
+  login: string,
+  proximo: string | null,
+): NextResponse {
   const url = request.nextUrl.clone();
   url.pathname = login;
   url.search = '';
@@ -81,13 +99,16 @@ function paraOLogin(request: NextRequest, login: string, proximo: string | null)
   if (proximo !== null && proximo !== '/') url.searchParams.set('proximo', proximo);
 
   if (ehAcao) {
-    return new NextResponse(null, {
-      status: 200,
-      headers: { 'x-action-redirect': `${url.pathname}${url.search};replace` },
-    });
+    return comOsCookiesDa(
+      sessao,
+      new NextResponse(null, {
+        status: 200,
+        headers: { 'x-action-redirect': `${url.pathname}${url.search};replace` },
+      }),
+    );
   }
   const leitura = request.method === 'GET' || request.method === 'HEAD';
-  return NextResponse.redirect(url, leitura ? 307 : 303);
+  return comOsCookiesDa(sessao, NextResponse.redirect(url, leitura ? 307 : 303));
 }
 
 function ehHost(hostname: string, configurado: string): boolean {
@@ -121,15 +142,13 @@ export async function proxy(request: NextRequest) {
       : `/admin${caminho === '/' ? '' : caminho}`;
 
     if (usuario == null && !PUBLICAS_ADMIN.includes(caminhoAdmin)) {
-      return paraOLogin(request, '/entrar', null);
+      return paraOLogin(request, response, '/entrar', null);
     }
 
     if (caminhoAdmin !== caminho) {
       const url = nextUrl.clone();
       url.pathname = caminhoAdmin;
-      const reescrita = NextResponse.rewrite(url, { request });
-      for (const cookie of response.cookies.getAll()) reescrita.cookies.set(cookie);
-      response = reescrita;
+      response = comOsCookiesDa(response, NextResponse.rewrite(url, { request }));
     }
     return response;
   }
@@ -139,13 +158,13 @@ export async function proxy(request: NextRequest) {
     const url = nextUrl.clone();
     url.hostname = env.hostAdmin;
     url.pathname = caminho;
-    return NextResponse.redirect(url);
+    return comOsCookiesDa(response, NextResponse.redirect(url));
   }
 
   // ------------------------------------------- admin por caminho (Vercel)
   if (caminho.startsWith('/admin')) {
     if (usuario == null && !PUBLICAS_ADMIN.includes(caminho)) {
-      return paraOLogin(request, '/admin/entrar', null);
+      return paraOLogin(request, response, '/admin/entrar', null);
     }
     return response;
   }
@@ -177,9 +196,12 @@ export async function proxy(request: NextRequest) {
     request.method !== 'HEAD' &&
     !caminho.startsWith(PREFIXO_DAS_ROTAS_DA_VISITA)
   ) {
-    return new NextResponse(
-      'Você está vendo o painel de um cliente, e a visita é somente leitura. Encerre a visita para voltar a mexer no seu painel.',
-      { status: 403, headers: { 'content-type': 'text/plain; charset=utf-8' } },
+    return comOsCookiesDa(
+      response,
+      new NextResponse(
+        'Você está vendo o painel de um cliente, e a visita é somente leitura. Encerre a visita para voltar a mexer no seu painel.',
+        { status: 403, headers: { 'content-type': 'text/plain; charset=utf-8' } },
+      ),
     );
   }
 
@@ -190,7 +212,7 @@ export async function proxy(request: NextRequest) {
   if (usuario == null && !ehPublica) {
     // Volta para onde a pessoa queria ir depois do login, com a busca junto
     // (`/analytics?periodo=90` volta nos 90 dias).
-    return paraOLogin(request, '/entrar', `${caminho}${nextUrl.search}`);
+    return paraOLogin(request, response, '/entrar', `${caminho}${nextUrl.search}`);
   }
 
   // Já logado não precisa ver a tela de login.
@@ -198,7 +220,7 @@ export async function proxy(request: NextRequest) {
     const url = nextUrl.clone();
     url.pathname = '/';
     url.search = '';
-    return NextResponse.redirect(url);
+    return comOsCookiesDa(response, NextResponse.redirect(url));
   }
 
   return response;

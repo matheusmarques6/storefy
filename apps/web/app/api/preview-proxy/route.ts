@@ -23,6 +23,7 @@ import {
   prepararHtmlDaPrevia,
 } from '@/lib/preview-proxy';
 import { dominiosDaLoja } from '@storefy/config-schema';
+import { ehUuid } from '@/lib/app-config-publica';
 import { log } from '@/lib/log';
 
 export const dynamic = 'force-dynamic';
@@ -62,6 +63,13 @@ export async function GET(requisicao: NextRequest): Promise<NextResponse> {
     data: { user },
   } = await supabase.auth.getUser();
   if (user == null) return erro(401, 'Faça login no painel para ver a prévia.');
+
+  /*
+   * Endereço de loja que não é um id nem chega ao banco: o Postgres recusaria
+   * a consulta, e o erro dele passava por "banco fora do ar" — com o "tente de
+   * novo" de quando tentar de novo resolve.
+   */
+  if (!ehUuid(lojaId)) return erro(404, 'Loja não encontrada.');
 
   // A RLS decide: quem não é da organização da loja simplesmente não a acha.
   const { data: loja, error: erroDaLoja } = await supabase

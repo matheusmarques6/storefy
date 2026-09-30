@@ -9,11 +9,21 @@
  * num alerta é um token vazado.
  */
 import type { Instrumentation } from 'next';
+import { clienteDesistiu } from '@/lib/cliente-desistiu';
 import { log } from '@/lib/log';
 import { relatarErro } from '@/lib/sentry';
 
 export const onRequestError: Instrumentation.onRequestError = async (erro, pedido, contexto) => {
   const caminho = pedido.path.split('?', 1)[0] ?? '/';
+  if (clienteDesistiu(erro)) {
+    // Quem pediu foi embora antes da resposta: fica no log, sem alarme.
+    log.info('requisicao.interrompida', {
+      caminho,
+      metodo: pedido.method,
+      rota: contexto.routePath,
+    });
+    return;
+  }
   log.erro('requisicao.falhou', {
     erro,
     caminho,
