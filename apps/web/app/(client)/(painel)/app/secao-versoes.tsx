@@ -36,7 +36,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { configDaVersao, restaurarVersao } from './acoes';
+import { configDaVersao, type EstadoDoEditor } from './acoes';
 import { ListaDeDiferencas } from './lista-de-diferencas';
 
 /** O que o diálogo de comparação está mostrando. */
@@ -61,10 +61,16 @@ export function SecaoVersoes({
   versoes,
   somenteLeitura,
   fuso,
+  restaurar,
 }: {
   storeId: string;
   /** O rascunho como está na tela: é contra ele que a versão é comparada. */
   rascunho: AppConfig;
+  /**
+   * Restaura pelo editor, que sabe em cima de qual rascunho a tela está — e
+   * que mostra a escolha se ele tiver mudado em outra aba.
+   */
+  restaurar: (versao: number) => Promise<EstadoDoEditor>;
   versoes: VersaoDoHistorico[];
   somenteLeitura: boolean;
   /** O fuso da loja. Sem ele, servidor e navegador escreviam horas diferentes. */
@@ -108,11 +114,19 @@ export function SecaoVersoes({
     const versao = aRestaurar;
     if (versao === null) return;
     iniciar(() => {
-      void restaurarVersao(storeId, versao).then((estado) => {
-        setARestaurar(null);
-        if (estado.ok === true) toast.success(estado.mensagem ?? 'Versão carregada no rascunho.');
-        else toast.error(estado.mensagem ?? 'Não foi possível restaurar.');
-      });
+      void restaurar(versao).then(
+        (estado) => {
+          setARestaurar(null);
+          // O rascunho mudou em outra aba: o editor já abriu a escolha.
+          if (estado.conflito !== undefined) return;
+          if (estado.ok === true) toast.success(estado.mensagem ?? 'Versão carregada no rascunho.');
+          else toast.error(estado.mensagem ?? 'Não foi possível restaurar.');
+        },
+        () => {
+          setARestaurar(null);
+          toast.error('Sem conexão com a Storefy: a versão não foi restaurada.');
+        },
+      );
     });
   }
 

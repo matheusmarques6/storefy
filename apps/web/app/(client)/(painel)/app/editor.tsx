@@ -15,6 +15,7 @@
  * avisa; sair pelo menu do painel grava na hora o que estava esperando.
  */
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from 'react';
+import { useRouter } from 'next/navigation';
 import {
   AlertTriangle,
   Eye,
@@ -46,7 +47,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { publicarConfig, salvarConfig } from './acoes';
+import { publicarConfig, restaurarVersao, salvarConfig, type EstadoDoEditor } from './acoes';
 import { Previa, caminhoDaPrevia } from './previa';
 import { PreviaNoCelular } from './previa-no-celular';
 import { BarraDePublicacao, type SituacaoDoRascunho } from './barra-de-publicacao';
@@ -55,7 +56,7 @@ import { SecaoAparencia } from './secao-aparencia';
 import { SecaoLoja } from './secao-loja';
 import type { Preset } from '@/lib/presets';
 import type { OndeBaixarAPrevia } from '@/lib/configuracoes-da-plataforma';
-import { conteudoDaConfig, mudancasPendentes } from '@/lib/mudancas-pendentes';
+import { conteudoDaConfig, impressaoDaConfig, mudancasPendentes } from '@/lib/mudancas-pendentes';
 import { diferencasDaConfig } from '@/lib/diferencas-da-config';
 import { ListaDeDiferencas } from './lista-de-diferencas';
 import { SecaoRecursos } from './secao-recursos';
@@ -162,17 +163,48 @@ export function Editor({
    * pausa — a que sai na hora se a pessoa deixar a tela. Um objeto só, que
    * nunca é trocado: os efeitos o leem na montagem e o usam na desmontagem.
    */
-  const gravacoes = useRef<{ fila: Promise<void>; pendente: AppConfig | null }>({
+  const gravacoes = useRef<{
+    fila: Promise<void>;
+    pendente: AppConfig | null;
+    /**
+     * A impressão do que está no banco, pelo que esta tela sabe (`salvo`):
+     * cada gravação vai "em cima dela", e o servidor recusa se o rascunho de
+     * lá já tiver outro conteúdo. Lida quando a gravação SAI da fila — duas
+     * seguidas desta mesma aba não brigam uma com a outra. Preenchida pelo
+     * efeito logo abaixo, na montagem, antes de qualquer gravação.
+     */
+    base: string;
+    /** O rascunho mudou em outro lugar: nada é gravado até a pessoa decidir. */
+    conflito: boolean;
+  }>({
     fila: Promise.resolve(),
     pendente: null,
+    base: '',
+    conflito: false,
   });
+
+  /*
+   * `salvo` muda quando uma gravação volta (e a fila já atualizou a base) e
+   * quando a tela adota a config do servidor, como numa versão restaurada.
+   * Num efeito, e não antes: um salvamento que já esperava a pausa e saísse
+   * entre a troca e este efeito vai com a base antiga — e volta como conflito,
+   * em vez de gravar a config velha por cima da restaurada.
+   */
+  useEffect(() => {
+    gravacoes.current.base = impressaoDaConfig(salvo);
+  }, [salvo]);
+
+  /** O rascunho como estava no banco quando a gravação desta aba foi recusada. */
+  const [noBanco, setNoBanco] = useState<AppConfig | null>(null);
+  const [vendoConflito, setVendoConflito] = useState(false);
+  const router = useRouter();
 
   const mudou = useMemo(() => JSON.stringify(config) !== JSON.stringify(salvo), [config, salvo]);
   const problemas = useMemo(() => validarConfig(config), [config]);
   const todosOsProblemas = problemas.length > 0 ? problemas : problemasDoServidor;
 
   const situacao: SituacaoDoRascunho =
-    gravacao.tipo === 'salvando' || gravacao.tipo === 'erro'
+    gravacao.tipo === 'salvando' || gravacao.tipo === 'erro' || gravacao.tipo === 'conflito'
       ? gravacao
       : !mudou
         ? gravacao
@@ -198,7 +230,11 @@ export function Editor({
   if (ultimaDoServidor !== configInicialDoServidor) {
     setUltimaDoServidor(configInicialDoServidor);
     const doServidor = conteudoDaConfig(configInicialDoServidor);
-    if (doServidor !== conteudoDaConfig(salvo) && !emVoo.includes(doServidor)) {
+    if (noBanco !== null) {
+      // No meio de um conflito, o rascunho mais novo vai para a escolha — e
+      // não por cima do que a pessoa mudou aqui e ainda não decidiu.
+      if (doServidor !== conteudoDaConfig(noBanco)) setNoBanco(configInicialDoServidor);
+    } else if (doServidor !== conteudoDaConfig(salvo) && !emVoo.includes(doServidor)) {
       setConfig(configInicialDoServidor);
       setSalvo(configInicialDoServidor);
     }
@@ -223,24 +259,52 @@ export function Editor({
     };
   }, [pendente]);
 
+  /** O servidor recusou: o rascunho de lá tem outro conteúdo. Para tudo e pergunta. */
+  const entrarEmConflito = useCallback((doBanco: AppConfig) => {
+    gravacoes.current.conflito = true;
+    setNoBanco(doBanco);
+    setVendoConflito(true);
+    setGravacao({ tipo: 'conflito' });
+  }, []);
+
+  /**
+   * Restaurar vai em cima do rascunho desta tela, como gravar. Espera as
+   * gravações a caminho: a base só vale depois que elas voltam.
+   */
+  const restaurar = useCallback(
+    async (versao: number): Promise<EstadoDoEditor> => {
+      await gravacoes.current.fila;
+      const estado = await restaurarVersao(storeId, versao, gravacoes.current.base);
+      if (estado.conflito !== undefined) entrarEmConflito(estado.conflito.noBanco);
+      return estado;
+    },
+    [entrarEmConflito, storeId],
+  );
+
   /** Grava ESTA config, depois de qualquer gravação que já esteja a caminho. */
   const gravar = useCallback(
     (alvo: AppConfig) => {
+      const estado = gravacoes.current;
+      if (estado.conflito) return;
       const conteudo = conteudoDaConfig(alvo);
       setGravacao({ tipo: 'salvando' });
       setEmVoo((lista) => [...lista, conteudo]);
-      const estado = gravacoes.current;
       estado.fila = estado.fila.then(async () => {
         try {
-          const estado = await salvarConfig(storeId, alvo);
-          setProblemasDoServidor(estado.problemas ?? []);
-          if (estado.ok === true) {
+          // Uma gravação que já estava na fila quando a anterior deu conflito.
+          if (estado.conflito) return;
+          const resultado = await salvarConfig(storeId, alvo, estado.base);
+          setProblemasDoServidor(resultado.problemas ?? []);
+          if (resultado.ok === true) {
+            estado.base = impressaoDaConfig(alvo);
             setSalvo(alvo);
             setGravacao({ tipo: 'salvo', em: new Date() });
+          } else if (resultado.conflito !== undefined) {
+            entrarEmConflito(resultado.conflito.noBanco);
           } else {
             setGravacao({
               tipo: 'erro',
-              mensagem: estado.mensagem ?? 'Não foi possível salvar o rascunho.',
+              mensagem: resultado.mensagem ?? 'Não foi possível salvar o rascunho.',
             });
           }
         } catch {
@@ -257,14 +321,14 @@ export function Editor({
         }
       });
     },
-    [storeId],
+    [entrarEmConflito, storeId],
   );
 
   // Um instante depois de a pessoa parar de mexer, grava. Com ponto a
   // corrigir, espera: gravar poria no rascunho algo que não pode ir ao ar.
   useEffect(() => {
     const estado = gravacoes.current;
-    if (somenteLeitura || !mudou || problemas.length > 0) {
+    if (somenteLeitura || gravacao.tipo === 'conflito' || !mudou || problemas.length > 0) {
       estado.pendente = null;
       return;
     }
@@ -276,7 +340,7 @@ export function Editor({
     return () => {
       window.clearTimeout(espera);
     };
-  }, [config, gravar, mudou, problemas.length, somenteLeitura]);
+  }, [config, gravacao.tipo, gravar, mudou, problemas.length, somenteLeitura]);
 
   /*
    * Sair da tela no meio da pausa não pode perder a mudança. O `beforeunload`
@@ -287,14 +351,25 @@ export function Editor({
   useEffect(() => {
     const estado = gravacoes.current;
     return () => {
+      if (estado.conflito) {
+        // Sair sem decidir: o que esta aba mudou fica sem gravar, e a pessoa sabe.
+        toast.error(
+          'As mudanças que você fez no app nesta aba não foram salvas: o rascunho tinha mudado em outro lugar.',
+        );
+        return;
+      }
       const alvo = estado.pendente;
       if (alvo === null) return;
       estado.pendente = null;
       estado.fila = estado.fila.then(async () => {
         const falha = 'A última mudança no app não foi salva. Volte ao editor e confira.';
         try {
-          const resultado = await salvarConfig(storeId, alvo);
-          if (resultado.ok !== true) toast.error(resultado.mensagem ?? falha);
+          const resultado = await salvarConfig(storeId, alvo, estado.base);
+          if (resultado.conflito !== undefined) {
+            toast.error(
+              'A última mudança no app não foi salva: o rascunho tinha mudado em outro lugar. Volte ao editor e confira.',
+            );
+          } else if (resultado.ok !== true) toast.error(resultado.mensagem ?? falha);
         } catch {
           toast.error(falha);
         }
@@ -316,12 +391,55 @@ export function Editor({
     toast.success('Mudanças desfeitas: o rascunho voltou a ser igual à versão no ar.');
   }
 
+  /*
+   * O conflito se resolve aqui, sem recarregar: ou a tela passa a mostrar o
+   * rascunho de lá (e o que esta aba não salvou é descartado), ou o de lá
+   * vira a base e o salvamento automático grava o desta aba por cima.
+   */
+  function ficarComODoBanco() {
+    if (noBanco === null) return;
+    const estado = gravacoes.current;
+    estado.base = impressaoDaConfig(noBanco);
+    estado.conflito = false;
+    setConfig(noBanco);
+    setSalvo(noBanco);
+    setNoBanco(null);
+    setVendoConflito(false);
+    setGravacao({ tipo: 'salvo', em: null });
+    // A versão, o histórico e o que está no ar podem ter mudado junto.
+    router.refresh();
+    toast.success('Pronto: o editor mostra o rascunho mais novo.');
+  }
+
+  function ficarComODestaAba() {
+    if (noBanco === null) return;
+    const estado = gravacoes.current;
+    estado.base = impressaoDaConfig(noBanco);
+    estado.conflito = false;
+    setSalvo(noBanco);
+    setNoBanco(null);
+    setVendoConflito(false);
+    setGravacao({ tipo: 'salvo', em: null });
+  }
+
+  const conflito = useMemo(() => {
+    if (noBanco === null) return null;
+    // `version` e `store` o servidor reescreve sozinho: não são mudança de ninguém.
+    const comoSalvo = { ...noBanco, version: salvo.version, store: salvo.store };
+    return {
+      la: diferencasDaConfig(salvo, comoSalvo),
+      aqui: diferencasDaConfig(salvo, config),
+    };
+  }, [config, noBanco, salvo]);
+
   function publicar() {
     iniciarPublicar(() => {
-      void publicarConfig(storeId).then((estado) => {
+      // A lista do que vai ao ar sai desta tela: publica só se o banco tiver o mesmo.
+      void publicarConfig(storeId, gravacoes.current.base).then((estado) => {
         setConfirmandoPublicacao(false);
         setProblemasDoServidor(estado.problemas ?? []);
-        if (estado.ok === true) toast.success(estado.mensagem ?? 'Publicado.');
+        if (estado.conflito !== undefined) entrarEmConflito(estado.conflito.noBanco);
+        else if (estado.ok === true) toast.success(estado.mensagem ?? 'Publicado.');
         else toast.error(estado.mensagem ?? 'Não foi possível publicar.');
       });
     });
@@ -506,6 +624,7 @@ export function Editor({
                   versoes={historico}
                   somenteLeitura={somenteLeitura}
                   fuso={fuso}
+                  restaurar={restaurar}
                 />
               ) : null}
             </CardContent>
@@ -557,6 +676,9 @@ export function Editor({
           aoTentarDeNovo={() => {
             gravar(config);
           }}
+          aoResolverConflito={() => {
+            setVendoConflito(true);
+          }}
           aoPublicar={() => {
             setConfirmandoPublicacao(true);
           }}
@@ -565,6 +687,60 @@ export function Editor({
           }}
         />
       )}
+
+      <AlertDialog open={vendoConflito && conflito !== null} onOpenChange={setVendoConflito}>
+        <AlertDialogContent className="max-h-[90dvh] overflow-y-auto">
+          <AlertDialogHeader>
+            <AlertDialogTitle>O rascunho mudou em outro lugar</AlertDialogTitle>
+            <AlertDialogDescription>
+              Enquanto você editava aqui, o rascunho foi salvo em outra aba ou por outra pessoa da
+              equipe. Para não apagar nada sem você ver, esta aba parou de salvar. Escolha com qual
+              versão continuar.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          {conflito === null ? null : (
+            <div className="space-y-4">
+              <section aria-labelledby="conflito-la" className="space-y-2">
+                <h3 id="conflito-la" className="text-sm font-medium">
+                  O que mudou lá
+                </h3>
+                {conflito.la.length > 0 ? (
+                  <ListaDeDiferencas diferencas={conflito.la} maximo={8} />
+                ) : (
+                  <p className="text-muted-foreground text-sm">
+                    Ajustes que não aparecem nesta lista.
+                  </p>
+                )}
+              </section>
+              <section aria-labelledby="conflito-aqui" className="space-y-2">
+                <h3 id="conflito-aqui" className="text-sm font-medium">
+                  O que você mudou aqui e ainda não foi salvo
+                </h3>
+                {conflito.aqui.length > 0 ? (
+                  <ListaDeDiferencas diferencas={conflito.aqui} maximo={8} />
+                ) : (
+                  <p className="text-muted-foreground text-sm">Nada: não há o que perder aqui.</p>
+                )}
+              </section>
+              <p className="text-muted-foreground text-sm">
+                {conflito.aqui.length > 0
+                  ? 'Ficar com a versão de lá descarta o que você mudou aqui. Ficar com a desta aba grava por cima, e o que mudou lá se perde.'
+                  : 'O editor passa a mostrar a versão de lá.'}
+              </p>
+            </div>
+          )}
+          <AlertDialogFooter>
+            {conflito !== null && conflito.aqui.length > 0 ? (
+              <Button type="button" variant="outline" onClick={ficarComODestaAba}>
+                Ficar com a desta aba
+              </Button>
+            ) : null}
+            <Button type="button" onClick={ficarComODoBanco}>
+              Ficar com a versão de lá
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <AlertDialog open={confirmandoDesfazer} onOpenChange={setConfirmandoDesfazer}>
         <AlertDialogContent>

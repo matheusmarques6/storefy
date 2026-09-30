@@ -3,6 +3,7 @@ import { configInicial, type AppConfig } from '@storefy/config-schema';
 import {
   conteudoDaConfig,
   descricaoDasMudancas,
+  impressaoDaConfig,
   mudancasPendentes,
 } from '@/lib/mudancas-pendentes';
 
@@ -78,6 +79,38 @@ describe('conteudoDaConfig', () => {
     const rascunho = copia();
     rascunho.tabs[0] = { ...rascunho.tabs[0], label: 'Loja' } as AppConfig['tabs'][number];
     expect(conteudoDaConfig(rascunho)).not.toBe(conteudoDaConfig(NO_AR));
+  });
+});
+
+describe('impressaoDaConfig', () => {
+  it('é curta, e a mesma para o mesmo conteúdo em qualquer ordem, versão ou loja', () => {
+    const doServidor = copia();
+    doServidor.version = 9;
+    doServidor.store = { ...doServidor.store, name: 'Outro nome' };
+    const reordenada = Object.fromEntries(Object.entries(NO_AR).reverse()) as unknown as AppConfig;
+
+    expect(impressaoDaConfig(NO_AR)).toMatch(/^[0-9a-f]{28}$/);
+    expect(impressaoDaConfig(doServidor)).toBe(impressaoDaConfig(NO_AR));
+    expect(impressaoDaConfig(reordenada)).toBe(impressaoDaConfig(NO_AR));
+  });
+
+  it('com ou sem os valores padrão preenchidos, é a mesma — o banco guarda a config lida', () => {
+    const semPadroes = structuredClone(NO_AR) as Partial<AppConfig>;
+    delete semPadroes.minSupportedBuild;
+    expect(impressaoDaConfig(semPadroes as AppConfig)).toBe(impressaoDaConfig(NO_AR));
+  });
+
+  it('muda com qualquer coisa que o lojista edita, até uma letra', () => {
+    const renomeada = copia();
+    renomeada.tabs[0] = {
+      ...renomeada.tabs[0],
+      label: `${renomeada.tabs[0]?.label ?? ''}s`,
+    } as AppConfig['tabs'][number];
+    const colorida = copia();
+    colorida.theme.primary = '#1d4ed9';
+
+    const impressoes = new Set([renomeada, colorida, NO_AR].map(impressaoDaConfig));
+    expect(impressoes.size).toBe(3);
   });
 });
 

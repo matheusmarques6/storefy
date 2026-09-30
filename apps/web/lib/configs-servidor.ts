@@ -10,7 +10,7 @@ import 'server-only';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '@storefy/db';
 import { safeParseAppConfig, type AppConfig } from '@storefy/config-schema';
-import { decidirRascunho } from '@/lib/rascunho';
+import { TEXTO_DO_CONFLITO, decidirRascunho } from '@/lib/rascunho';
 import { FALHA_GENERICA, mensagemDaFalha } from '@/lib/erros';
 
 type Client = SupabaseClient<Database>;
@@ -19,6 +19,12 @@ export interface RascunhoDoApp {
   appId: string;
   version: number;
   config: AppConfig;
+  /**
+   * O `updated_at` da linha, como este pedido a deixou. Quem grava logo em
+   * seguida grava só "por cima desta" (`salvarRascunho`): uma gravação de
+   * outra aba que entre no meio não é apagada em silêncio.
+   */
+  revisao: string;
 }
 
 export type ResultadoDoRascunho =
@@ -53,6 +59,19 @@ export interface VersaoDoHistorico {
 export async function garantirRascunho(
   supabase: Client,
   storeId: string,
+): Promise<ResultadoDoRascunho> {
+  return lerOuPrepararRascunho(supabase, storeId, true);
+}
+
+/**
+ * `podeRepetir`: o rascunho mudou entre a leitura e o conserto (o editor de
+ * outra aba gravou no meio), ou outro pedido criou o mesmo rascunho no mesmo
+ * instante. Uma segunda leitura resolve os dois; mais que isso não se repete.
+ */
+async function lerOuPrepararRascunho(
+  supabase: Client,
+  storeId: string,
+  podeRepetir: boolean,
 ): Promise<ResultadoDoRascunho> {
   const { data: loja, error: erroLoja } = await supabase
     .from('stores')
@@ -90,7 +109,7 @@ export async function garantirRascunho(
       .maybeSingle(),
     supabase
       .from('app_configs')
-      .select('version, config')
+      .select('version, config, updated_at')
       .eq('app_id', app.id)
       .eq('status', 'draft')
       .order('version', { ascending: false })
@@ -115,62 +134,125 @@ export async function garantirRascunho(
     maior?.version ?? 0,
   );
 
+  let revisao = rascunho?.updated_at ?? null;
+
   if (decisao.acao === 'criar') {
-    const { error } = await supabase.from('app_configs').insert({
-      app_id: app.id,
-      version: decisao.version,
-      config: decisao.config,
-      status: 'draft',
-    });
-    if (error != null)
+    const { data: criado, error } = await supabase
+      .from('app_configs')
+      .insert({
+        app_id: app.id,
+        version: decisao.version,
+        config: decisao.config,
+        status: 'draft',
+      })
+      .select('updated_at')
+      .single();
+    if (error != null) {
+      // 23505: outro pedido criou esta mesma versão agora há pouco — é ler a dele.
+      if (error.code === '23505' && podeRepetir)
+        return lerOuPrepararRascunho(supabase, storeId, false);
       return { ok: false, motivo: mensagemDaFalha('configs', error, FALHA_GENERICA) };
+    }
+    revisao = criado.updated_at;
   }
 
-  // Consertar (ilegível) e atualizar (a loja mudou) regravam a mesma linha.
-  if (decisao.acao === 'consertar' || decisao.acao === 'atualizar') {
-    const { error } = await supabase
+  // Consertar (ilegível) e atualizar (a loja mudou) regravam a mesma linha —
+  // e só a linha como foi lida: o conserto não apaga uma gravação do editor
+  // que tenha entrado no meio.
+  if ((decisao.acao === 'consertar' || decisao.acao === 'atualizar') && revisao !== null) {
+    const { data: regravado, error } = await supabase
       .from('app_configs')
       .update({ config: decisao.config })
       .eq('app_id', app.id)
-      .eq('version', decisao.version);
+      .eq('version', decisao.version)
+      .eq('updated_at', revisao)
+      .select('updated_at')
+      .maybeSingle();
     if (error != null)
       return { ok: false, motivo: mensagemDaFalha('configs', error, FALHA_GENERICA) };
+    if (regravado != null) revisao = regravado.updated_at;
+    // Nenhuma linha: mudou entre a leitura e o conserto, e uma segunda leitura
+    // decide de novo. Na segunda, é quem só pode ler (a RLS não deixa gravar):
+    // ele vê o rascunho consertado, e o banco fica para quem pode editar.
+    else if (podeRepetir) return lerOuPrepararRascunho(supabase, storeId, false);
+  }
+
+  if (revisao === null) {
+    // Sem rascunho lido e sem um criado agora: só se `decidirRascunho` mudar.
+    return { ok: false, motivo: FALHA_GENERICA };
   }
 
   return {
     ok: true,
-    rascunho: { appId: app.id, version: decisao.version, config: decisao.config },
+    rascunho: { appId: app.id, version: decisao.version, config: decisao.config, revisao },
   };
 }
 
-/** Grava o rascunho editado. A versão não muda; publicar é que cria a próxima. */
+export type ResultadoDaGravacao =
+  | { ok: true }
+  /** `conflito`: o rascunho não está mais na `revisao` dada — outra gravação entrou antes. */
+  | { ok: false; conflito: boolean; motivo: string };
+
+/**
+ * Grava o rascunho editado. A versão não muda; publicar é que cria a próxima.
+ *
+ * Com `revisao`, só grava se o rascunho continuar nela: o que outra aba
+ * gravou depois da leitura não é apagado, e a gravação volta como conflito.
+ */
 export async function salvarRascunho(
   supabase: Client,
   appId: string,
   version: number,
   config: AppConfig,
-): Promise<{ ok: true } | { ok: false; motivo: string }> {
-  const { data, error } = await supabase
+  revisao?: string,
+): Promise<ResultadoDaGravacao> {
+  let gravacao = supabase
     .from('app_configs')
     .update({ config })
     .eq('app_id', appId)
     .eq('version', version)
-    .eq('status', 'draft')
-    .select('id')
-    .maybeSingle();
+    .eq('status', 'draft');
+  if (revisao !== undefined) gravacao = gravacao.eq('updated_at', revisao);
+  const { data, error } = await gravacao.select('id').maybeSingle();
 
-  if (error != null)
-    return { ok: false, motivo: mensagemDaFalha('configs', error, FALHA_GENERICA) };
-  // Sem erro e sem linha: a RLS filtrou o UPDATE, ou o rascunho já foi
-  // publicado por outra aba enquanto esta estava aberta.
-  if (data == null) {
+  if (error != null) {
     return {
       ok: false,
-      motivo:
-        'Não foi possível salvar. Confira se você ainda tem permissão e se esta versão continua sendo o rascunho.',
+      conflito: false,
+      motivo: mensagemDaFalha('configs', error, FALHA_GENERICA),
     };
   }
-  return { ok: true };
+  if (data != null) return { ok: true };
+
+  /*
+   * Sem erro e sem linha: a RLS filtrou o UPDATE (quem só pode ler) — ou,
+   * com a revisão, outra gravação entrou antes, ou outra aba publicou e esta
+   * versão deixou de ser o rascunho. Para dizer qual, olha de novo.
+   */
+  if (revisao !== undefined) {
+    const { data: atual, error: erroDaReleitura } = await supabase
+      .from('app_configs')
+      .select('updated_at, status')
+      .eq('app_id', appId)
+      .eq('version', version)
+      .maybeSingle();
+    if (erroDaReleitura != null) {
+      return {
+        ok: false,
+        conflito: false,
+        motivo: mensagemDaFalha('configs', erroDaReleitura, FALHA_GENERICA),
+      };
+    }
+    if (atual != null && (atual.updated_at !== revisao || atual.status !== 'draft')) {
+      return { ok: false, conflito: true, motivo: TEXTO_DO_CONFLITO };
+    }
+  }
+  return {
+    ok: false,
+    conflito: false,
+    motivo:
+      'Não foi possível salvar. Confira se você ainda tem permissão e se esta versão continua sendo o rascunho.',
+  };
 }
 
 /** A versão que está no ar, para a tela do editor mostrar. */

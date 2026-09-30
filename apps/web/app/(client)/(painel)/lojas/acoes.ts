@@ -160,10 +160,15 @@ export async function criarLoja(_anterior: EstadoLoja, dados: FormData): Promise
   if (rascunho.ok && corDetectada !== null) {
     const sugestao = temaSugerido(corDetectada);
     if (sugestao !== null) {
-      await salvarRascunho(supabase, rascunho.rascunho.appId, rascunho.rascunho.version, {
-        ...rascunho.rascunho.config,
-        theme: { ...rascunho.rascunho.config.theme, ...sugestao },
-      });
+      const gravou = await salvarRascunho(
+        supabase,
+        rascunho.rascunho.appId,
+        rascunho.rascunho.version,
+        { ...rascunho.rascunho.config, theme: { ...rascunho.rascunho.config.theme, ...sugestao } },
+      );
+      // A loja nasce do mesmo jeito; a cor fica para o editor, e a falha, no log.
+      if (!gravou.ok)
+        log.aviso('loja-criada.cor-nao-aplicada', { loja: criada.id, motivo: gravou.motivo });
     }
   }
 

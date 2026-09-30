@@ -24,6 +24,8 @@ import { guardarImagemDoSlide } from '@/lib/imagem-do-slide';
 import { iconeDoSite } from '@/lib/logo-do-site';
 import { descobrirTema } from '@/lib/pagina-da-loja';
 import { garantirRascunho, salvarRascunho } from '@/lib/configs-servidor';
+import { TEXTO_DO_CONFLITO } from '@/lib/rascunho';
+import { impressaoDaConfig } from '@/lib/mudancas-pendentes';
 import { validarConfig, type Problema } from '@/lib/editor-de-config';
 import { FALHA_GENERICA, mensagemDaFalha } from '@/lib/erros';
 
@@ -34,6 +36,16 @@ export interface EstadoDoEditor {
   problemas?: Problema[];
   /** Versão publicada, devolvida depois de publicar. */
   versaoPublicada?: number;
+  /**
+   * O rascunho mudou em outra aba (ou por outra pessoa da equipe) depois que
+   * a tela o leu, e nada foi gravado. Vem com o rascunho como está agora,
+   * para a pessoa ver o que mudou lá e decidir com qual ficar.
+   */
+  conflito?: { noBanco: AppConfig };
+}
+
+function conflitoCom(noBanco: AppConfig): EstadoDoEditor {
+  return { mensagem: TEXTO_DO_CONFLITO, conflito: { noBanco } };
 }
 
 function traduzirErro(codigo: string | undefined, mensagem: string): string {
@@ -384,13 +396,30 @@ export async function renomearApp(nome: string): Promise<EstadoDoEditor> {
   };
 }
 
-export async function salvarConfig(storeId: string, configBruta: unknown): Promise<EstadoDoEditor> {
+/**
+ * Grava o rascunho do editor.
+ *
+ * `base` é a impressão (`impressaoDaConfig`) do rascunho em cima do qual a
+ * tela fez a mudança. Se o do banco não tem mais esse conteúdo — outra aba,
+ * ou outra pessoa da equipe, gravou no meio —, nada é gravado, e a tela
+ * recebe o rascunho de agora para a pessoa decidir: a última gravação não
+ * apaga mais a outra em silêncio. Sem `base` (uma aba aberta antes desta
+ * versão do painel), grava por cima, como antes.
+ */
+export async function salvarConfig(
+  storeId: string,
+  configBruta: unknown,
+  base?: string,
+): Promise<EstadoDoEditor> {
   const supabase = await criarClientServidor();
 
   // O rascunho é a fonte da verdade para a versão e para o app_id. Mesmo que o
   // navegador mande outros, valem estes.
-  const atual = await garantirRascunho(supabase, storeId);
+  let atual = await garantirRascunho(supabase, storeId);
   if (!atual.ok) return { mensagem: atual.motivo };
+  if (base !== undefined && base !== impressaoDaConfig(atual.rascunho.config)) {
+    return conflitoCom(atual.rascunho.config);
+  }
 
   const analise = safeParseAppConfig(configBruta);
   if (!analise.success) {
@@ -413,9 +442,9 @@ export async function salvarConfig(storeId: string, configBruta: unknown): Promi
    * endereço da loja — isso é na tela da loja — e deixar o campo passar daria a
    * quem forjasse o payload um app apontando para outro site.
    */
-  const config: AppConfig = {
+  const configNaVersao = (version: number): AppConfig => ({
     ...analise.data,
-    version: atual.rascunho.version,
+    version,
     // Do banco, e pela mesma função do rascunho: a plataforma decide se o app
     // marca o carrinho para a atribuição, e não um campo vindo do formulário.
     store: blocoDaLoja({
@@ -424,30 +453,62 @@ export async function salvarConfig(storeId: string, configBruta: unknown): Promi
       shopDomain: loja.shop_domain,
       platform: loja.platform,
     }),
-  };
+  });
 
-  const problemas = validarConfig(config);
+  const problemas = validarConfig(configNaVersao(atual.rascunho.version));
   if (problemas.length > 0) {
     return { problemas, mensagem: 'Corrija os pontos abaixo antes de salvar.' };
   }
 
-  const gravou = await salvarRascunho(
+  // Só por cima do rascunho como foi lido acima.
+  let gravou = await salvarRascunho(
     supabase,
     atual.rascunho.appId,
     atual.rascunho.version,
-    config,
+    configNaVersao(atual.rascunho.version),
+    atual.rascunho.revisao,
   );
-  if (!gravou.ok) return { mensagem: gravou.motivo };
+  if (!gravou.ok && gravou.conflito) {
+    /*
+     * Outra gravação entrou entre a leitura e esta escrita — milissegundos.
+     * Lê de novo: se o CONTEÚDO é o mesmo que este pedido leu (a outra aba só
+     * publicou, ou a loja mudou de nome), grava no rascunho novo; se mudou, é
+     * conflito de verdade, e quem decide é a pessoa.
+     */
+    const lido = impressaoDaConfig(atual.rascunho.config);
+    atual = await garantirRascunho(supabase, storeId);
+    if (!atual.ok) return { mensagem: atual.motivo };
+    if (impressaoDaConfig(atual.rascunho.config) !== lido)
+      return conflitoCom(atual.rascunho.config);
+    gravou = await salvarRascunho(
+      supabase,
+      atual.rascunho.appId,
+      atual.rascunho.version,
+      configNaVersao(atual.rascunho.version),
+      atual.rascunho.revisao,
+    );
+  }
+  if (!gravou.ok) {
+    return gravou.conflito ? conflitoCom(atual.rascunho.config) : { mensagem: gravou.motivo };
+  }
 
   revalidatePath('/app');
   return { ok: true, mensagem: 'Rascunho salvo.' };
 }
 
-export async function publicarConfig(storeId: string): Promise<EstadoDoEditor> {
+/**
+ * Publica o rascunho. `base`, como ao gravar, é a impressão do rascunho que a
+ * tela tem: o diálogo de publicar lista o que vai ao ar a partir DELE, e um
+ * rascunho mudado em outra aba iria ao ar sem ninguém ter visto.
+ */
+export async function publicarConfig(storeId: string, base?: string): Promise<EstadoDoEditor> {
   const supabase = await criarClientServidor();
 
   const atual = await garantirRascunho(supabase, storeId);
   if (!atual.ok) return { mensagem: atual.motivo };
+  if (base !== undefined && base !== impressaoDaConfig(atual.rascunho.config)) {
+    return conflitoCom(atual.rascunho.config);
+  }
 
   // Publicar com config inválida colocaria no ar algo que o app descarta — e o
   // lojista veria o app "não atualizar", sem nenhum erro para investigar.
@@ -471,11 +532,23 @@ export async function publicarConfig(storeId: string): Promise<EstadoDoEditor> {
   };
 }
 
-export async function restaurarVersao(storeId: string, versao: number): Promise<EstadoDoEditor> {
+/**
+ * Carrega uma versão antiga no rascunho. `base`, como ao gravar: a comparação
+ * que a pessoa viu antes de restaurar saiu do rascunho DESTA tela, e o que
+ * outra aba salvou depois seria substituído sem ninguém ter visto.
+ */
+export async function restaurarVersao(
+  storeId: string,
+  versao: number,
+  base?: string,
+): Promise<EstadoDoEditor> {
   const supabase = await criarClientServidor();
 
   const atual = await garantirRascunho(supabase, storeId);
   if (!atual.ok) return { mensagem: atual.motivo };
+  if (base !== undefined && base !== impressaoDaConfig(atual.rascunho.config)) {
+    return conflitoCom(atual.rascunho.config);
+  }
 
   const { error } = await supabase.rpc('restaurar_config', {
     p_app_id: atual.rascunho.appId,

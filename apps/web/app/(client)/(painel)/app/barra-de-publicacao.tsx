@@ -25,7 +25,9 @@ export type SituacaoDoRascunho =
   | { tipo: 'salvando' }
   /** Há ponto a corrigir: gravar poria no rascunho algo que não vai ao ar. */
   | { tipo: 'com-problemas' }
-  | { tipo: 'erro'; mensagem: string };
+  | { tipo: 'erro'; mensagem: string }
+  /** O rascunho mudou em outra aba (ou por outra pessoa): a gravação parou até a pessoa decidir. */
+  | { tipo: 'conflito' };
 
 interface Props {
   situacao: SituacaoDoRascunho;
@@ -37,6 +39,8 @@ interface Props {
   /** O fuso da loja, para a hora do "salvo às". */
   fuso: string;
   aoTentarDeNovo: () => void;
+  /** Abre de novo a escolha entre o rascunho de lá e o desta aba. */
+  aoResolverConflito: () => void;
   aoPublicar: () => void;
   aoDesfazer: () => void;
 }
@@ -48,12 +52,18 @@ export function BarraDePublicacao({
   publicando,
   fuso,
   aoTentarDeNovo,
+  aoResolverConflito,
   aoPublicar,
   aoDesfazer,
 }: Props) {
   const temOQuePublicar = versaoNoAr === null || mudancas === null || mudancas > 0;
   const podePublicar = situacao.tipo === 'salvo' && temOQuePublicar && !publicando;
-  const podeDesfazer = versaoNoAr !== null && mudancas !== null && mudancas > 0 && !publicando;
+  const podeDesfazer =
+    versaoNoAr !== null &&
+    mudancas !== null &&
+    mudancas > 0 &&
+    !publicando &&
+    situacao.tipo !== 'conflito';
 
   return (
     <div
@@ -74,6 +84,17 @@ export function BarraDePublicacao({
                 onClick={aoTentarDeNovo}
               >
                 Tentar de novo
+              </Button>
+            ) : null}
+            {situacao.tipo === 'conflito' ? (
+              <Button
+                type="button"
+                variant="link"
+                size="sm"
+                className="h-auto p-0"
+                onClick={aoResolverConflito}
+              >
+                Resolver
               </Button>
             ) : null}
           </p>
@@ -147,6 +168,13 @@ function Situacao({ situacao, fuso }: { situacao: SituacaoDoRascunho; fuso: stri
         <>
           <AlertCircle className="text-destructive size-4" aria-hidden />
           <span>{situacao.mensagem}</span>
+        </>
+      );
+    case 'conflito':
+      return (
+        <>
+          <AlertCircle className="text-destructive size-4" aria-hidden />
+          <span>O rascunho mudou em outro lugar, e esta aba parou de salvar.</span>
         </>
       );
   }

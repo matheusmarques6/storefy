@@ -13,6 +13,7 @@ import { AlertCircle, ArrowRight, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import type { AppConfig } from '@storefy/config-schema';
 import { editarTema } from '@/lib/editor-de-config';
+import { impressaoDaConfig } from '@/lib/mudancas-pendentes';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -58,6 +59,13 @@ export function VisualRapido({
   const [config, setConfig] = useState(configInicial);
   const [abaEscolhida, setAbaEscolhida] = useState<string | null>(null);
   const [erro, setErro] = useState<string | null>(null);
+  /**
+   * O rascunho em cima do qual esta tela foi aberta. Se ele mudar em outra aba
+   * antes de "Salvar e continuar", gravar apagaria essa mudança: a gravação
+   * para, e a tela pede para recarregar.
+   */
+  const [base] = useState(() => impressaoDaConfig(configInicial));
+  const [desatualizada, setDesatualizada] = useState(false);
   const [salvando, iniciar] = useTransition();
   const proximo = `/lojas/${storeId}/comecar/pronto`;
 
@@ -86,7 +94,14 @@ export function VisualRapido({
       return;
     }
     iniciar(async () => {
-      const resultado = await salvarConfig(storeId, config);
+      const resultado = await salvarConfig(storeId, config, base);
+      if (resultado.conflito !== undefined) {
+        setDesatualizada(true);
+        setErro(
+          'O rascunho do app mudou em outra aba (ou por outra pessoa da equipe) enquanto você estava aqui, e nada foi salvo para não apagar essa mudança. Recarregue a página para ver o rascunho mais novo e ajustar de novo.',
+        );
+        return;
+      }
       if (resultado.ok !== true) {
         const problemas = (resultado.problemas ?? []).map((problema) => problema.mensagem);
         setErro(
@@ -196,7 +211,22 @@ export function VisualRapido({
         {erro === null ? null : (
           <Alert variant="destructive" role="alert">
             <AlertCircle aria-hidden />
-            <AlertDescription>{erro}</AlertDescription>
+            <AlertDescription>
+              <p>{erro}</p>
+              {desatualizada ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="mt-2"
+                  onClick={() => {
+                    window.location.reload();
+                  }}
+                >
+                  Recarregar a página
+                </Button>
+              ) : null}
+            </AlertDescription>
           </Alert>
         )}
 

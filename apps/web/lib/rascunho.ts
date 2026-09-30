@@ -104,3 +104,10 @@ function mesmaLoja(a: AppConfig['store'], b: AppConfig['store']): boolean {
     a.domains.every((dominio, indice) => dominio === b.domains[indice])
   );
 }
+
+/**
+ * A frase de quando o rascunho mudou por baixo do editor — outra aba, ou outra
+ * pessoa da equipe, gravou nele depois que esta tela o abriu.
+ */
+export const TEXTO_DO_CONFLITO =
+  'O rascunho mudou em outra aba ou por outra pessoa da equipe enquanto você editava. Recarregue a página para continuar da versão mais nova — o que você mudou aqui desde então não foi salvo.';

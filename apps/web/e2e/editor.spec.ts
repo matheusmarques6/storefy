@@ -541,3 +541,170 @@ test('as telas de boas-vindas: imagem enviada e conferida, prévia fiel e rascun
     .poll(async () => (await rascunhoNoBanco(lojaId)).features.onboardingSlides)
     .toEqual([]);
 });
+
+test('duas abas no mesmo rascunho: a desatualizada não apaga a outra, e a pessoa escolhe', async ({
+  page,
+  context,
+}) => {
+  test.setTimeout(150_000);
+  const email = emailDeTeste('editor-abas');
+  await criarUsuarioConfirmado(email, 'Empresa Duas Abas');
+  await entrar(page, email);
+  const lojaId = await criarLojaPelaTela(page, 'Loja Duas Abas', 'loja-duas-abas.com.br');
+  const corNoBanco = async () => (await rascunhoNoBanco(lojaId)).theme.primary;
+  const nomeNoBanco = async (id: string) =>
+    (await rascunhoNoBanco(lojaId)).tabs.find((aba) => aba.id === id)?.label;
+  const publicadas = async () => {
+    const { data: app } = await bancoDeTeste()
+      .from('apps')
+      .select('id')
+      .eq('store_id', lojaId)
+      .single();
+    const { count } = await bancoDeTeste()
+      .from('app_configs')
+      .select('id', { count: 'exact', head: true })
+      .eq('app_id', app?.id ?? '')
+      .eq('status', 'published');
+    return count;
+  };
+
+  // O visual rápido (C03) numa aba, e o editor noutra — que grava primeiro.
+  const outra = await context.newPage();
+  await outra.goto('/app');
+  await outra.waitForLoadState('networkidle');
+  const barraDaOutra = outra.getByRole('region', { name: 'Publicação do app' });
+  const escolhaDaOutra = outra.getByRole('alertdialog', {
+    name: 'O rascunho mudou em outro lugar',
+  });
+  await outra.getByRole('textbox', { name: 'Cor principal', exact: true }).fill('#be123c');
+  await expect(barraDaOutra.getByText(/Rascunho salvo às/)).toBeVisible();
+
+  // "Salvar e continuar" no C03 não grava por cima: nada muda, e a tela pede para recarregar.
+  await page.getByRole('textbox', { name: 'Cor principal', exact: true }).fill('#1d4ed8');
+  await page.getByRole('button', { name: 'Salvar e continuar' }).click();
+  await expect(
+    page.getByRole('alert').filter({ hasText: 'O rascunho do app mudou em outra aba' }),
+  ).toBeVisible();
+  await expect(page).toHaveURL(new RegExp(`/lojas/${lojaId}/comecar$`));
+  expect(await corNoBanco()).toBe('#be123c');
+  await page.getByRole('button', { name: 'Recarregar a página' }).click();
+  await expect(page.getByRole('textbox', { name: 'Cor principal', exact: true })).toHaveValue(
+    '#be123c',
+  );
+
+  // Agora o editor nas duas abas; a primeira grava uma cor nova.
+  await page.goto('/app');
+  await page.waitForLoadState('networkidle');
+  const barra = page.getByRole('region', { name: 'Publicação do app' });
+  const escolha = page.getByRole('alertdialog', { name: 'O rascunho mudou em outro lugar' });
+  const cor = page.getByRole('textbox', { name: 'Cor principal', exact: true });
+  await cor.fill('#15803d');
+  await expect(barra.getByText(/Rascunho salvo às/)).toBeVisible();
+  expect(await corNoBanco()).toBe('#15803d');
+
+  // A outra ainda mostra a cor anterior: renomear uma aba lá NÃO grava por cima —
+  // e a escolha diz o que mudou de cada lado.
+  await outra.getByRole('button', { name: 'Abas' }).click();
+  await outra.locator('#aba-busca-nome').fill('Procurar');
+  await expect(escolhaDaOutra.getByText('Cor principal: #be123c → #15803d')).toBeVisible();
+  await expect(escolhaDaOutra.getByText('Aba “Buscar” agora se chama “Procurar”')).toBeVisible();
+  await varrer(outra, 'a escolha entre o rascunho de lá e o desta aba');
+  expect(await corNoBanco()).toBe('#15803d');
+  expect(await nomeNoBanco('busca')).toBe('Buscar');
+
+  // Fechar a escolha não destrava nada: a barra diz que parou, e nada mais grava.
+  await outra.keyboard.press('Escape');
+  await expect(escolhaDaOutra).toHaveCount(0);
+  await expect(
+    barraDaOutra.getByText('O rascunho mudou em outro lugar, e esta aba parou de salvar.'),
+  ).toBeVisible();
+  await expect(barraDaOutra.getByRole('button', { name: /Publicar alterações/ })).toBeDisabled();
+  await outra.locator('#aba-conta-nome').fill('Minha conta');
+  await outra.waitForTimeout(2500);
+  expect(await nomeNoBanco('busca')).toBe('Buscar');
+  expect(await nomeNoBanco('conta')).toBe('Conta');
+
+  // "Ficar com a desta aba" grava por cima: o que mudou lá (a cor) se perde, como a escolha avisa.
+  await barraDaOutra.getByRole('button', { name: 'Resolver' }).click();
+  await expect(escolhaDaOutra.getByText('Aba “Conta” agora se chama “Minha conta”')).toBeVisible();
+  await escolhaDaOutra.getByRole('button', { name: 'Ficar com a desta aba' }).click();
+  await expect(barraDaOutra.getByText(/Rascunho salvo às/)).toBeVisible();
+  await expect.poll(() => nomeNoBanco('busca')).toBe('Procurar');
+  expect(await nomeNoBanco('conta')).toBe('Minha conta');
+  expect(await corNoBanco()).toBe('#be123c');
+
+  // Agora a desatualizada é a primeira. "Ficar com a versão de lá" troca a tela
+  // sem recarregar, e o que ela não tinha salvo fica para trás.
+  await cor.fill('#7c3aed');
+  await expect(escolha.getByText('Cor principal: #15803d → #7c3aed')).toBeVisible();
+  await expect(escolha.getByText('Aba “Buscar” agora se chama “Procurar”')).toBeVisible();
+  await escolha.getByRole('button', { name: 'Ficar com a versão de lá' }).click();
+  await expect(page.getByText('Pronto: o editor mostra o rascunho mais novo.')).toBeVisible();
+  await expect(cor).toHaveValue('#be123c');
+  await page.getByRole('button', { name: 'Abas' }).click();
+  await expect(page.locator('#aba-busca-nome')).toHaveValue('Procurar');
+  expect(await corNoBanco()).toBe('#be123c');
+
+  // E volta a gravar como sempre.
+  await page.locator('#aba-inicio-nome').fill('Loja');
+  await expect(barra.getByText(/Rascunho salvo às/)).toBeVisible();
+  await expect.poll(() => nomeNoBanco('inicio')).toBe('Loja');
+  expect(await nomeNoBanco('busca')).toBe('Procurar');
+
+  // Publicar da aba que não viu a última mudança também para: o diálogo
+  // listaria uma coisa, e iria ao ar outra.
+  await barraDaOutra.getByRole('button', { name: /Publicar alterações/ }).click();
+  await outra.getByRole('button', { name: 'Publicar agora' }).click();
+  await expect(escolhaDaOutra.getByText('Aba “Início” agora se chama “Loja”')).toBeVisible();
+  await expect(escolhaDaOutra.getByText('Nada: não há o que perder aqui.')).toBeVisible();
+  await expect(escolhaDaOutra.getByRole('button', { name: 'Ficar com a desta aba' })).toHaveCount(
+    0,
+  );
+  expect(await publicadas()).toBe(0);
+  await escolhaDaOutra.getByRole('button', { name: 'Ficar com a versão de lá' }).click();
+  await expect(outra.locator('#aba-inicio-nome')).toHaveValue('Loja');
+  await barraDaOutra.getByRole('button', { name: /Publicar alterações/ }).click();
+  await outra.getByRole('button', { name: 'Publicar agora' }).click();
+  await expect(outra.getByText(/Versão \d+ publicada/)).toBeVisible();
+  expect(await publicadas()).toBe(1);
+
+  // Publicar lá não mudou o conteúdo: a primeira segue gravando, agora no rascunho novo.
+  await page.getByRole('button', { name: 'Aparência' }).click();
+  await cor.fill('#1d4ed8');
+  await expect(barra.getByText(/Rascunho salvo às/)).toBeVisible();
+  await expect(barra.getByText('1 mudança desde a versão no ar')).toBeVisible();
+  expect(await corNoBanco()).toBe('#1d4ed8');
+
+  // Restaurar da aba desatualizada também para: a comparação que ela mostrou
+  // saiu do rascunho dela, e o de lá seria substituído sem ninguém ver.
+  await outra.getByRole('button', { name: 'Versões' }).click();
+  await outra
+    .getByRole('listitem')
+    .filter({ hasText: 'No ar' })
+    .getByRole('button', { name: 'Restaurar', exact: true })
+    .click();
+  await outra.getByRole('alertdialog').getByRole('button', { name: 'Restaurar' }).click();
+  await expect(escolhaDaOutra.getByText('Cor principal: #be123c → #1d4ed8')).toBeVisible();
+  await expect(escolhaDaOutra.getByText('Nada: não há o que perder aqui.')).toBeVisible();
+  await expect(outra.getByText(/carregada no rascunho/)).toHaveCount(0);
+  expect(await corNoBanco()).toBe('#1d4ed8');
+
+  // Sair do editor sem decidir, com uma mudança feita depois — que não grava:
+  // a pessoa fica sabendo que o desta aba não foi salvo.
+  await outra.keyboard.press('Escape');
+  await expect(escolhaDaOutra).toHaveCount(0);
+  await outra.getByRole('button', { name: 'Aparência' }).click();
+  await outra.getByRole('textbox', { name: 'Cor principal', exact: true }).fill('#0f766e');
+  await outra.waitForTimeout(2000);
+  expect(await corNoBanco()).toBe('#1d4ed8');
+  await outra
+    .getByRole('navigation', { name: 'Navegação principal' })
+    .getByRole('link', { name: 'Início' })
+    .click();
+  await outra.waitForURL((url) => url.pathname === '/');
+  await expect(
+    outra.getByText('As mudanças que você fez no app nesta aba não foram salvas', { exact: false }),
+  ).toBeVisible();
+  expect(await corNoBanco()).toBe('#1d4ed8');
+  await outra.close();
+});
