@@ -21,6 +21,9 @@ import { ehDominioDeLoja } from '@/lib/shopify';
 import { apagarWebhooks } from '@/lib/shopify-servidor';
 import { tokenDaLoja } from '@/lib/shopify-conexao';
 import { conectarPeloAppDoLojista } from '@/lib/conectar-manual';
+import { conferirAvisosDaLoja } from '@/lib/avisos-da-shopify';
+import { ROTULO_DO_AVISO } from '@/lib/shopify';
+import { FALHA_GENERICA, mensagemDaFalha } from '@/lib/erros';
 import { log } from '@/lib/log';
 
 export interface EstadoDaIntegracao {
@@ -74,7 +77,7 @@ export async function conectarShopifyManual(
     mensagem:
       resultado.webhooksFalhos === 0
         ? 'Loja conectada. Já estamos recebendo os pedidos dela.'
-        : 'Loja conectada, mas a Shopify não aceitou todos os avisos automáticos. Clique em reconectar para tentar os que faltaram.',
+        : 'Loja conectada, mas a Shopify não aceitou todos os avisos automáticos. O cartão da Shopify mostra quais faltam e registra de novo; a Storefy também tenta sozinha a cada hora.',
   };
 }
 
@@ -134,6 +137,9 @@ export async function desconectarShopify(): Promise<EstadoDaIntegracao> {
       shopify_client_id: null,
       shopify_client_secret_enc: null,
       shopify_token_expires_at: null,
+      shopify_avisos_faltando: null,
+      shopify_avisos_conferidos_em: null,
+      shopify_acesso_recusado_em: null,
     })
     .eq('id', lojaAtiva.id);
 
@@ -143,4 +149,54 @@ export async function desconectarShopify(): Promise<EstadoDaIntegracao> {
 
   revalidatePath('/integracoes');
   return { ok: true, mensagem: 'Loja desconectada da Shopify.' };
+}
+
+/** Tentativas de refazer os avisos por loja, por hora: cada uma fala com a Shopify. */
+const REFAZER_POR_HORA = 6;
+
+/**
+ * Refaz os avisos da Shopify que faltam (C14), para quem vê "faltam avisos" e
+ * não quer esperar a conferência de hora em hora. Só cria o que falta: o que
+ * está de pé fica como está.
+ */
+export async function refazerAvisosDaShopify(): Promise<EstadoDaIntegracao> {
+  const { lojaAtiva, papel, usuario } = await exigirContextoCliente();
+
+  if (lojaAtiva == null) return { mensagem: 'Nenhuma loja selecionada.' };
+  if (papel !== 'owner' && papel !== 'admin') {
+    return { mensagem: 'Só o proprietário e os administradores mexem na conexão com a Shopify.' };
+  }
+  if (lojaAtiva.shopify_scopes == null) return { mensagem: 'Conecte a Shopify primeiro.' };
+
+  const servico = criarClientServiceRole({ ator: usuario.id });
+  const { data: cabe, error: erroDoLimite } = await servico.rpc('consumir_limite', {
+    p_chave: `avisos-da-shopify:${lojaAtiva.id}`,
+    p_maximo: REFAZER_POR_HORA,
+    p_janela_segundos: 3600,
+  });
+  if (erroDoLimite != null) {
+    return { mensagem: mensagemDaFalha('shopify', erroDoLimite, FALHA_GENERICA) };
+  }
+  if (!cabe) return { mensagem: 'Você já tentou várias vezes nesta hora. Espere alguns minutos.' };
+
+  const conferencia = await conferirAvisosDaLoja(servico, lojaAtiva.id);
+  if (!conferencia.ok) return { mensagem: conferencia.motivo };
+
+  revalidatePath('/integracoes');
+  if (conferencia.acessoRecusado) {
+    return {
+      mensagem:
+        'A Shopify recusou o acesso da Storefy a esta loja — o app pode ter sido desinstalado. Conecte a loja de novo.',
+    };
+  }
+  if (conferencia.faltando.length > 0) {
+    return {
+      mensagem: `A Shopify ainda não aceitou o aviso de ${conferencia.faltando
+        .map((topico) => ROTULO_DO_AVISO[topico])
+        .join(
+          '; ',
+        )}. Confira se o app da loja tem as permissões pedidas; se continuar, fale com o suporte.`,
+    };
+  }
+  return { ok: true, mensagem: 'Pronto: todos os avisos da Shopify estão de pé.' };
 }

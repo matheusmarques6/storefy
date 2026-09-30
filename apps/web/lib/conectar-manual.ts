@@ -26,6 +26,7 @@ import type { Database } from '@storefy/db';
 import { criptografar } from '@/lib/cripto';
 import { normalizarDominio } from '@/lib/shopify';
 import { escoposPedidos, registrarWebhooks } from '@/lib/shopify-servidor';
+import { guardarAvisos } from '@/lib/avisos-da-shopify';
 import { conferirTokenDeAcesso, trocarCredenciaisPorToken } from '@/lib/shopify-credenciais';
 
 type Client = SupabaseClient<Database>;
@@ -165,6 +166,8 @@ export async function conectarPeloAppDoLojista(
    * todos de novo — a Shopify não duplica tópico com a mesma URL.
    */
   const webhooks = await registrarWebhooks(dominio, troca.valor.token, urlDoWebhook, buscador);
+  // O que ficou faltando aparece na C14, e a conferência de hora em hora refaz.
+  await guardarAvisos(servico, pedido.storeId, webhooks);
 
   return {
     ok: true,

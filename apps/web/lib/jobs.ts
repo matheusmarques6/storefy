@@ -102,7 +102,8 @@ export type NomeDoJob =
   | 'review-status'
   | 'analytics'
   | 'inactive-devices'
-  | 'invoice-sync';
+  | 'invoice-sync'
+  | 'shopify-webhooks';
 
 /**
  * Anota a execução — deu certo, ou falhou com qual erro — para a página de

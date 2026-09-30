@@ -9,6 +9,7 @@ import {
   emailDeTeste,
   entrar,
   limparUsuariosDeTeste,
+  tornarPlatformAdmin,
 } from './apoio';
 import { conectarShopify, webhookDoPedido } from './shopify-de-teste';
 
@@ -304,4 +305,75 @@ test('a plataforma se escolhe no cadastro, troca na edição e chega ao app', as
   await page.getByRole('button', { name: 'Salvar alterações' }).click();
   await expect(page.getByText('Alterações salvas.')).toBeVisible();
   expect(await lerLoja()).toEqual({ platform: 'shopify' });
+});
+
+/*
+ * Os avisos (webhooks) da Shopify somem em silêncio: a Shopify apaga a
+ * inscrição depois de entregas que falham seguidas, e a tela dizia
+ * "Conectada" enquanto as vendas pelo app paravam de ser contadas. Agora o
+ * que falta aparece para o lojista (C14) e para a equipe (A04).
+ */
+test('C14 e A04: os avisos da Shopify que faltam e o acesso recusado aparecem', async ({
+  page,
+  browser,
+}) => {
+  const email = emailDeTeste('avisos-shopify');
+  const donoId = await criarUsuarioConfirmado(email, 'Empresa dos Avisos');
+  await entrar(page, email);
+  const lojaId = await criarLojaPelaTela(page, 'Loja dos Avisos', 'loja-dos-avisos.com.br');
+  await conectarShopify(lojaId, `avisos-${String(Date.now())}.myshopify.com`);
+
+  const banco = bancoDeTeste();
+  const { error } = await banco
+    .from('stores')
+    .update({
+      // Todas as permissões: o que falta aqui é só o aviso, e não um escopo.
+      shopify_scopes: ['read_products', 'read_orders', 'read_customers', 'read_fulfillments'],
+      shopify_avisos_faltando: ['products/update'],
+      shopify_avisos_conferidos_em: new Date().toISOString(),
+    })
+    .eq('id', lojaId);
+  if (error != null) throw new Error(error.message);
+
+  // O lojista vê o que falta, o que isso para, e pode refazer na hora.
+  await page.goto('/integracoes');
+  await expect(page.getByText('Avisos faltando', { exact: true })).toBeVisible();
+  await expect(
+    page.getByText('Faltam avisos da Shopify: produtos de volta ao estoque', { exact: false }),
+  ).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Registrar os avisos agora' })).toBeVisible();
+
+  // A Shopify recusou o token: o recado muda para "conecte de novo".
+  await banco
+    .from('stores')
+    .update({ shopify_acesso_recusado_em: new Date().toISOString() })
+    .eq('id', lojaId);
+  await page.reload();
+  await expect(page.getByText('Acesso recusado', { exact: true })).toBeVisible();
+  await expect(page.getByText('A Shopify recusou o acesso da Storefy a esta loja.')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Registrar os avisos agora' })).toHaveCount(0);
+
+  // A equipe vê o mesmo na lista de lojas do cliente.
+  const { data: membro } = await banco
+    .from('memberships')
+    .select('org_id')
+    .eq('user_id', donoId)
+    .single();
+  const emailAdmin = emailDeTeste('equipe-avisos-shopify');
+  const idAdmin = await criarUsuarioConfirmado(emailAdmin, 'Equipe dos Avisos');
+  await tornarPlatformAdmin(idAdmin);
+  const contextoAdmin = await browser.newContext();
+  const paginaAdmin = await contextoAdmin.newPage();
+  await entrar(paginaAdmin, emailAdmin);
+  await paginaAdmin.goto(`/admin/organizacoes/${membro?.org_id ?? ''}`);
+  const linha = paginaAdmin.getByRole('row', { name: /Loja dos Avisos/ });
+  await expect(linha.getByText('Acesso recusado')).toBeVisible();
+
+  await banco
+    .from('stores')
+    .update({ shopify_acesso_recusado_em: null, shopify_avisos_faltando: ['orders/create'] })
+    .eq('id', lojaId);
+  await paginaAdmin.reload();
+  await expect(linha.getByText('Faltam 1 aviso')).toBeVisible();
+  await contextoAdmin.close();
 });

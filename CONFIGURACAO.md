@@ -229,6 +229,9 @@ passa a ter o seu segredo, em vez de um só para todas.
    | Shop data erasure     | `https://storefy-eight.vercel.app/api/webhooks/shopify` |
 
    Os três são **obrigatórios**: sem eles a Shopify recusa o app na revisão.
+   E **só existem aqui**: a Shopify não aceita estes três pela API. Os outros
+   quatro avisos (desinstalação, pedidos, envios e estoque) a Storefy
+   registra sozinha em cada loja, na conexão, e confere de hora em hora.
 
 8. Copie **Client ID** e **Client secret**.
 

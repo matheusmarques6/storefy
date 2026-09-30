@@ -8,7 +8,7 @@ import 'server-only';
  * mantém o segredo do app fora de qualquer módulo que o navegador possa
  * importar.
  */
-import { TOPICOS, urlDoAdmin, type Topico } from '@/lib/shopify';
+import { TOPICOS_DA_LOJA, topicoNaGraphql, urlDoAdmin, type TopicoDaLoja } from '@/lib/shopify';
 import { log } from '@/lib/log';
 
 const TIMEOUT_MS = 20_000;
@@ -100,16 +100,81 @@ export function lerRespostaDoToken(corpo: unknown): TrocaDeToken {
 }
 
 export interface ResultadoDosWebhooks {
-  registrados: Topico[];
-  falharam: Topico[];
+  registrados: TopicoDaLoja[];
+  falharam: TopicoDaLoja[];
+  /**
+   * A Shopify recusou o token (o app foi desinstalado, o acesso revogado):
+   * tentar de novo não adianta, só conectar a loja de novo.
+   */
+  acessoRecusado: boolean;
+  /**
+   * A Shopify não respondeu nem para dizer o que a loja tem: não se sabe o que
+   * falta, e dizer "faltam todos" ao lojista seria alarme falso.
+   */
+  semResposta: boolean;
+}
+
+const LISTAR_AVISOS = `query AvisosDaStorefy($uri: String!) {
+  webhookSubscriptions(first: 50, uri: $uri) {
+    nodes { id topic }
+  }
+}`;
+
+const REGISTRAR_AVISO = `mutation RegistrarAviso($topic: WebhookSubscriptionTopic!, $uri: String!) {
+  webhookSubscriptionCreate(topic: $topic, webhookSubscription: { uri: $uri, format: JSON }) {
+    webhookSubscription { id }
+    userErrors { field message }
+  }
+}`;
+
+const APAGAR_AVISO = `mutation ApagarAviso($id: ID!) {
+  webhookSubscriptionDelete(id: $id) {
+    deletedWebhookSubscriptionId
+    userErrors { field message }
+  }
+}`;
+
+type AvisosNaLoja =
+  | { ok: true; avisos: { id: string; topic: string }[] }
+  | { ok: false; causa: 'sem-permissao' | 'dados-protegidos' | 'fora-do-ar' };
+
+/** Os avisos da Storefy que a loja tem hoje: os que apontam para a NOSSA url. */
+async function avisosNaLoja(
+  shop: string,
+  token: string,
+  urlDoWebhook: string,
+  buscador: typeof fetch,
+): Promise<AvisosNaLoja> {
+  const resposta = await consultarAdmin(
+    shop,
+    token,
+    LISTAR_AVISOS,
+    { uri: urlDoWebhook },
+    buscador,
+  );
+  if (!resposta.ok) return { ok: false, causa: resposta.causa };
+
+  const conexao = resposta.dados.webhookSubscriptions as { nodes?: unknown } | null | undefined;
+  const nos = Array.isArray(conexao?.nodes) ? conexao.nodes : [];
+  const avisos: { id: string; topic: string }[] = [];
+  for (const no of nos) {
+    if (no === null || typeof no !== 'object') continue;
+    const { id, topic } = no as Record<string, unknown>;
+    if (typeof id === 'string' && typeof topic === 'string') avisos.push({ id, topic });
+  }
+  return { ok: true, avisos };
 }
 
 /**
- * Registra os webhooks da loja.
+ * Registra os avisos da loja — só os que faltam.
  *
- * TODOS OS TÓPICOS APONTAM PARA A MESMA URL. A Shopify diz qual é qual no
- * cabeçalho `x-shopify-topic`, e uma rota só significa uma conferência de
- * assinatura só — o lugar onde um erro custa caro.
+ * TODOS APONTAM PARA A MESMA URL. A Shopify diz qual é qual no cabeçalho
+ * `x-shopify-topic`, e uma rota só significa uma conferência de assinatura só
+ * — o lugar onde um erro custa caro.
+ *
+ * Lê primeiro o que existe e cria só o que falta: reconectar, e a conferência
+ * de hora em hora, não duplicam nada nem dependem do texto de um erro. Pela
+ * GraphQL: a API REST da Shopify é legado, e app público novo só usa GraphQL.
  *
  * Um tópico que falha NÃO derruba os outros: a loja com `orders/create`
  * registrado e `products/update` não é uma loja quebrada, é uma loja sem o
@@ -121,72 +186,55 @@ export async function registrarWebhooks(
   urlDoWebhook: string,
   buscador: typeof fetch = fetch,
 ): Promise<ResultadoDosWebhooks> {
-  const registrados: Topico[] = [];
-  const falharam: Topico[] = [];
+  const existentes = await avisosNaLoja(shop, token, urlDoWebhook, buscador);
+  if (!existentes.ok) {
+    return {
+      registrados: [],
+      falharam: [...TOPICOS_DA_LOJA],
+      acessoRecusado: existentes.causa === 'sem-permissao',
+      semResposta: existentes.causa !== 'sem-permissao',
+    };
+  }
 
-  for (const topico of TOPICOS) {
-    const ok = await registrarUm(shop, token, urlDoWebhook, topico, buscador);
-    if (ok) registrados.push(topico);
+  const temos = new Set(existentes.avisos.map((aviso) => aviso.topic));
+  const registrados: TopicoDaLoja[] = [];
+  const falharam: TopicoDaLoja[] = [];
+
+  for (const topico of TOPICOS_DA_LOJA) {
+    if (temos.has(topicoNaGraphql(topico))) {
+      registrados.push(topico);
+      continue;
+    }
+    const resposta = await consultarAdmin(
+      shop,
+      token,
+      REGISTRAR_AVISO,
+      { topic: topicoNaGraphql(topico), uri: urlDoWebhook },
+      buscador,
+    );
+    const deuCerto =
+      resposta.ok &&
+      mutacaoDeuCerto(resposta.dados, 'webhookSubscriptionCreate', 'shopify.aviso-recusado');
+    if (deuCerto) registrados.push(topico);
     else falharam.push(topico);
   }
 
-  return { registrados, falharam };
-}
-
-async function registrarUm(
-  shop: string,
-  token: string,
-  urlDoWebhook: string,
-  topico: Topico,
-  buscador: typeof fetch,
-): Promise<boolean> {
-  const controle = new AbortController();
-  const relogio = setTimeout(() => {
-    controle.abort();
-  }, TIMEOUT_MS);
-
-  try {
-    const resposta = await buscador(urlDoAdmin(shop, 'webhooks.json'), {
-      method: 'POST',
-      headers: {
-        'X-Shopify-Access-Token': token,
-        'Content-Type': 'application/json',
-        Accept: 'application/json',
-      },
-      body: JSON.stringify({ webhook: { topic: topico, address: urlDoWebhook, format: 'json' } }),
-      signal: controle.signal,
-    });
-
-    /*
-     * 422 com "for this topic and address" significa que ELE JÁ EXISTE — o
-     * lojista reinstalou o app. Tratar isso como falha faria uma reinstalação
-     * parecer uma conexão quebrada.
-     */
-    if (resposta.status === 422) {
-      const texto = await resposta.text();
-      return /already been taken|already exists/i.test(texto);
-    }
-
-    return resposta.ok;
-  } catch {
-    return false;
-  } finally {
-    clearTimeout(relogio);
-  }
+  return { registrados, falharam, acessoRecusado: false, semResposta: false };
 }
 
 /**
- * Apaga os webhooks que apontam para a Storefy.
+ * Apaga os avisos que apontam para a Storefy.
  *
- * Chamado quando o lojista desconecta a loja pelo painel. Sem isto, a Shopify
- * continua mandando pedido para cá depois da desconexão — e o lojista que
- * desligou a integração tem todo o direito de esperar que ela pare.
+ * Chamado quando o lojista desconecta a loja pelo painel, ou a exclui. Sem
+ * isto, a Shopify continua mandando pedido para cá depois da desconexão — e o
+ * lojista que desligou a integração tem todo o direito de esperar que ela
+ * pare.
  *
- * Só os que apontam para a NOSSA url: uma loja pode ter webhooks de outros
- * apps no mesmo tópico, e apagá-los seria quebrar a ferramenta de terceiro.
+ * Só os que apontam para a NOSSA url: uma loja pode ter avisos de outros apps
+ * no mesmo tópico, e apagá-los seria quebrar a ferramenta de terceiro.
  *
  * Melhor esforço, de propósito: o token pode já estar revogado, e nesse caso
- * não há webhook nosso de pé para apagar. Quem chama segue em frente.
+ * não há aviso nosso de pé para apagar. Quem chama segue em frente.
  */
 export async function apagarWebhooks(
   shop: string,
@@ -194,59 +242,20 @@ export async function apagarWebhooks(
   urlDoWebhook: string,
   buscador: typeof fetch = fetch,
 ): Promise<number> {
-  const ids = await listarWebhooks(shop, token, urlDoWebhook, buscador);
+  const existentes = await avisosNaLoja(shop, token, urlDoWebhook, buscador);
+  if (!existentes.ok) return 0;
 
   let apagados = 0;
-  for (const id of ids) {
-    if (await apagarUm(shop, token, id, buscador)) apagados += 1;
+  for (const aviso of existentes.avisos) {
+    const resposta = await consultarAdmin(shop, token, APAGAR_AVISO, { id: aviso.id }, buscador);
+    if (
+      resposta.ok &&
+      mutacaoDeuCerto(resposta.dados, 'webhookSubscriptionDelete', 'shopify.aviso-nao-apagado')
+    ) {
+      apagados += 1;
+    }
   }
   return apagados;
-}
-
-async function listarWebhooks(
-  shop: string,
-  token: string,
-  urlDoWebhook: string,
-  buscador: typeof fetch,
-): Promise<number[]> {
-  const resposta = await buscarComPrazo((sinal) =>
-    buscador(urlDoAdmin(shop, 'webhooks.json?limit=250'), {
-      headers: { 'X-Shopify-Access-Token': token, Accept: 'application/json' },
-      signal: sinal,
-    }),
-  );
-
-  if (resposta?.ok !== true) return [];
-
-  const corpo: unknown = await resposta.json().catch(() => null);
-  const lista = (corpo as { webhooks?: unknown } | null)?.webhooks;
-  if (!Array.isArray(lista)) return [];
-
-  const ids: number[] = [];
-  for (const item of lista) {
-    if (item === null || typeof item !== 'object') continue;
-    const { id, address } = item as { id?: unknown; address?: unknown };
-    if (typeof id === 'number' && address === urlDoWebhook) ids.push(id);
-  }
-  return ids;
-}
-
-async function apagarUm(
-  shop: string,
-  token: string,
-  id: number,
-  buscador: typeof fetch,
-): Promise<boolean> {
-  const resposta = await buscarComPrazo((sinal) =>
-    buscador(urlDoAdmin(shop, `webhooks/${String(id)}.json`), {
-      method: 'DELETE',
-      headers: { 'X-Shopify-Access-Token': token, Accept: 'application/json' },
-      signal: sinal,
-    }),
-  );
-
-  // 404 é sucesso: ele já não existe, que é exatamente o estado desejado.
-  return resposta?.ok === true || resposta?.status === 404;
 }
 
 /** Roda uma chamada com prazo. `null` quando ela falha ou estoura o tempo. */
@@ -416,12 +425,16 @@ function lerAppsNoDominio(dados: Record<string, unknown>): AppNoDominio[] {
 }
 
 /** A mutação deu certo? Olha os `userErrors`, que chegam com status 200. */
-function mutacaoDeuCerto(dados: Record<string, unknown>, campo: string): boolean {
+function mutacaoDeuCerto(
+  dados: Record<string, unknown>,
+  campo: string,
+  evento = 'shopify-links.cadastro-recusado',
+): boolean {
   const resultado = dados[campo] as { userErrors?: unknown } | null | undefined;
   if (resultado === null || resultado === undefined) return false;
   const erros = resultado.userErrors;
   if (Array.isArray(erros) && erros.length > 0) {
-    log.aviso('shopify-links.cadastro-recusado', { erros });
+    log.aviso(evento, { erros });
     return false;
   }
   return true;

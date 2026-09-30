@@ -3,6 +3,7 @@ import {
   AVISOS_DA_SHOPIFY,
   avisoDaShopify,
   conferirDominioDigitado,
+  resumoDaShopify,
   rotuloDoEscopo,
   situacaoDaShopify,
 } from '@/lib/integracoes';
@@ -18,9 +19,30 @@ function dados(ajustes: Partial<Parameters<typeof situacaoDaShopify>[0]> = {}) {
     escoposPedidos: PEDIDOS,
     caminho: 'oauth' as const,
     clientId: null,
+    avisosFaltando: [] as string[] | null,
+    acessoRecusadoEm: null as string | null,
     ...ajustes,
   };
 }
+
+describe('situacaoDaShopify — os avisos da Shopify', () => {
+  it('a Shopify que recusa o token vira "acesso recusado", mesmo com tudo concedido', () => {
+    const situacao = situacaoDaShopify(dados({ acessoRecusadoEm: '2026-09-30T12:00:00Z' }));
+    expect(situacao.estado).toBe('acesso_recusado');
+  });
+
+  it('os avisos que faltam chegam à tela; o tópico desconhecido fica de fora', () => {
+    const situacao = situacaoDaShopify(
+      dados({ avisosFaltando: ['orders/create', 'topico/inventado'] }),
+    );
+    expect(situacao.estado).toBe('conectada');
+    expect(situacao.avisosFaltando).toEqual(['orders/create']);
+  });
+
+  it('a loja que conectou antes da conferência não diz nada dos avisos', () => {
+    expect(situacaoDaShopify(dados({ avisosFaltando: null })).avisosFaltando).toBeNull();
+  });
+});
 
 describe('situacaoDaShopify', () => {
   it('conectada quando o token existe e os escopos cobrem o pedido', () => {
@@ -197,5 +219,34 @@ describe('rotuloDoEscopo', () => {
    */
   it('escopo desconhecido aparece como veio', () => {
     expect(rotuloDoEscopo('read_inventory')).toBe('read_inventory');
+  });
+});
+
+describe('resumoDaShopify', () => {
+  const conectada = { escopos: ['read_orders'], avisosFaltando: [], acessoRecusadoEm: null };
+
+  it('diz em duas palavras como está a conexão de cada loja (A04)', () => {
+    expect(resumoDaShopify({ ...conectada, escopos: null })).toEqual({
+      texto: 'Não conectada',
+      tom: 'neutro',
+    });
+    expect(resumoDaShopify(conectada)).toEqual({ texto: 'Conectada', tom: 'ok' });
+    expect(resumoDaShopify({ ...conectada, avisosFaltando: ['orders/create'] })).toEqual({
+      texto: 'Faltam 1 aviso',
+      tom: 'atencao',
+    });
+    expect(
+      resumoDaShopify({ ...conectada, avisosFaltando: ['orders/create', 'products/update'] }),
+    ).toEqual({ texto: 'Faltam 2 avisos', tom: 'atencao' });
+  });
+
+  it('o acesso recusado vem antes dos avisos: sem acesso, nenhum funciona', () => {
+    expect(
+      resumoDaShopify({
+        ...conectada,
+        avisosFaltando: ['orders/create'],
+        acessoRecusadoEm: '2026-09-30T12:00:00Z',
+      }),
+    ).toEqual({ texto: 'Acesso recusado', tom: 'erro' });
   });
 });

@@ -5,7 +5,7 @@
  * quem busca o dado. A tela é um componente de cliente, então nada aqui pode
  * importar `server-only` nem `node:crypto`.
  */
-import { normalizarDominio } from '@/lib/shopify';
+import { ehTopicoDaLoja, normalizarDominio, type TopicoDaLoja } from '@/lib/shopify';
 
 export type EstadoDaShopify =
   /** A organização ainda não tem loja: não há o que conectar. */
@@ -13,7 +13,13 @@ export type EstadoDaShopify =
   | 'desconectada'
   | 'conectada'
   /** Conectada, mas o lojista concedeu menos do que pedimos. */
-  | 'escopos_faltando';
+  | 'escopos_faltando'
+  /**
+   * Conectada aqui, e a Shopify recusa o token: o app foi desinstalado (e o
+   * aviso de desinstalação se perdeu) ou o acesso foi revogado. Só conectar
+   * de novo resolve.
+   */
+  | 'acesso_recusado';
 
 /** Por qual caminho a loja conectou. */
 export type CaminhoDaConexao = 'oauth' | 'manual';
@@ -38,6 +44,11 @@ export interface SituacaoDaShopify {
    * público não configurado desligava a tela inteira.
    */
   oauthDisponivel: boolean;
+  /**
+   * Os avisos (webhooks) que faltaram na última conferência. Vazio: todos de
+   * pé. `null`: ainda não conferidos (a loja conectou antes da conferência).
+   */
+  avisosFaltando: TopicoDaLoja[] | null;
 }
 
 export interface DadosDaShopify {
@@ -49,6 +60,10 @@ export interface DadosDaShopify {
   escoposPedidos: string;
   caminho: CaminhoDaConexao | null;
   clientId: string | null;
+  /** `stores.shopify_avisos_faltando`. */
+  avisosFaltando: string[] | null;
+  /** `stores.shopify_acesso_recusado_em`. */
+  acessoRecusadoEm: string | null;
 }
 
 /**
@@ -66,6 +81,9 @@ export function situacaoDaShopify(dados: DadosDaShopify): SituacaoDaShopify {
     caminho: dados.caminho,
     clientId: dados.clientId,
     oauthDisponivel: dados.configurado,
+    // O tópico que o banco guardar e esta versão não conhecer não vira aviso na tela.
+    avisosFaltando:
+      dados.avisosFaltando === null ? null : dados.avisosFaltando.filter(ehTopicoDaLoja),
   };
 
   /*
@@ -85,7 +103,12 @@ export function situacaoDaShopify(dados: DadosDaShopify): SituacaoDaShopify {
   const faltando = listarFaltantes(dados.escoposPedidos, concedidos);
   return {
     ...base,
-    estado: faltando.length > 0 ? 'escopos_faltando' : 'conectada',
+    estado:
+      dados.acessoRecusadoEm !== null
+        ? 'acesso_recusado'
+        : faltando.length > 0
+          ? 'escopos_faltando'
+          : 'conectada',
     faltando,
     concedidos,
   };
@@ -126,7 +149,7 @@ export const AVISOS_DA_SHOPIFY: Record<string, AvisoDoRetorno> = {
     tom: 'atencao',
     titulo: 'Conectada, mas faltou registrar um aviso',
     texto:
-      'A conexão funcionou, só que a Shopify não aceitou um dos avisos automáticos. Clique em reconectar; se continuar, fale com o suporte.',
+      'A conexão funcionou, só que a Shopify não aceitou um dos avisos automáticos. O cartão abaixo diz qual e registra de novo; a Storefy também tenta sozinha a cada hora.',
   },
   escopos: {
     tom: 'atencao',
@@ -224,4 +247,22 @@ export const ROTULO_DO_ESCOPO: Record<string, string> = {
 
 export function rotuloDoEscopo(escopo: string): string {
   return ROTULO_DO_ESCOPO[escopo] ?? escopo;
+}
+
+/** A conexão da loja com a Shopify em duas palavras, para a lista de lojas da A04. */
+export function resumoDaShopify(loja: {
+  escopos: string[] | null;
+  avisosFaltando: string[] | null;
+  acessoRecusadoEm: string | null;
+}): { texto: string; tom: 'ok' | 'atencao' | 'erro' | 'neutro' } {
+  if (loja.escopos === null) return { texto: 'Não conectada', tom: 'neutro' };
+  if (loja.acessoRecusadoEm !== null) return { texto: 'Acesso recusado', tom: 'erro' };
+  const faltando = (loja.avisosFaltando ?? []).filter(ehTopicoDaLoja).length;
+  if (faltando > 0) {
+    return {
+      texto: `Faltam ${String(faltando)} ${faltando === 1 ? 'aviso' : 'avisos'}`,
+      tom: 'atencao',
+    };
+  }
+  return { texto: 'Conectada', tom: 'ok' };
 }

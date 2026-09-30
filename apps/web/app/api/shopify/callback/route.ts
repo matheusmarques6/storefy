@@ -30,6 +30,7 @@ import {
 import { COOKIE_DO_STATE } from '@/app/api/shopify/install/route';
 import { COOKIE_LOJA, COOKIE_ORG } from '@/lib/contexto';
 import { log } from '@/lib/log';
+import { guardarAvisos } from '@/lib/avisos-da-shopify';
 
 export const dynamic = 'force-dynamic';
 
@@ -123,6 +124,8 @@ export async function GET(requisicao: NextRequest): Promise<NextResponse> {
     if (webhooks.falharam.length > 0) {
       log.aviso('shopify-oauth.webhooks-nao-registrados', { topicos: webhooks.falharam });
     }
+    // O que ficou faltando aparece na C14, e a conferência de hora em hora refaz.
+    await guardarAvisos(servico, loja.id, webhooks);
 
     const aviso =
       faltando.length > 0 ? 'escopos' : webhooks.falharam.length > 0 ? 'parcial' : 'conectada';

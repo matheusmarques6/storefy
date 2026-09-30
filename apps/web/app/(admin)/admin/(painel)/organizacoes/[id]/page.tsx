@@ -28,6 +28,7 @@ import { AutorDaLinha } from '@/components/autor-da-auditoria';
 import { criarClientServidor } from '@/lib/supabase/server';
 import { lerNotas } from '@/lib/notas-internas';
 import { FUSO_PADRAO, formatarDataHora } from '@/lib/fuso';
+import { resumoDaShopify } from '@/lib/integracoes';
 import { Notas } from './notas';
 import { VerComoCliente } from './ver-como-cliente';
 import { AppsDaOrganizacao } from './apps-da-organizacao';
@@ -68,7 +69,9 @@ export default async function PaginaOrganizacao({ params }: { params: Promise<{ 
     supabase.from('organizations').select('*').eq('id', id).maybeSingle(),
     supabase
       .from('stores')
-      .select('id, name, primary_url, status, created_at')
+      .select(
+        'id, name, primary_url, status, created_at, shopify_scopes, shopify_avisos_faltando, shopify_acesso_recusado_em',
+      )
       .eq('org_id', id)
       .order('created_at', { ascending: true }),
     supabase.rpc('admin_membros_da_org', { p_org_id: id }),
@@ -199,6 +202,7 @@ export default async function PaginaOrganizacao({ params }: { params: Promise<{ 
                 <TableHead>Nome</TableHead>
                 <TableHead>Endereço</TableHead>
                 <TableHead>Status</TableHead>
+                <TableHead>Shopify</TableHead>
                 <TableHead>Criada em</TableHead>
               </TableRow>
             </TableHeader>
@@ -211,6 +215,15 @@ export default async function PaginaOrganizacao({ params }: { params: Promise<{ 
                   </TableCell>
                   <TableCell>
                     <Badge variant="secondary">{ROTULO_STATUS_LOJA[loja.status]}</Badge>
+                  </TableCell>
+                  <TableCell>
+                    <SeloDaShopify
+                      resumo={resumoDaShopify({
+                        escopos: loja.shopify_scopes,
+                        avisosFaltando: loja.shopify_avisos_faltando,
+                        acessoRecusadoEm: loja.shopify_acesso_recusado_em,
+                      })}
+                    />
                   </TableCell>
                   <TableCell className="text-muted-foreground">
                     {dataHora(loja.created_at)}
@@ -368,5 +381,25 @@ export default async function PaginaOrganizacao({ params }: { params: Promise<{ 
 
       <Notas orgId={id} notas={notas} />
     </div>
+  );
+}
+
+/**
+ * A conexão com a Shopify de cada loja: "faltam avisos" e "acesso recusado"
+ * são o que o suporte precisa ver antes de o cliente reclamar que as vendas
+ * pelo app sumiram.
+ */
+function SeloDaShopify({ resumo }: { resumo: ReturnType<typeof resumoDaShopify> }) {
+  if (resumo.tom === 'neutro') {
+    return <span className="text-muted-foreground text-sm">{resumo.texto}</span>;
+  }
+  return (
+    <Badge
+      variant={
+        resumo.tom === 'erro' ? 'destructive' : resumo.tom === 'atencao' ? 'outline' : 'secondary'
+      }
+    >
+      {resumo.texto}
+    </Badge>
   );
 }

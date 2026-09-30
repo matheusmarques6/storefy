@@ -68,7 +68,7 @@ export type ContaDeDesenvolvedorVisivel = SemSegredos<DeveloperAccount>;
  * o banco as tira do `grant`.
  */
 export const COLUNAS_DA_LOJA =
-  'id, org_id, name, shop_domain, primary_url, platform, shopify_scopes, shopify_conexao, shopify_client_id, shopify_token_expires_at, shopify_theme, status, timezone, support_email, created_at, updated_at' as const;
+  'id, org_id, name, shop_domain, primary_url, platform, shopify_scopes, shopify_conexao, shopify_client_id, shopify_token_expires_at, shopify_theme, shopify_avisos_faltando, shopify_avisos_conferidos_em, shopify_acesso_recusado_em, status, timezone, support_email, created_at, updated_at' as const;
 
 /** As colunas de `apps` que o painel pode pedir. */
 export const COLUNAS_DO_APP =

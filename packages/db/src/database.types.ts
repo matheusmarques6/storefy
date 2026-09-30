@@ -1415,6 +1415,9 @@ export type Database = {
           shopify_client_secret_enc: string | null;
           shopify_token_expires_at: string | null;
           shopify_theme: string | null;
+          shopify_avisos_faltando: string[] | null;
+          shopify_avisos_conferidos_em: string | null;
+          shopify_acesso_recusado_em: string | null;
         };
         Insert: {
           id?: string;
@@ -1435,6 +1438,9 @@ export type Database = {
           shopify_client_secret_enc?: string | null;
           shopify_token_expires_at?: string | null;
           shopify_theme?: string | null;
+          shopify_avisos_faltando?: string[] | null;
+          shopify_avisos_conferidos_em?: string | null;
+          shopify_acesso_recusado_em?: string | null;
         };
         Update: {
           id?: string;
@@ -1455,6 +1461,9 @@ export type Database = {
           shopify_client_secret_enc?: string | null;
           shopify_token_expires_at?: string | null;
           shopify_theme?: string | null;
+          shopify_avisos_faltando?: string[] | null;
+          shopify_avisos_conferidos_em?: string | null;
+          shopify_acesso_recusado_em?: string | null;
         };
         Relationships: [
           {

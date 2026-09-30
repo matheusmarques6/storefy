@@ -33,6 +33,8 @@ let contexto: {
 /** O que cada client do Supabase recebeu. */
 let gravouSessao: Record<string, unknown> | null = null;
 let gravouServico: Record<string, unknown> | null = null;
+/** Todas as gravações da service role, na ordem: a conexão, e depois o estado dos avisos. */
+let gravacoesDoServico: Record<string, unknown>[] = [];
 let erroDaGravacao: { message: string } | null = null;
 
 /** O que os módulos de rede da Shopify vão responder. */
@@ -41,7 +43,12 @@ let troca: { ok: boolean; token?: string; escopos?: string; motivo?: string } = 
   token: 'shpat_do_teste',
   escopos: 'read_products,read_orders,read_customers,read_fulfillments',
 };
-let webhooks: { registrados: string[]; falharam: string[] } = { registrados: [], falharam: [] };
+let webhooks = {
+  registrados: [] as string[],
+  falharam: [] as string[],
+  acessoRecusado: false,
+  semResposta: false,
+};
 
 vi.mock('@/lib/contexto', async (original) => ({
   ...(await original<ModuloDoContexto>()),
@@ -91,7 +98,8 @@ vi.mock('@/lib/supabase/server', () => ({
 vi.mock('@/lib/supabase/admin', () => ({
   criarClientServiceRole: () =>
     clientFalso((dados) => {
-      gravouServico = dados;
+      gravacoesDoServico.push(dados);
+      gravouServico ??= dados;
     }),
 }));
 
@@ -120,13 +128,14 @@ beforeEach(() => {
   contexto = { lojaAtiva: { id: ID_DA_LOJA }, papel: 'owner' };
   gravouSessao = null;
   gravouServico = null;
+  gravacoesDoServico = [];
   erroDaGravacao = null;
   troca = {
     ok: true,
     token: 'shpat_do_teste',
     escopos: 'read_products,read_orders,read_customers,read_fulfillments',
   };
-  webhooks = { registrados: [], falharam: [] };
+  webhooks = { registrados: [], falharam: [], acessoRecusado: false, semResposta: false };
 
   avisos = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
   erros = vi.spyOn(console, 'error').mockImplementation(() => undefined);
@@ -404,9 +413,19 @@ describe('GET /api/shopify/callback', () => {
   });
 
   it('webhook que não registrou vira aviso de conexão parcial', async () => {
-    webhooks = { registrados: ['orders/create'], falharam: ['products/update'] };
+    webhooks = {
+      registrados: ['orders/create'],
+      falharam: ['products/update'],
+      acessoRecusado: false,
+      semResposta: false,
+    };
 
     expect(codigo(await retornar(retorno(parametrosBons(), COOKIE_BOM)))).toBe('parcial');
+    // O que faltou fica guardado: a C14 mostra, e a conferência de hora em hora refaz.
+    expect(gravacoesDoServico.at(-1)).toMatchObject({
+      shopify_avisos_faltando: ['products/update'],
+      shopify_acesso_recusado_em: null,
+    });
   });
 
   it('erro ao gravar não engana o lojista com um "conectada"', async () => {

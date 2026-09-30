@@ -135,7 +135,8 @@ async function renovar(
 
   const troca = await trocarCredenciaisPorToken(dominio, clientId, segredo, buscador);
   if (!troca.ok) {
-    return { ok: false, motivo: troca.motivo, reconectar: true };
+    // A Shopify fora do ar não é credencial recusada: reconectar não mudaria nada.
+    return { ok: false, motivo: troca.motivo, reconectar: troca.transitoria !== true };
   }
 
   const { error: erroDaGravacao } = await servico

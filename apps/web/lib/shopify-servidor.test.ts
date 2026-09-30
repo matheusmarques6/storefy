@@ -15,7 +15,7 @@ import {
   trocarCodePorToken,
   vincularAppNoDominio,
 } from '@/lib/shopify-servidor';
-import { TOPICOS, VERSAO_DA_API } from '@/lib/shopify';
+import { TOPICOS_DA_LOJA, VERSAO_DA_API } from '@/lib/shopify';
 
 const LOJA = 'minha-loja.myshopify.com';
 const URL_DO_WEBHOOK = 'https://app.storefy.com.br/api/webhooks/shopify';
@@ -176,111 +176,178 @@ describe('trocarCodePorToken', () => {
   });
 });
 
+/** Um aviso da Shopify, como a GraphQL o guarda. */
+interface AvisoFalso {
+  id: string;
+  topic: string;
+  uri: string;
+}
+
+/**
+ * A GraphQL da Shopify, só com os avisos: o que a loja tem e o que se pede.
+ * Guarda estado, para o teste provar o que ficou de pé — e não só o que foi
+ * pedido.
+ */
+function shopifyDosAvisos(
+  inicial: AvisoFalso[] = [],
+  recusar: (topico: string) => boolean = () => false,
+) {
+  const avisos = [...inicial];
+  const pedidos: { url: string; consulta: string; variaveis: Record<string, unknown> }[] = [];
+  const buscador = vi.fn(async (url: string | URL | Request, opcoes?: RequestInit) => {
+    const corpo = corpoDe(opcoes) as { query: string; variables: Record<string, unknown> };
+    pedidos.push({ url: urlDe(url), consulta: corpo.query, variaveis: corpo.variables });
+    const { query: consulta, variables: variaveis } = corpo;
+
+    if (consulta.includes('webhookSubscriptions(')) {
+      const nodes = avisos
+        .filter((aviso) => aviso.uri === variaveis.uri)
+        .map(({ id, topic }) => ({ id, topic }));
+      return await Promise.resolve(resposta({ data: { webhookSubscriptions: { nodes } } }));
+    }
+    if (consulta.includes('webhookSubscriptionCreate')) {
+      const topic = String(variaveis.topic);
+      if (recusar(topic)) {
+        return await Promise.resolve(
+          resposta({
+            data: {
+              webhookSubscriptionCreate: {
+                webhookSubscription: null,
+                userErrors: [{ field: ['topic'], message: 'Recusado' }],
+              },
+            },
+          }),
+        );
+      }
+      const id = `gid://shopify/WebhookSubscription/${String(avisos.length + 100)}`;
+      avisos.push({ id, topic, uri: String(variaveis.uri) });
+      return await Promise.resolve(
+        resposta({
+          data: { webhookSubscriptionCreate: { webhookSubscription: { id }, userErrors: [] } },
+        }),
+      );
+    }
+    if (consulta.includes('webhookSubscriptionDelete')) {
+      const indice = avisos.findIndex((aviso) => aviso.id === variaveis.id);
+      if (indice >= 0) avisos.splice(indice, 1);
+      return await Promise.resolve(
+        resposta({
+          data: {
+            webhookSubscriptionDelete:
+              indice >= 0
+                ? { deletedWebhookSubscriptionId: variaveis.id, userErrors: [] }
+                : { deletedWebhookSubscriptionId: null, userErrors: [{ message: 'Não existe' }] },
+          },
+        }),
+      );
+    }
+    return await Promise.resolve(resposta({ errors: [{ message: 'consulta inesperada' }] }));
+  });
+  return { avisos, pedidos, buscador };
+}
+
 describe('registrarWebhooks', () => {
-  it('registra todos os tópicos na mesma URL', async () => {
-    const pedidos: string[] = [];
-    const falso = vi.fn(async (_url: string | URL | Request, opcoes?: RequestInit) => {
-      const corpo = corpoDe(opcoes) as { webhook: { topic: string } };
-      pedidos.push(corpo.webhook.topic);
-      return await Promise.resolve(resposta({ webhook: { id: 1 } }, 201));
-    });
-
-    const feito = await registrarWebhooks(LOJA, 'shpat_1', URL_DO_WEBHOOK, falso);
-
-    expect(feito.registrados).toEqual([...TOPICOS]);
-    expect(feito.falharam).toEqual([]);
-    expect(pedidos).toEqual([...TOPICOS]);
-  });
-
   /*
-   * 422 "already been taken" é REINSTALAÇÃO, não falha. Tratar como erro faria
-   * quem reinstalou o app ver "conexão quebrada" numa conexão que está de pé.
+   * O defeito: os três de privacidade iam para a API, loja a loja, e a
+   * Shopify os recusa sempre (só existem na configuração do app). Toda
+   * conexão saía "parcial", mandando o lojista reconectar à toa.
    */
-  it('webhook que já existe conta como registrado', async () => {
-    const falso = vi.fn(
-      async () =>
-        await Promise.resolve(
-          resposta({ errors: { address: ['for this topic has already been taken'] } }, 422),
-        ),
-    );
+  it('registra os avisos da loja pela GraphQL, na mesma URL — e nunca os de privacidade', async () => {
+    const shopify = shopifyDosAvisos();
 
-    const feito = await registrarWebhooks(LOJA, 'shpat_1', URL_DO_WEBHOOK, falso);
+    const feito = await registrarWebhooks(LOJA, 'shpat_1', URL_DO_WEBHOOK, shopify.buscador);
 
-    expect(feito.falharam).toEqual([]);
+    expect(feito).toEqual({
+      registrados: [...TOPICOS_DA_LOJA],
+      falharam: [],
+      acessoRecusado: false,
+      semResposta: false,
+    });
+    expect(shopify.avisos.map((aviso) => aviso.topic)).toEqual([
+      'APP_UNINSTALLED',
+      'ORDERS_CREATE',
+      'FULFILLMENTS_CREATE',
+      'PRODUCTS_UPDATE',
+    ]);
+    expect(shopify.avisos.every((aviso) => aviso.uri === URL_DO_WEBHOOK)).toBe(true);
+    // A GraphQL da versão da API, e nada pela REST (legado).
+    for (const pedido of shopify.pedidos) {
+      expect(pedido.url).toBe(`https://${LOJA}/admin/api/${VERSAO_DA_API}/graphql.json`);
+    }
+    expect(JSON.stringify(shopify.pedidos)).not.toMatch(/CUSTOMERS_|SHOP_REDACT/);
   });
 
-  it('mas um 422 de outro motivo é falha de verdade', async () => {
-    const falso = vi.fn(
-      async () => await Promise.resolve(resposta({ errors: { topic: ['is invalid'] } }, 422)),
+  /* Reconectar, e a conferência de hora em hora, não duplicam nada. */
+  it('só cria o que falta, e o aviso de outro app no mesmo tópico não conta', async () => {
+    const shopify = shopifyDosAvisos([
+      { id: 'gid://1', topic: 'APP_UNINSTALLED', uri: URL_DO_WEBHOOK },
+      { id: 'gid://2', topic: 'ORDERS_CREATE', uri: URL_DO_WEBHOOK },
+      { id: 'gid://3', topic: 'PRODUCTS_UPDATE', uri: 'https://outro-app.com/hook' },
+    ]);
+
+    const feito = await registrarWebhooks(LOJA, 'shpat_1', URL_DO_WEBHOOK, shopify.buscador);
+
+    expect(feito.falharam).toEqual([]);
+    const criados = shopify.pedidos.filter((pedido) =>
+      pedido.consulta.includes('webhookSubscriptionCreate'),
     );
-
-    const feito = await registrarWebhooks(LOJA, 'shpat_1', URL_DO_WEBHOOK, falso);
-
-    expect(feito.registrados).toEqual([]);
-    expect(feito.falharam).toEqual([...TOPICOS]);
+    expect(criados.map((pedido) => pedido.variaveis.topic)).toEqual([
+      'FULFILLMENTS_CREATE',
+      'PRODUCTS_UPDATE',
+    ]);
   });
 
   /*
    * Um tópico que falha não derruba os outros: a loja com `orders/create`
    * registrado e `products/update` não é uma loja quebrada.
    */
-  it('a falha de um tópico não impede os outros', async () => {
-    let chamada = 0;
-    const falso = vi.fn(async () => {
-      chamada += 1;
-      return chamada === 2
-        ? await Promise.resolve(resposta({ erro: 'nao' }, 500))
-        : await Promise.resolve(resposta({ webhook: { id: 1 } }, 201));
-    });
+  it('a recusa de um tópico não impede os outros', async () => {
+    const shopify = shopifyDosAvisos([], (topico) => topico === 'PRODUCTS_UPDATE');
+
+    const feito = await registrarWebhooks(LOJA, 'shpat_1', URL_DO_WEBHOOK, shopify.buscador);
+
+    expect(feito.falharam).toEqual(['products/update']);
+    expect(feito.registrados).toEqual(['app/uninstalled', 'orders/create', 'fulfillments/create']);
+  });
+
+  it('o token recusado diz isso, sem tentar criar nada', async () => {
+    const falso = vi.fn(async () => await Promise.resolve(resposta({ errors: 'x' }, 401)));
 
     const feito = await registrarWebhooks(LOJA, 'shpat_1', URL_DO_WEBHOOK, falso);
 
-    expect(feito.falharam).toHaveLength(1);
-    expect(feito.registrados).toHaveLength(TOPICOS.length - 1);
+    expect(feito).toMatchObject({ acessoRecusado: true, semResposta: false });
+    expect(feito.falharam).toEqual([...TOPICOS_DA_LOJA]);
+    expect(falso).toHaveBeenCalledTimes(1);
+  });
+
+  /* Sem resposta não se sabe o que falta: "faltam todos" seria alarme falso. */
+  it('a Shopify fora do ar vira "sem resposta", e não "acesso recusado"', async () => {
+    const falso = vi.fn(async () => await Promise.reject(new Error('sem rede')));
+
+    const feito = await registrarWebhooks(LOJA, 'shpat_1', URL_DO_WEBHOOK, falso);
+
+    expect(feito).toMatchObject({ acessoRecusado: false, semResposta: true });
   });
 });
 
 describe('apagarWebhooks', () => {
   /*
-   * Só os que apontam para a NOSSA url. Uma loja pode ter webhooks de outros
+   * Só os que apontam para a NOSSA url. Uma loja pode ter avisos de outros
    * apps no mesmo tópico, e apagá-los seria quebrar a ferramenta de terceiro.
    */
-  it('apaga só os webhooks que apontam para a Storefy', async () => {
-    const apagados: string[] = [];
-    const falso = vi.fn(async (url: string | URL | Request, opcoes?: RequestInit) => {
-      if (opcoes?.method === 'DELETE') {
-        apagados.push(urlDe(url));
-        return await Promise.resolve(resposta({}, 200));
-      }
-      return await Promise.resolve(
-        resposta({
-          webhooks: [
-            { id: 10, address: URL_DO_WEBHOOK },
-            { id: 11, address: 'https://outro-app.com/hook' },
-            { id: 12, address: URL_DO_WEBHOOK },
-          ],
-        }),
-      );
-    });
+  it('apaga só os avisos que apontam para a Storefy', async () => {
+    const shopify = shopifyDosAvisos([
+      { id: 'gid://10', topic: 'ORDERS_CREATE', uri: URL_DO_WEBHOOK },
+      { id: 'gid://11', topic: 'ORDERS_CREATE', uri: 'https://outro-app.com/hook' },
+      { id: 'gid://12', topic: 'APP_UNINSTALLED', uri: URL_DO_WEBHOOK },
+    ]);
 
-    const quantos = await apagarWebhooks(LOJA, 'shpat_1', URL_DO_WEBHOOK, falso);
+    const quantos = await apagarWebhooks(LOJA, 'shpat_1', URL_DO_WEBHOOK, shopify.buscador);
 
     expect(quantos).toBe(2);
-    expect(apagados).toEqual([
-      `https://${LOJA}/admin/api/${VERSAO_DA_API}/webhooks/10.json`,
-      `https://${LOJA}/admin/api/${VERSAO_DA_API}/webhooks/12.json`,
+    expect(shopify.avisos).toEqual([
+      { id: 'gid://11', topic: 'ORDERS_CREATE', uri: 'https://outro-app.com/hook' },
     ]);
-  });
-
-  /** 404 é o estado desejado: ele já não existe. */
-  it('webhook que já sumiu conta como apagado', async () => {
-    const falso = vi.fn(async (_url: string | URL | Request, opcoes?: RequestInit) =>
-      opcoes?.method === 'DELETE'
-        ? await Promise.resolve(resposta({}, 404))
-        : await Promise.resolve(resposta({ webhooks: [{ id: 10, address: URL_DO_WEBHOOK }] })),
-    );
-
-    expect(await apagarWebhooks(LOJA, 'shpat_1', URL_DO_WEBHOOK, falso)).toBe(1);
   });
 
   /*
@@ -299,10 +366,13 @@ describe('apagarWebhooks', () => {
     expect(await apagarWebhooks(LOJA, 'shpat_1', URL_DO_WEBHOOK, falso)).toBe(0);
   });
 
-  it('corpo em formato inesperado não apaga nada', async () => {
-    const falso = vi.fn(async () => await Promise.resolve(resposta({ webhooks: 'nada disso' })));
+  it('resposta em formato inesperado não apaga nada', async () => {
+    const falso = vi.fn(
+      async () => await Promise.resolve(resposta({ data: { webhookSubscriptions: 'nada disso' } })),
+    );
 
     expect(await apagarWebhooks(LOJA, 'shpat_1', URL_DO_WEBHOOK, falso)).toBe(0);
+    expect(falso).toHaveBeenCalledTimes(1);
   });
 });
 

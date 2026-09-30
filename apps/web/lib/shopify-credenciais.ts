@@ -53,8 +53,12 @@ export interface TokenDeCredenciais {
 
 export type TrocaDeCredenciais =
   | { ok: true; valor: TokenDeCredenciais }
-  /** Motivo em pt-BR, pronto para a tela. */
-  | { ok: false; motivo: string };
+  /**
+   * Motivo em pt-BR, pronto para a tela. `transitoria`: a Shopify não
+   * respondeu (ou respondeu torto) — tentar de novo pode resolver, e pedir ao
+   * lojista para reconectar não mudaria nada.
+   */
+  | { ok: false; motivo: string; transitoria?: boolean };
 
 const TIMEOUT_MS = 15_000;
 
@@ -113,20 +117,32 @@ export async function trocarCredenciaisPorToken(
       signal: controle.signal,
     });
   } catch {
-    return { ok: false, motivo: 'Não conseguimos falar com a Shopify agora. Tente de novo.' };
+    return {
+      ok: false,
+      motivo: 'Não conseguimos falar com a Shopify agora. Tente de novo.',
+      transitoria: true,
+    };
   } finally {
     clearTimeout(relogio);
   }
 
   if (!resposta.ok) {
-    return { ok: false, motivo: await traduzirFalha(resposta) };
+    return {
+      ok: false,
+      motivo: await traduzirFalha(resposta),
+      transitoria: resposta.status >= 500 || resposta.status === 429,
+    };
   }
 
   let corpo: unknown;
   try {
     corpo = await resposta.json();
   } catch {
-    return { ok: false, motivo: 'A Shopify respondeu algo que não entendemos. Tente de novo.' };
+    return {
+      ok: false,
+      motivo: 'A Shopify respondeu algo que não entendemos. Tente de novo.',
+      transitoria: true,
+    };
   }
 
   return lerResposta(corpo);
@@ -233,14 +249,22 @@ export function codigoDoErro(corpo: string): string | null {
  */
 export function lerResposta(corpo: unknown): TrocaDeCredenciais {
   if (typeof corpo !== 'object' || corpo === null) {
-    return { ok: false, motivo: 'A Shopify respondeu algo que não entendemos. Tente de novo.' };
+    return {
+      ok: false,
+      motivo: 'A Shopify respondeu algo que não entendemos. Tente de novo.',
+      transitoria: true,
+    };
   }
 
   const dados = corpo as Record<string, unknown>;
   const token = typeof dados.access_token === 'string' ? dados.access_token.trim() : '';
 
   if (token === '') {
-    return { ok: false, motivo: 'A Shopify não devolveu o token de acesso. Tente de novo.' };
+    return {
+      ok: false,
+      motivo: 'A Shopify não devolveu o token de acesso. Tente de novo.',
+      transitoria: true,
+    };
   }
 
   const escopos =

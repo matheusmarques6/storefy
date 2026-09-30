@@ -62,6 +62,12 @@ export const JOBS_DO_STATUS: readonly JobDoStatus[] = [
     descricao: 'Os pagamentos conferidos direto com a Asaas.',
     intervaloMin: 60,
   },
+  {
+    job: 'shopify-webhooks',
+    nome: 'Avisos da Shopify',
+    descricao: 'Os avisos de pedidos, envios e estoque de cada loja, conferidos e refeitos.',
+    intervaloMin: 60,
+  },
 ];
 
 export interface Batimento {

@@ -81,7 +81,7 @@ function urlDe(url: string | URL | Request): string {
 function redeFalsa(opcoes: OpcoesDaRede = {}) {
   const chamadas: string[] = [];
 
-  const buscador = vi.fn((url: string | URL | Request) => {
+  const buscador = vi.fn((url: string | URL | Request, pedido?: RequestInit) => {
     const alvo = urlDe(url);
     chamadas.push(alvo);
 
@@ -109,11 +109,24 @@ function redeFalsa(opcoes: OpcoesDaRede = {}) {
       );
     }
 
-    // Registro de webhook.
+    // Os avisos, pela GraphQL: a loja não tem nenhum, e cada um se cria (ou é recusado).
+    const consulta = typeof pedido?.body === 'string' ? pedido.body : '';
+    if (consulta.includes('webhookSubscriptions(')) {
+      return Promise.resolve(
+        new Response(JSON.stringify({ data: { webhookSubscriptions: { nodes: [] } } })),
+      );
+    }
     return Promise.resolve(
-      new Response(JSON.stringify({ webhook: { id: 1 } }), {
-        status: opcoes.webhookFalha === true ? 422 : 201,
-      }),
+      new Response(
+        JSON.stringify({
+          data: {
+            webhookSubscriptionCreate:
+              opcoes.webhookFalha === true
+                ? { webhookSubscription: null, userErrors: [{ message: 'Recusado' }] }
+                : { webhookSubscription: { id: 'gid://1' }, userErrors: [] },
+          },
+        }),
+      ),
     );
   });
 
@@ -140,7 +153,12 @@ describe('conectarPeloAppDoLojista', () => {
     expect(resultado.dominio).toBe(LOJA);
     expect(resultado.webhooksFalhos).toBe(0);
 
-    expect(gravado).toHaveLength(1);
+    // A conexão, e depois o que se sabe dos avisos (a C14 e a conferência leem).
+    expect(gravado).toHaveLength(2);
+    expect(gravado[1]).toMatchObject({
+      shopify_avisos_faltando: [],
+      shopify_acesso_recusado_em: null,
+    });
     const linha = gravado[0] ?? {};
     expect(linha.shopify_conexao).toBe('manual');
     // Conectada à Shopify, a loja passa a ser Shopify — mesmo a que dizia "outra".
@@ -148,9 +166,10 @@ describe('conectarPeloAppDoLojista', () => {
     expect(linha.shopify_client_id).toBe('id-do-app');
     expect(linha.shop_domain).toBe(LOJA);
 
-    // A troca vem antes; os webhooks depois. Sete tópicos, uma troca.
+    // A troca vem antes; os avisos depois, pela GraphQL (a REST é legado).
     expect(chamadas[0]).toContain('/admin/oauth/access_token');
-    expect(chamadas.filter((url) => url.includes('/webhooks.json')).length).toBeGreaterThan(0);
+    expect(chamadas.filter((url) => url.includes('/graphql.json')).length).toBeGreaterThan(0);
+    expect(chamadas.some((url) => url.includes('/webhooks.json'))).toBe(false);
   });
 
   /*
@@ -266,7 +285,8 @@ describe('conectarPeloAppDoLojista', () => {
     const { buscador } = redeFalsa();
 
     expect((await conectarPeloAppDoLojista(servico, PEDIDO, WEBHOOK, buscador)).ok).toBe(true);
-    expect(gravado).toHaveLength(1);
+    // A conexão e o estado dos avisos.
+    expect(gravado).toHaveLength(2);
   });
 
   /*
@@ -281,8 +301,17 @@ describe('conectarPeloAppDoLojista', () => {
     const resultado = await conectarPeloAppDoLojista(servico, PEDIDO, WEBHOOK, buscador);
 
     expect(resultado.ok).toBe(true);
-    if (resultado.ok) expect(resultado.webhooksFalhos).toBeGreaterThan(0);
-    expect(gravado).toHaveLength(1);
+    if (resultado.ok) expect(resultado.webhooksFalhos).toBe(4);
+    // E o que faltou fica guardado, para a C14 dizer e a conferência refazer.
+    expect(gravado).toHaveLength(2);
+    expect(gravado[1]).toMatchObject({
+      shopify_avisos_faltando: [
+        'app/uninstalled',
+        'orders/create',
+        'fulfillments/create',
+        'products/update',
+      ],
+    });
   });
 
   it('campo em branco vira mensagem, e não chamada', async () => {

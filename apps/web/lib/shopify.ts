@@ -18,25 +18,48 @@ export const CABECALHO_DO_TOPICO = 'x-shopify-topic';
 export const CABECALHO_DA_LOJA = 'x-shopify-shop-domain';
 
 /**
- * Os três webhooks que a Shopify EXIGE de todo app público, mais os que o
- * produto usa. Faltando qualquer um dos de privacidade, o app é recusado na
- * revisão da Shopify.
+ * Os três webhooks de privacidade que a Shopify EXIGE de todo app público —
+ * faltando qualquer um, o app é recusado na revisão.
+ *
+ * Eles NÃO se registram pela API: a Shopify só os aceita na configuração do
+ * app (Partner Dashboard ou `shopify.app.toml`, ver CONFIGURACAO.md), e vale
+ * para todas as lojas de uma vez. Pedir pela API, loja a loja, era recusado
+ * sempre — e fazia toda conexão sair "parcial", mandando reconectar à toa.
  */
-export const TOPICOS_OBRIGATORIOS = [
+export const TOPICOS_DE_PRIVACIDADE = [
   'customers/data_request',
   'customers/redact',
   'shop/redact',
-  'app/uninstalled',
 ] as const;
 
-export const TOPICOS_DO_PRODUTO = [
+/** Os que a Storefy registra em cada loja, pela API, na conexão e na conferência. */
+export const TOPICOS_DA_LOJA = [
+  'app/uninstalled',
   'orders/create',
   'fulfillments/create',
   'products/update',
 ] as const;
 
-export const TOPICOS = [...TOPICOS_OBRIGATORIOS, ...TOPICOS_DO_PRODUTO] as const;
+export const TOPICOS = [...TOPICOS_DE_PRIVACIDADE, ...TOPICOS_DA_LOJA] as const;
 export type Topico = (typeof TOPICOS)[number];
+export type TopicoDaLoja = (typeof TOPICOS_DA_LOJA)[number];
+
+/** O nome do tópico na GraphQL da Shopify: `orders/create` vira `ORDERS_CREATE`. */
+export function topicoNaGraphql(topico: TopicoDaLoja): string {
+  return topico.replace('/', '_').toUpperCase();
+}
+
+/** O que cada aviso faz, do jeito que o lojista entende (C14). */
+export const ROTULO_DO_AVISO: Record<TopicoDaLoja, string> = {
+  'app/uninstalled': 'desinstalação do app',
+  'orders/create': 'pedidos novos (vendas pelo app e carrinho abandonado)',
+  'fulfillments/create': 'envios (o aviso de pedido a caminho)',
+  'products/update': 'produtos de volta ao estoque (o "me avise")',
+};
+
+export function ehTopicoDaLoja(topico: string): topico is TopicoDaLoja {
+  return (TOPICOS_DA_LOJA as readonly string[]).includes(topico);
+}
 
 export function ehTopicoConhecido(topico: string): topico is Topico {
   return (TOPICOS as readonly string[]).includes(topico);

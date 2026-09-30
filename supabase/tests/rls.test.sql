@@ -1095,7 +1095,12 @@ select tests.ok('segredo',
          ('stores', 'shopify_token_expires_at'),
          -- O status vem dos builds, por gatilho (migration 53): o dono não se
          -- declara "No ar".
-         ('stores', 'status')
+         ('stores', 'status'),
+         -- O que a conferência dos avisos da Shopify achou (migration 74): o
+         -- dono não apaga a falta nem desfaz o acesso recusado.
+         ('stores', 'shopify_avisos_faltando'),
+         ('stores', 'shopify_avisos_conferidos_em'),
+         ('stores', 'shopify_acesso_recusado_em')
        )
        and not (has_column_privilege('authenticated', c.oid, a.attnum, 'insert')
             and has_column_privilege('authenticated', c.oid, a.attnum, 'update'))
@@ -9635,6 +9640,86 @@ select tests.ok('conferência das faturas',
 
 reset role;
 select tests.logout();
+
+-- ============================== grupo: C14 — os avisos da Shopify (migration 74)
+--
+-- Cada loja guarda o que faltou na última conferência dos avisos (webhooks)
+-- da Shopify. Quem grava é sempre o servidor, depois de falar com a Shopify:
+-- a loja lê para a tela, e não apaga a falta nem desfaz o acesso recusado.
+
+reset role;
+select tests.logout();
+
+insert into auth.users (email, raw_user_meta_data, email_confirmed_at) values
+  ('av-dono@teste.local',  '{"company_name":"Avisos"}'::jsonb,           now()),
+  ('av-outro@teste.local', '{"company_name":"Outra dos Avisos"}'::jsonb, now());
+
+drop table if exists tests.av;
+create table tests.av as
+select (select m.org_id from public.memberships m join auth.users u on u.id = m.user_id
+         where u.email = 'av-dono@teste.local') as org;
+insert into public.stores (org_id, name, primary_url, shop_domain)
+select org, 'Loja dos Avisos', 'https://avisos.com.br', 'avisos-rls.myshopify.com' from tests.av;
+alter table tests.av add column loja uuid;
+update tests.av set loja = (select id from public.stores where name = 'Loja dos Avisos');
+grant select on tests.av to anon, authenticated, service_role;
+
+set role service_role;
+update public.stores
+   set shopify_scopes = array['read_orders'],
+       shopify_avisos_faltando = array['products/update'],
+       shopify_avisos_conferidos_em = now(),
+       shopify_acesso_recusado_em = null
+ where id = (select loja from tests.av);
+select public.registrar_batimento('shopify-webhooks', true, 900);
+reset role;
+
+select tests.ok('avisos da shopify',
+  (select last_success_at is not null from public.job_heartbeats where job = 'shopify-webhooks'),
+  'o job dos avisos anota o batimento, como os outros');
+
+select tests.login('av-dono@teste.local');
+set role authenticated;
+
+select tests.ok('avisos da shopify',
+  (select shopify_avisos_faltando = array['products/update'] and shopify_avisos_conferidos_em is not null
+     from public.stores where id = (select loja from tests.av)),
+  'a loja lê quais avisos faltam e quando foram conferidos');
+
+select tests.ok('avisos da shopify',
+  tests.erro($q$update public.stores set shopify_avisos_faltando = '{}'
+    where id = (select loja from tests.av)$q$),
+  'e não apaga a falta: quem confere é o servidor');
+
+select tests.ok('avisos da shopify',
+  tests.erro($q$update public.stores set shopify_acesso_recusado_em = null
+    where id = (select loja from tests.av)$q$),
+  'nem desfaz o acesso recusado');
+
+reset role;
+select tests.logout();
+
+select tests.login('av-outro@teste.local');
+set role authenticated;
+
+select tests.ok('avisos da shopify',
+  tests.contar($q$select count(*) from public.stores where id = (select loja from tests.av)$q$) = 0,
+  'outra empresa não vê a loja nem os avisos dela');
+
+reset role;
+select tests.logout();
+
+-- A desinstalação limpa o que se sabia dos avisos, junto com a conexão.
+set role service_role;
+update public.stores set shopify_acesso_recusado_em = now() where id = (select loja from tests.av);
+select public.desconectar_shopify('avisos-rls.myshopify.com');
+reset role;
+
+select tests.ok('avisos da shopify',
+  (select shopify_scopes is null and shopify_avisos_faltando is null
+          and shopify_avisos_conferidos_em is null and shopify_acesso_recusado_em is null
+     from public.stores where id = (select loja from tests.av)),
+  'desconectar apaga o estado dos avisos junto com a conexão');
 
 -- ============================== grupo: varredura de segurança (Fase 8)
 --

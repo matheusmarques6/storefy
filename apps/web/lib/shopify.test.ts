@@ -4,7 +4,9 @@ import { dirname, join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   TOPICOS,
-  TOPICOS_OBRIGATORIOS,
+  TOPICOS_DA_LOJA,
+  TOPICOS_DE_PRIVACIDADE,
+  topicoNaGraphql,
   VERSAO_DA_API,
   ehDominioDeLoja,
   ehTopicoConhecido,
@@ -128,8 +130,25 @@ describe('tópicos', () => {
    */
   it('os três webhooks de privacidade estão na lista', () => {
     for (const topico of ['customers/data_request', 'customers/redact', 'shop/redact']) {
-      expect(TOPICOS_OBRIGATORIOS as readonly string[]).toContain(topico);
+      expect(TOPICOS_DE_PRIVACIDADE as readonly string[]).toContain(topico);
     }
+  });
+
+  /*
+   * O defeito: os de privacidade iam para a API, loja a loja, e a Shopify os
+   * recusa sempre (só existem na configuração do app) — toda conexão saía
+   * "parcial". Os da loja são os que a API aceita.
+   */
+  it('os de privacidade não são registrados na loja; os da loja têm o nome da GraphQL', () => {
+    for (const topico of TOPICOS_DE_PRIVACIDADE) {
+      expect(TOPICOS_DA_LOJA as readonly string[]).not.toContain(topico);
+    }
+    expect(TOPICOS_DA_LOJA.map(topicoNaGraphql)).toEqual([
+      'APP_UNINSTALLED',
+      'ORDERS_CREATE',
+      'FULFILLMENTS_CREATE',
+      'PRODUCTS_UPDATE',
+    ]);
   });
 
   it('reconhece o que a Shopify manda e recusa o resto', () => {

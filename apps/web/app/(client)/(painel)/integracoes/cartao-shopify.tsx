@@ -27,10 +27,11 @@
  */
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
-import { CheckCircle2, Link2Off, Loader2, Store, TriangleAlert } from 'lucide-react';
+import { CheckCircle2, Link2Off, Loader2, RefreshCw, Store, TriangleAlert } from 'lucide-react';
 import { toast } from 'sonner';
 import { conferirDominioDigitado, rotuloDoEscopo, type SituacaoDaShopify } from '@/lib/integracoes';
-import { desconectarShopify } from './acoes';
+import { ROTULO_DO_AVISO, type TopicoDaLoja } from '@/lib/shopify';
+import { desconectarShopify, refazerAvisosDaShopify } from './acoes';
 import { ConectarManual } from './conectar-manual';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -55,7 +56,12 @@ export function CartaoShopify({
   situacao: SituacaoDaShopify;
   podeEscrever: boolean;
 }) {
-  const conectada = situacao.estado === 'conectada' || situacao.estado === 'escopos_faltando';
+  const conectada =
+    situacao.estado === 'conectada' ||
+    situacao.estado === 'escopos_faltando' ||
+    situacao.estado === 'acesso_recusado';
+  const avisosFaltando =
+    situacao.estado === 'acesso_recusado' ? [] : (situacao.avisosFaltando ?? []);
 
   return (
     <Card>
@@ -81,8 +87,12 @@ export function CartaoShopify({
         ) : (
           <>
             {conectada ? <Conectada situacao={situacao} /> : null}
+            {situacao.estado === 'acesso_recusado' ? <AcessoRecusado /> : null}
             {situacao.estado === 'escopos_faltando' ? (
               <Faltando escopos={situacao.faltando} />
+            ) : null}
+            {avisosFaltando.length > 0 ? (
+              <AvisosFaltando topicos={avisosFaltando} podeEscrever={podeEscrever} />
             ) : null}
 
             {podeEscrever ? (
@@ -117,6 +127,23 @@ function Selo({ situacao }: { situacao: SituacaoDaShopify }) {
    */
   if (situacao.estado === 'sem_loja') return null;
 
+  if (situacao.estado === 'acesso_recusado') {
+    return (
+      <Badge variant="destructive" className="gap-1">
+        <TriangleAlert className="size-3" aria-hidden />
+        Acesso recusado
+      </Badge>
+    );
+  }
+  // "Conectada" com aviso faltando é o silêncio que isto existe para quebrar.
+  if (situacao.estado === 'conectada' && (situacao.avisosFaltando ?? []).length > 0) {
+    return (
+      <Badge variant="outline" className="gap-1">
+        <TriangleAlert className="size-3" aria-hidden />
+        Avisos faltando
+      </Badge>
+    );
+  }
   if (situacao.estado === 'conectada') {
     return (
       <Badge variant="secondary" className="gap-1">
@@ -175,6 +202,77 @@ function Conectada({ situacao }: { situacao: SituacaoDaShopify }) {
         </dd>
       </div>
     </dl>
+  );
+}
+
+/**
+ * A Shopify recusa o token desta loja: o app foi desinstalado lá (e o aviso de
+ * desinstalação se perdeu) ou o acesso foi revogado. Só conectar de novo
+ * resolve — o formulário está logo abaixo.
+ */
+function AcessoRecusado() {
+  return (
+    <div className="border-destructive/40 rounded-lg border p-3 text-sm">
+      <p className="font-medium">A Shopify recusou o acesso da Storefy a esta loja.</p>
+      <p className="text-muted-foreground mt-1">
+        O app pode ter sido desinstalado na Shopify, ou o acesso revogado. Enquanto isso, os pedidos
+        não são contados e os avisos de envio e de estoque não saem. Conecte a loja de novo aqui
+        embaixo.
+      </p>
+    </div>
+  );
+}
+
+/**
+ * Os avisos (webhooks) que a Shopify não tem para a Storefy: apagados depois
+ * de entregas que falharam, ou que não se registraram na conexão. A Storefy
+ * refaz de hora em hora; o botão é para não esperar.
+ */
+function AvisosFaltando({
+  topicos,
+  podeEscrever,
+}: {
+  topicos: TopicoDaLoja[];
+  podeEscrever: boolean;
+}) {
+  const router = useRouter();
+  const [refazendo, iniciar] = useTransition();
+
+  function refazer() {
+    iniciar(async () => {
+      let resultado: Awaited<ReturnType<typeof refazerAvisosDaShopify>>;
+      try {
+        resultado = await refazerAvisosDaShopify();
+      } catch {
+        toast.error('Não conseguimos falar com o servidor. Tente de novo.');
+        return;
+      }
+      if (resultado.ok === true) toast.success(resultado.mensagem ?? 'Avisos registrados.');
+      else toast.error(resultado.mensagem ?? 'Não foi possível registrar os avisos.');
+      router.refresh();
+    });
+  }
+
+  return (
+    <div className="border-input space-y-2 rounded-lg border p-3 text-sm">
+      <p className="font-medium">
+        Faltam avisos da Shopify: {topicos.map((topico) => ROTULO_DO_AVISO[topico]).join('; ')}.
+      </p>
+      <p className="text-muted-foreground">
+        Sem eles, isso para de funcionar sem erro nenhum na tela. A Storefy tenta registrá-los de
+        novo a cada hora.
+      </p>
+      {podeEscrever ? (
+        <Button type="button" variant="outline" size="sm" disabled={refazendo} onClick={refazer}>
+          {refazendo ? (
+            <Loader2 className="size-4 animate-spin" aria-hidden />
+          ) : (
+            <RefreshCw className="size-4" aria-hidden />
+          )}
+          {refazendo ? 'Registrando…' : 'Registrar os avisos agora'}
+        </Button>
+      ) : null}
+    </div>
   );
 }
 
