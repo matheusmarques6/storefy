@@ -82,14 +82,28 @@ export async function excluirMinhaConta(
   const servico = criarClientServiceRole();
 
   // O último superadmin não sai: ninguém mais daria acesso à equipe.
-  const { data: admin } = await servico
+  /*
+   * Sem conseguir ler, não segue: pular esta conferência com o banco fora
+   * deixaria o último superadmin excluir a conta.
+   */
+  const { data: admin, error: erroDoAdmin } = await servico
     .from('platform_admins')
     .select('role')
     .eq('user_id', user.id)
     .maybeSingle();
+  if (erroDoAdmin != null) {
+    log.erro('conta.admin-nao-conferido', { falha: erroDoAdmin });
+    return { mensagem: 'Não conseguimos conferir a sua conta agora. Tente de novo.', valores };
+  }
   if (admin?.role === 'superadmin') {
-    const { data: outros } = await servico.rpc('outros_superadmins', { p_exceto: user.id });
-    if (typeof outros !== 'number' || outros === 0) {
+    const { data: outros, error: erroDosOutros } = await servico.rpc('outros_superadmins', {
+      p_exceto: user.id,
+    });
+    if (erroDosOutros != null) {
+      log.erro('conta.superadmins-nao-conferidos', { falha: erroDosOutros });
+      return { mensagem: 'Não conseguimos conferir a sua conta agora. Tente de novo.', valores };
+    }
+    if (outros === 0) {
       return {
         mensagem:
           'Você é o único superadmin da Storefy. Promova outra pessoa em Admin › Equipe antes de excluir a conta.',

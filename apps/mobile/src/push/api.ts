@@ -222,6 +222,22 @@ export function pedirAvisoDeVolta(
   return enviar(credenciais, '/api/public/back-in-stock', { ...dados }, opcoes);
 }
 
+/** O que a rota dos avisos do pedido de permissão responde. */
+export interface RespostaDosAvisosDoPush {
+  avisos?: unknown;
+}
+
+/**
+ * Pergunta quais avisos a loja manda de verdade (M03): as automações ligadas,
+ * e só as que conseguem sair. Prazo curto — é o que a tela espera para abrir.
+ */
+export function buscarAvisosDoPush(
+  credenciais: Credenciais,
+  opcoes: Opcoes = {},
+): Promise<Resultado<RespostaDosAvisosDoPush>> {
+  return enviar(credenciais, '/api/public/push-avisos', {}, { timeoutMs: 4000, ...opcoes });
+}
+
 /** Busca a caixa de avisos deste aparelho (M07). */
 export function buscarCaixaDeAvisos(
   credenciais: Credenciais,

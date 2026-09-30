@@ -304,13 +304,16 @@ export async function cancelarCampanha(campanhaId: string): Promise<EstadoDoPush
    * carregar e o clique, o job pode ter começado a enviar — e cancelar algo
    * que já saiu não desfaz nada, só mente no histórico.
    */
-  const { data: atual } = await base.supabase
+  const { data: atual, error: erroDaLeitura } = await base.supabase
     .from('push_campaigns')
     .select('status')
     .eq('id', campanhaId)
     .eq('app_id', base.app.id)
     .maybeSingle();
 
+  if (erroDaLeitura != null) {
+    return { mensagem: traduzirErro(erroDaLeitura.code, erroDaLeitura.message) };
+  }
   if (atual == null) return { mensagem: 'Campanha não encontrada.' };
   if (!podeCancelar(atual.status)) {
     return { mensagem: 'Esta campanha já saiu ou já está saindo. Não dá mais para cancelar.' };
@@ -340,13 +343,16 @@ export async function excluirCampanha(campanhaId: string): Promise<EstadoDoPush>
   const base = await contexto();
   if (!base.ok) return { mensagem: base.motivo };
 
-  const { data: atual } = await base.supabase
+  const { data: atual, error: erroDaLeitura } = await base.supabase
     .from('push_campaigns')
     .select('status')
     .eq('id', campanhaId)
     .eq('app_id', base.app.id)
     .maybeSingle();
 
+  if (erroDaLeitura != null) {
+    return { mensagem: traduzirErro(erroDaLeitura.code, erroDaLeitura.message) };
+  }
   if (atual == null) return { mensagem: 'Campanha não encontrada.' };
   if (!podeExcluir(atual.status)) {
     return { mensagem: 'Campanha enviada fica no histórico. Ela não pode ser excluída.' };
@@ -383,13 +389,16 @@ export async function editarCampanha(
   const base = await contexto();
   if (!base.ok) return { mensagem: base.motivo };
 
-  const { data: atual } = await base.supabase
+  const { data: atual, error: erroDaLeitura } = await base.supabase
     .from('push_campaigns')
     .select('status')
     .eq('id', campanhaId)
     .eq('app_id', base.app.id)
     .maybeSingle();
 
+  if (erroDaLeitura != null) {
+    return { mensagem: traduzirErro(erroDaLeitura.code, erroDaLeitura.message) };
+  }
   if (atual == null) return { mensagem: 'Campanha não encontrada.' };
   if (!podeEditar(atual.status)) {
     return { mensagem: 'Esta campanha já saiu. O texto enviado não muda mais.' };
@@ -773,7 +782,7 @@ export async function removerCelularDeTeste(celularId: string): Promise<EstadoDo
  * porque outra pessoa da mesma organização pode ter clicado primeiro.
  */
 export async function ligarNotificacoes(): Promise<EstadoDoPush> {
-  const { lojaAtiva, papel } = await exigirContextoCliente();
+  const { lojaAtiva, papel, usuario } = await exigirContextoCliente();
   if (lojaAtiva == null) return { mensagem: 'Cadastre uma loja antes de usar o push.' };
 
   /*
@@ -787,7 +796,10 @@ export async function ligarNotificacoes(): Promise<EstadoDoPush> {
     };
   }
 
-  const resultado = await ativarNotificacoes(criarClientServiceRole(), lojaAtiva.id);
+  const resultado = await ativarNotificacoes(
+    criarClientServiceRole({ ator: usuario.id }),
+    lojaAtiva.id,
+  );
   if (!resultado.ok) return { mensagem: resultado.motivo };
 
   revalidatePath('/push');

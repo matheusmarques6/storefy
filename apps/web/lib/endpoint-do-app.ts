@@ -22,7 +22,7 @@ import 'server-only';
  * de um ataque de repetição. O motivo vai para o nosso log; o app recebe 401.
  */
 import { z } from 'zod';
-import { tokenDoCarrinhoSemChave } from '@storefy/config-schema';
+import { avisosDasAutomacoes, tokenDoCarrinhoSemChave } from '@storefy/config-schema';
 import { conferirAssinatura, CABECALHO_DA_ASSINATURA } from '@/lib/assinatura';
 import { descriptografar, criptografiaConfigurada } from '@/lib/cripto';
 
@@ -122,6 +122,12 @@ export const CorpoDaCaixa = z.object({
   appId: uuid,
   subscriptionId: inscricao,
 });
+
+/**
+ * O pedido de permissão (M03) pergunta quais avisos a loja manda. Só o
+ * `appId`: a resposta é a mesma para todo cliente daquela loja.
+ */
+export const CorpoDosAvisosDoPush = z.object({ appId: uuid });
 
 /** Um erro de JavaScript do próprio app (`apps/mobile/src/nucleo/erros.ts`). */
 export const CorpoDoErroDoApp = z.object({
@@ -453,4 +459,41 @@ export function respostaDaAbertura(dados: unknown): Resposta {
     return { status: 200, corpo: { contada: false }, motivo: 'abertura: envio desconhecido' };
   }
   return INDISPONIVEL;
+}
+
+const AutomacaoLigada = z.object({ type: z.string() });
+const LojaDoApp = z.object({
+  platform: z.string(),
+  shopify_scopes: z.array(z.string()).nullable(),
+});
+
+/**
+ * O que o pedido de permissão (M03) pode prometer ao cliente.
+ *
+ * Um aviso entra quando a automação dele está ligada E consegue sair. "Pedido
+ * enviado" e "de volta ao estoque" nascem dos webhooks da Shopify: numa loja
+ * sem ela conectada, os dois nunca disparam, e prometê-los faria o cliente
+ * aceitar por um aviso que não vem. O carrinho abandonado vem dos eventos do
+ * próprio app e não depende dela.
+ *
+ * Uma automação fora do formato fica de fora — prometer a menos é o erro
+ * seguro. A loja fora do formato é 503: sem saber da Shopify, não há resposta
+ * certa para dar.
+ */
+export function respostaDosAvisosDoPush(automacoes: unknown, loja: unknown): Resposta {
+  if (!Array.isArray(automacoes)) return INDISPONIVEL;
+  const analiseDaLoja = LojaDoApp.safeParse(loja);
+  if (!analiseDaLoja.success) return INDISPONIVEL;
+
+  const tipos = automacoes
+    .map((linha) => AutomacaoLigada.safeParse(linha))
+    .filter((analise) => analise.success)
+    .map((analise) => analise.data.type);
+  const shopifyConectada =
+    analiseDaLoja.data.platform === 'shopify' && analiseDaLoja.data.shopify_scopes !== null;
+
+  const avisos = avisosDasAutomacoes(tipos).filter(
+    (aviso) => aviso === 'carrinho' || shopifyConectada,
+  );
+  return { status: 200, corpo: { avisos } };
 }

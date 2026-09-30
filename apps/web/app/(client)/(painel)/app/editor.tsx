@@ -143,6 +143,8 @@ export function Editor({
   const [salvo, setSalvo] = useState(configInicialDoServidor);
   const [secao, setSecao] = useState<Secao>('aparencia');
   const [abaEscolhidaNaPrevia, setAbaDaPrevia] = useState<string | null>(null);
+  // A tela de boas-vindas em edição, para a prévia ir até ela (C06d).
+  const [slideEmFoco, setSlideEmFoco] = useState<{ indice: number } | null>(null);
   const [problemasDoServidor, setProblemasDoServidor] = useState<Problema[]>([]);
   const [confirmandoPublicacao, setConfirmandoPublicacao] = useState(false);
   const [confirmandoDesfazer, setConfirmandoDesfazer] = useState(false);
@@ -486,8 +488,12 @@ export function Editor({
               ) : null}
               {secao === 'recursos' ? (
                 <SecaoRecursos
+                  storeId={storeId}
                   config={config}
                   aoMudar={setConfig}
+                  aoVerSlide={(indice) => {
+                    setSlideEmFoco({ indice });
+                  }}
                   somenteLeitura={somenteLeitura}
                   pushConfigurado={pushConfigurado}
                   numeroExigivel={numeroExigivel}
@@ -516,6 +522,7 @@ export function Editor({
             selecionando={selecionando}
             aoEscolherSeletor={aoEscolherSeletor}
             identidade={{ nomeDoApp, urlDoIcone, urlDaSplash, fundo: fundoDoApp(config) }}
+            slideEmFoco={slideEmFoco}
           />
 
           {somenteLeitura ? null : (

@@ -16,8 +16,20 @@ import { createClient } from '@supabase/supabase-js';
 import type { Database } from '@storefy/db';
 import { chaveServiceRole, env } from '@/lib/env';
 
-export function criarClientServiceRole() {
+/** O cabeçalho em que o servidor declara quem pediu a escrita (migration 70). */
+export const CABECALHO_DO_AUTOR = 'x-storefy-ator';
+
+/**
+ * `ator`: quem pediu a escrita, já conferido pela ação. Vai num cabeçalho que
+ * o gatilho da trilha lê só da service role — sem ele, o que o lojista faz
+ * pelo servidor (a imagem do app, as contas Apple e Google, a Shopify) ficava
+ * na auditoria como "o sistema". Jobs e webhooks não têm ator: não passam.
+ */
+export function criarClientServiceRole(opcoes: { ator?: string } = {}) {
   return createClient<Database>(env.supabaseUrl, chaveServiceRole(), {
     auth: { autoRefreshToken: false, persistSession: false },
+    ...(opcoes.ator === undefined
+      ? {}
+      : { global: { headers: { [CABECALHO_DO_AUTOR]: opcoes.ator } } }),
   });
 }

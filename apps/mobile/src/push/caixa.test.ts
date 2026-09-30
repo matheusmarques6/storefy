@@ -1,11 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import {
+  AVISOS_GUARDADOS,
+  avisosParaGuardar,
+  caixaDesatualizada,
+  lerCaixaGuardada,
   lerLidos,
   marcarLido,
   marcarTodosLidos,
   montarCaixa,
   naoLidos,
   quandoChegou,
+  situacaoDaCaixa,
 } from './caixa.ts';
 import type { AvisoDaCaixa } from './api.ts';
 
@@ -120,5 +125,76 @@ describe('quandoChegou', () => {
 
   it('relógio do aparelho adiantado não vira número negativo', () => {
     expect(quandoChegou('2026-09-19T13:00:00.000Z', AGORA)).toBe('agora');
+  });
+});
+
+describe('a caixa guardada no aparelho', () => {
+  it('guarda os mais novos, até o limite', () => {
+    const muitos = Array.from({ length: AVISOS_GUARDADOS + 5 }, (_, i) =>
+      aviso(`x${String(i)}`, new Date(Date.UTC(2026, 8, 1, 0, i)).toISOString()),
+    );
+    const guardados = avisosParaGuardar(muitos);
+    expect(guardados).toHaveLength(AVISOS_GUARDADOS);
+    expect(guardados[0]?.id).toBe(`x${String(AVISOS_GUARDADOS + 4)}`);
+  });
+
+  it('volta do disco como foi, e "nada guardado" é diferente de "vazia"', () => {
+    expect(lerCaixaGuardada(JSON.stringify([A, B]))).toEqual([A, B]);
+    expect(lerCaixaGuardada('[]')).toEqual([]);
+    expect(lerCaixaGuardada(null)).toBeNull();
+    expect(lerCaixaGuardada('')).toBeNull();
+  });
+
+  it('lixo no disco não derruba a aba: o aviso estranho fica de fora', () => {
+    expect(lerCaixaGuardada('{nao e json')).toBeNull();
+    expect(lerCaixaGuardada('{"id":"a"}')).toBeNull();
+    expect(
+      lerCaixaGuardada(
+        JSON.stringify([A, { id: 'sem-titulo', body: 'x' }, null, 'b', { ...B, deepLink: 3 }]),
+      ),
+    ).toEqual([A]);
+  });
+});
+
+describe('situacaoDaCaixa', () => {
+  const base = {
+    notificacoes: 'ligadas' as const,
+    comCredenciais: true,
+    temAvisos: false,
+    jaLeu: true,
+    falhou: false,
+  };
+
+  it('com avisos na tela, mostra a lista — mesmo sem internet', () => {
+    expect(situacaoDaCaixa({ ...base, temAvisos: true, falhou: true })).toBe('pronta');
+    expect(caixaDesatualizada({ temAvisos: true, falhou: true })).toBe(true);
+    expect(caixaDesatualizada({ temAvisos: true, falhou: false })).toBe(false);
+  });
+
+  it('a leitura que falhou sem nada guardado é erro, e não "nenhum aviso"', () => {
+    expect(situacaoDaCaixa({ ...base, falhou: true })).toBe('erro');
+    expect(caixaDesatualizada({ temAvisos: false, falhou: true })).toBe(false);
+  });
+
+  it('antes da primeira resposta, carregando; depois dela, vazia é vazia', () => {
+    expect(situacaoDaCaixa({ ...base, jaLeu: false })).toBe('carregando');
+    expect(situacaoDaCaixa({ ...base, notificacoes: 'carregando', jaLeu: false })).toBe(
+      'carregando',
+    );
+    expect(situacaoDaCaixa(base)).toBe('pronta');
+  });
+
+  it('sem notificações ligadas, a caixa diz como ligar', () => {
+    expect(situacaoDaCaixa({ ...base, notificacoes: 'desligadas', jaLeu: false })).toBe(
+      'desligada',
+    );
+    expect(situacaoDaCaixa({ ...base, notificacoes: 'bloqueadas', falhou: true })).toBe(
+      'bloqueada',
+    );
+  });
+
+  it('o app que não fala com a Storefy não finge que carrega', () => {
+    expect(situacaoDaCaixa({ ...base, comCredenciais: false, jaLeu: false })).toBe('indisponivel');
+    expect(situacaoDaCaixa({ ...base, notificacoes: 'indisponivel' })).toBe('indisponivel');
   });
 });

@@ -32,7 +32,7 @@ import {
   type ErrosDeCampo,
   type ValoresDigitados,
 } from '@/lib/validacao';
-import { mensagemDaFalha } from '@/lib/erros';
+import { FALHA_GENERICA, mensagemDaFalha } from '@/lib/erros';
 
 export interface EstadoDaEquipe {
   ok?: boolean;
@@ -51,15 +51,21 @@ async function contexto() {
   return { ...ctx, supabase: await criarClientServidor() };
 }
 
-async function dentroDoLimite(orgId: string): Promise<boolean> {
+/**
+ * A recusa do limite de convites, ou `null` quando cabe. O banco fora também
+ * recusa: o limite freia spam pelo nosso domínio de e-mail, e "não deu para
+ * contar" não é "cabe".
+ */
+async function recusaDoLimite(orgId: string): Promise<string | null> {
   // Tabela de sistema, sem policy: o contador vai pela service role, DEPOIS
   // de conferido que quem pede é o proprietário.
-  const { data } = await criarClientServiceRole().rpc('consumir_limite', {
+  const { data, error } = await criarClientServiceRole().rpc('consumir_limite', {
     p_chave: `convites:${orgId}`,
     p_maximo: CONVITES_POR_HORA,
     p_janela_segundos: 3600,
   });
-  return data !== false;
+  if (error != null) return mensagemDaFalha('equipe', error, FALHA_GENERICA);
+  return data ? null : 'Muitos convites em pouco tempo. Espere um pouco e tente de novo.';
 }
 
 export async function convidarParaEquipe(
@@ -98,12 +104,16 @@ export async function convidarParaEquipe(
     return { erros: { email: 'Essa pessoa já faz parte da equipe.' }, valores };
   }
 
-  const { count } = await supabase
+  const { count, error: erroDaContagem } = await supabase
     .from('invitations')
     .select('id', { count: 'exact', head: true })
     .eq('org_id', organizacao.id)
     .is('accepted_at', null)
     .is('revoked_at', null);
+  // Sem a contagem, o teto dos convites em aberto não seria conferido.
+  if (erroDaContagem != null) {
+    return { mensagem: mensagemDaFalha('equipe', erroDaContagem, FALHA_GENERICA), valores };
+  }
   if ((count ?? 0) >= MAXIMO_DE_CONVITES_EM_ABERTO) {
     return {
       mensagem: `A empresa já tem ${String(MAXIMO_DE_CONVITES_EM_ABERTO)} convites em aberto. Cancele os que não vão ser usados antes de convidar mais gente.`,
@@ -111,12 +121,8 @@ export async function convidarParaEquipe(
     };
   }
 
-  if (!(await dentroDoLimite(organizacao.id))) {
-    return {
-      mensagem: 'Muitos convites em pouco tempo. Espere um pouco e tente de novo.',
-      valores,
-    };
-  }
+  const recusa = await recusaDoLimite(organizacao.id);
+  if (recusa !== null) return { mensagem: recusa, valores };
 
   const gravado = await criarOuReenviarConvite(
     supabase,
@@ -146,7 +152,7 @@ export async function reenviarConvite(id: string): Promise<EstadoDaEquipe> {
   const { organizacao, papel, usuario, supabase } = await contexto();
   if (papel !== 'owner') return { mensagem: SO_O_PROPRIETARIO };
 
-  const { data: convite } = await supabase
+  const { data: convite, error: erroDoConvite } = await supabase
     .from('invitations')
     .select('id, email, org_role')
     .eq('id', id)
@@ -155,13 +161,15 @@ export async function reenviarConvite(id: string): Promise<EstadoDaEquipe> {
     .is('accepted_at', null)
     .is('revoked_at', null)
     .maybeSingle();
+  if (erroDoConvite != null) {
+    return { mensagem: mensagemDaFalha('equipe', erroDoConvite, FALHA_GENERICA) };
+  }
   if (convite == null) {
     return { mensagem: 'Esse convite não está mais em aberto. Atualize a página.' };
   }
 
-  if (!(await dentroDoLimite(organizacao.id))) {
-    return { mensagem: 'Muitos convites em pouco tempo. Espere um pouco e tente de novo.' };
-  }
+  const recusa = await recusaDoLimite(organizacao.id);
+  if (recusa !== null) return { mensagem: recusa };
 
   const papelDoConvite = convite.org_role ?? 'member';
   const gravado = await criarOuReenviarConvite(

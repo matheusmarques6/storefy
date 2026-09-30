@@ -57,12 +57,22 @@ test('cria duas lojas, alterna entre elas, edita e exclui uma', async ({ page })
   await page.getByRole('button', { name: 'Salvar alterações' }).click();
   await expect(page.getByText('Alterações salvas')).toBeVisible();
 
+  // Com o app nas lojas de aplicativos, o diálogo avisa que excluir aqui não o tira de lá.
+  const lojaId = /\/lojas\/([0-9a-f-]{36})/.exec(page.url())?.[1] ?? '';
+  await bancoDeTeste().from('stores').update({ status: 'live' }).eq('id', lojaId);
+  await page.reload();
+
   // Excluir, sempre com confirmação.
   await page.getByRole('button', { name: 'Excluir loja' }).click();
   await expect(page.getByRole('alertdialog')).toContainText('Loja Um Renomeada');
+  await expect(page.getByRole('alertdialog').getByRole('alert')).toContainText(
+    'excluir aqui não o tira de lá',
+  );
   await page.getByRole('button', { name: 'Sim, excluir' }).click();
 
   await page.waitForURL(/\/lojas/);
+  // A exclusão diz que deu certo, e não só some com a loja.
+  await expect(page.getByRole('alert')).toContainText('Loja excluída.');
   await expect(page.getByRole('cell', { name: 'Loja Um Renomeada' })).toHaveCount(0);
   await expect(page.getByRole('cell', { name: 'Loja Dois' })).toBeVisible();
 });

@@ -17,6 +17,7 @@ import {
   entrar,
   limparUsuariosDeTeste,
 } from './apoio';
+import { pngDeCorLisa } from './imagens';
 
 test.skip(!SUPABASE_DISPONIVEL, MOTIVO_PULO);
 test.afterAll(limparUsuariosDeTeste);
@@ -38,6 +39,7 @@ async function rascunhoNoBanco(lojaId: string) {
     theme: { primary: string };
     tabs: { id: string; label: string }[];
     announcement?: { enabled: boolean; text: string; url?: string };
+    features: { onboardingSlides: { title: string; body: string; image: string }[] };
   };
 }
 
@@ -422,4 +424,118 @@ test('as abas mudam de ordem arrastando, e as setas não perdem o foco', async (
   await expect(alcas).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Mover Conta para cima' })).toBeDisabled();
   await expect(page.getByText('Para mudar a ordem', { exact: false })).toHaveCount(0);
+});
+
+test('as telas de boas-vindas: imagem enviada e conferida, prévia fiel e rascunho salvo', async ({
+  page,
+}) => {
+  test.setTimeout(90_000);
+  const email = emailDeTeste('editor-slides');
+  await criarUsuarioConfirmado(email, 'Empresa Editor Slides');
+  await entrar(page, email);
+  const lojaId = await criarLojaPelaTela(page, 'Loja Editor Slides', 'loja-editor-slides.com.br');
+
+  await page.goto('/app');
+  await page.waitForLoadState('networkidle');
+  const barra = page.getByRole('region', { name: 'Publicação do app' });
+  const vistas = page.getByRole('group', { name: 'O que ver na prévia' });
+  const previa = page.getByTestId('boas-vindas-na-previa');
+  await page.getByRole('button', { name: 'Recursos' }).click();
+
+  // Sem telas, a prévia nem oferece a vista.
+  await expect(vistas.getByRole('button', { name: 'Boas-vindas' })).toHaveCount(0);
+
+  // Adicionar leva a prévia até a tela nova, e a tela vazia não grava.
+  await page.getByRole('button', { name: 'Adicionar tela' }).click();
+  await expect(vistas.getByRole('button', { name: 'Boas-vindas' })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
+  await expect(previa.getByText('Escreva o título')).toBeVisible();
+  await expect(
+    page.getByText('A tela de boas-vindas 1 está sem título ou sem texto.'),
+  ).toBeVisible();
+
+  // O texto aparece na prévia enquanto é digitado, com a conta do que cabe.
+  await page.getByLabel('Título').fill('x'.repeat(41));
+  await expect(page.getByText('41 de 40 caracteres.')).toBeVisible();
+  await expect(
+    page.getByText(
+      'O título da tela de boas-vindas 1 passa de 40 caracteres e não cabe na tela do celular. Encurte o título.',
+    ),
+  ).toBeVisible();
+  await page.getByLabel('Título').fill('Bem-vindo à loja');
+  await page.getByLabel('Texto', { exact: true }).fill('Frete grátis na primeira compra pelo app.');
+  await expect(previa.getByText('Bem-vindo à loja')).toBeVisible();
+  await expect(previa.getByText('Frete grátis na primeira compra pelo app.')).toBeVisible();
+  await expect(barra.getByText(/Rascunho salvo às/)).toBeVisible();
+
+  // Uma imagem pequena demais é recusada, com o motivo embaixo do campo.
+  await page.locator('#slide-0-imagem').setInputFiles({
+    name: 'pequena.png',
+    mimeType: 'image/png',
+    buffer: pngDeCorLisa(120, 120),
+  });
+  await expect(page.getByRole('alert').filter({ hasText: 'pequena demais' })).toBeVisible();
+
+  // A boa sobe, reprocessada: aparece no campo e na prévia, e vai para o rascunho.
+  await page.locator('#slide-0-imagem').setInputFiles({
+    name: 'slide.png',
+    mimeType: 'image/png',
+    buffer: pngDeCorLisa(1200, 800),
+  });
+  await expect(page.getByRole('button', { name: 'Trocar imagem' })).toBeVisible();
+  await expect(previa.getByRole('img', { name: 'Imagem da tela 1' })).toBeVisible();
+  const caminho = new RegExp(
+    `/storage/v1/object/public/imagens-do-app/${lojaId}/[0-9a-f-]{36}\\.jpg$`,
+  );
+  await expect
+    .poll(async () => (await rascunhoNoBanco(lojaId)).features.onboardingSlides[0]?.image ?? '')
+    .toMatch(caminho);
+
+  // O endereço guardado abre sem sessão — é assim que o app do cliente o baixa.
+  const url = (await rascunhoNoBanco(lojaId)).features.onboardingSlides[0]?.image ?? '';
+  const baixada = await page.request.get(url, { headers: { cookie: '' } });
+  expect(baixada.status()).toBe(200);
+  expect(baixada.headers()['content-type']).toBe('image/jpeg');
+
+  // Uma segunda tela: a prévia vai até ela, e os pontos voltam para a primeira.
+  await page.getByRole('button', { name: 'Adicionar tela' }).click();
+  await expect(previa.getByText('Escreva o título')).toBeVisible();
+  await previa.getByRole('button', { name: 'Ver a tela 1' }).click();
+  await expect(previa.getByText('Bem-vindo à loja')).toBeVisible();
+  await expect(previa.getByRole('button', { name: 'Continuar' })).toBeVisible();
+  await page.getByRole('button', { name: 'Remover tela 2' }).click();
+  await expect(previa.getByRole('button', { name: 'Começar' })).toBeVisible();
+
+  // Tirar a imagem deixa a tela só com texto, e o rascunho acompanha.
+  await page.getByRole('button', { name: 'Tirar imagem da tela 1' }).click();
+  await expect(previa.getByRole('img')).toHaveCount(0);
+  await expect
+    .poll(async () => (await rascunhoNoBanco(lojaId)).features.onboardingSlides)
+    .toEqual([
+      { title: 'Bem-vindo à loja', body: 'Frete grátis na primeira compra pelo app.', image: '' },
+    ]);
+
+  // "Pular", como no app, leva para a loja.
+  await previa.getByRole('button', { name: 'Pular' }).click();
+  await expect(vistas.getByRole('button', { name: 'Loja' })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
+
+  // A tela escrita só sai confirmando; "Cancelar" não mexe em nada.
+  await page.getByRole('button', { name: 'Remover tela 1' }).click();
+  const confirmacao = page.getByRole('alertdialog', { name: 'Remover a tela 1?' });
+  await confirmacao.getByRole('button', { name: 'Cancelar' }).click();
+  await expect(page.getByLabel('Título')).toHaveValue('Bem-vindo à loja');
+  await page.getByRole('button', { name: 'Remover tela 1' }).click();
+  await confirmacao.getByRole('button', { name: 'Remover' }).click();
+  await expect(
+    page.getByText('Nenhuma tela de boas-vindas. O cliente cai direto na loja.'),
+  ).toBeVisible();
+  await expect(vistas.getByRole('button', { name: 'Boas-vindas' })).toHaveCount(0);
+  await expect
+    .poll(async () => (await rascunhoNoBanco(lojaId)).features.onboardingSlides)
+    .toEqual([]);
 });

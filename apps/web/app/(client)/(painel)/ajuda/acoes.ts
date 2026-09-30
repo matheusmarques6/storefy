@@ -12,7 +12,7 @@ import { criarClientServidor } from '@/lib/supabase/server';
 import { criarClientServiceRole } from '@/lib/supabase/admin';
 import { novoChamadoSchema, respostaSchema } from '@/lib/chamados';
 import { avisarOSuporte } from '@/lib/chamados-servidor';
-import { mensagemDaFalha } from '@/lib/erros';
+import { FALHA_GENERICA, mensagemDaFalha } from '@/lib/erros';
 import {
   extrairErros,
   valoresDigitados,
@@ -57,12 +57,14 @@ export async function abrirChamado(
     return { erros: { loja: 'Escolha uma loja da lista.' }, valores };
   }
 
-  const { data: cabe } = await criarClientServiceRole().rpc('consumir_limite', {
-    p_chave: `chamados:${organizacao.id}`,
-    p_maximo: CHAMADOS_POR_HORA,
-    p_janela_segundos: 3600,
-  });
-  if (cabe === false) {
+  const { data: cabe, error: erroDoLimite } = await criarClientServiceRole().rpc(
+    'consumir_limite',
+    { p_chave: `chamados:${organizacao.id}`, p_maximo: CHAMADOS_POR_HORA, p_janela_segundos: 3600 },
+  );
+  if (erroDoLimite != null) {
+    return { mensagem: mensagemDaFalha('chamados', erroDoLimite, FALHA_GENERICA), valores };
+  }
+  if (!cabe) {
     return {
       mensagem:
         'Muitos chamados em pouco tempo. Se for sobre o mesmo assunto, escreva no chamado já aberto.',
@@ -116,20 +118,29 @@ export async function responderChamado(
   if (!analise.success) return { erros: extrairErros(analise.error), valores };
 
   const supabase = await criarClientServidor();
-  const { data: chamado } = await supabase
+  const { data: chamado, error: erroDoChamado } = await supabase
     .from('support_tickets')
     .select('id, titulo, assunto')
     .eq('id', ticketId)
     .eq('org_id', organizacao.id)
     .maybeSingle();
+  if (erroDoChamado != null) {
+    return { mensagem: mensagemDaFalha('chamados', erroDoChamado, FALHA_GENERICA), valores };
+  }
   if (chamado == null) return { mensagem: 'Chamado não encontrado.', valores };
 
-  const { data: cabe } = await criarClientServiceRole().rpc('consumir_limite', {
-    p_chave: `mensagens:${organizacao.id}`,
-    p_maximo: MENSAGENS_POR_HORA,
-    p_janela_segundos: 3600,
-  });
-  if (cabe === false) {
+  const { data: cabe, error: erroDoLimite } = await criarClientServiceRole().rpc(
+    'consumir_limite',
+    {
+      p_chave: `mensagens:${organizacao.id}`,
+      p_maximo: MENSAGENS_POR_HORA,
+      p_janela_segundos: 3600,
+    },
+  );
+  if (erroDoLimite != null) {
+    return { mensagem: mensagemDaFalha('chamados', erroDoLimite, FALHA_GENERICA), valores };
+  }
+  if (!cabe) {
     return {
       mensagem: 'Muitas mensagens em pouco tempo. Espere alguns minutos e envie de novo.',
       valores,

@@ -21,7 +21,7 @@
  */
 import { revalidatePath } from 'next/cache';
 import { exigirPlatformAdmin } from '@/lib/contexto';
-import { mensagemDaFalha } from '@/lib/erros';
+import { FALHA_GENERICA, mensagemDaFalha } from '@/lib/erros';
 import { criarClientServiceRole } from '@/lib/supabase/admin';
 import { podeReexecutar } from '@/lib/builds-admin';
 import { dispararBuild, faltaConfiguracaoDoDisparo } from '@/lib/disparo-de-build';
@@ -35,12 +35,14 @@ export async function reexecutarBuild(buildId: string): Promise<EstadoDoBuild> {
   const usuario = await exigirPlatformAdmin();
   const servico = criarClientServiceRole();
 
-  const { data: original } = await servico
+  const { data: original, error: erroDoOriginal } = await servico
     .from('builds')
     .select('id, app_id, platform, profile, status, config_version, apps(store_id)')
     .eq('id', buildId)
     .maybeSingle();
 
+  if (erroDoOriginal != null)
+    return { mensagem: mensagemDaFalha('build', erroDoOriginal, FALHA_GENERICA) };
   if (original == null) return { mensagem: 'Build não encontrado.' };
 
   if (!podeReexecutar(original.status)) {
@@ -55,7 +57,11 @@ export async function reexecutarBuild(buildId: string): Promise<EstadoDoBuild> {
    * A conferência de novo, e não por desconfiança da tela: entre ela carregar
    * e o clique chegar, o próprio cliente pode ter disparado uma publicação.
    */
-  const { data: emAndamento } = await servico
+  /*
+   * Com o banco fora, "não sei se há build rodando" não é "não há": seguir
+   * dispararia um segundo build disputando o mesmo número de versão.
+   */
+  const { data: emAndamento, error: erroDoAndamento } = await servico
     .from('builds')
     .select('id')
     .eq('app_id', original.app_id)
@@ -63,7 +69,9 @@ export async function reexecutarBuild(buildId: string): Promise<EstadoDoBuild> {
     .in('status', ['queued', 'building'])
     .limit(1);
 
-  if ((emAndamento ?? []).length > 0) {
+  if (erroDoAndamento != null)
+    return { mensagem: mensagemDaFalha('build', erroDoAndamento, FALHA_GENERICA) };
+  if (emAndamento.length > 0) {
     return { mensagem: 'Já existe um build em andamento para esta plataforma. Aguarde.' };
   }
 

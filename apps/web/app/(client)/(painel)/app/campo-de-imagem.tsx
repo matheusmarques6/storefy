@@ -15,6 +15,17 @@ import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 import { Globe, ImageUp, Loader2, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { enviarAsset, removerAssetDaLoja, usarLogoDoSite } from './acoes';
@@ -101,12 +112,15 @@ export function CampoDeImagem({
     });
   }
 
+  const [confirmando, setConfirmando] = useState(false);
+
   function remover() {
     iniciar(async () => {
       const resultado = await removerAssetDaLoja(storeId, tipo);
       if (resultado.ok === true) {
         toast.success(resultado.mensagem ?? 'Imagem removida.');
         setErro(null);
+        setConfirmando(false);
         router.refresh();
       } else {
         toast.error(resultado.mensagem ?? 'Não foi possível remover.');
@@ -210,10 +224,40 @@ export function CampoDeImagem({
             ) : null}
 
             {urlAtual === null || somenteLeitura ? null : (
-              <Button type="button" variant="ghost" size="sm" disabled={ocupado} onClick={remover}>
-                <Trash2 className="size-4" aria-hidden />
-                Remover
-              </Button>
+              // Ação destrutiva, sempre com confirmação (regra 3): sem a imagem, a publicação trava.
+              <AlertDialog open={confirmando} onOpenChange={setConfirmando}>
+                <AlertDialogTrigger asChild>
+                  <Button type="button" variant="ghost" size="sm" disabled={ocupado}>
+                    <Trash2 className="size-4" aria-hidden />
+                    Remover
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>
+                      {tipo === 'icone' ? 'Remover o ícone do app?' : 'Remover a tela de abertura?'}
+                    </AlertDialogTitle>
+                    <AlertDialogDescription>
+                      {tipo === 'icone' ? 'Sem ícone' : 'Sem a tela de abertura'}, a próxima
+                      publicação fica travada até você enviar outra imagem. O app que já está nas
+                      lojas não muda.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel disabled={ocupado}>Cancelar</AlertDialogCancel>
+                    <AlertDialogAction
+                      disabled={ocupado}
+                      onClick={(evento) => {
+                        // Fica aberto até a resposta, para o erro aparecer com o diálogo na frente.
+                        evento.preventDefault();
+                        remover();
+                      }}
+                    >
+                      {ocupado ? 'Removendo…' : 'Remover'}
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
             )}
           </div>
 

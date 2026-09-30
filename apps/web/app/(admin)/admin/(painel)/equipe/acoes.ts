@@ -23,6 +23,7 @@ import type { Json, PlatformAdminRole } from '@storefy/db';
 import { ehUuid } from '@/lib/app-config-publica';
 import { exigirPlatformAdminComPapel } from '@/lib/contexto';
 import { mensagemDaFalha } from '@/lib/erros';
+import { log } from '@/lib/log';
 import { criarClientServiceRole } from '@/lib/supabase/admin';
 import { criarClientServidor } from '@/lib/supabase/server';
 import {
@@ -48,20 +49,42 @@ export interface EstadoDaEquipe {
 
 type Servico = ReturnType<typeof criarClientServiceRole>;
 
+/**
+ * Com o banco fora, nenhuma conferência daqui responde. As funções abaixo
+ * LANÇAM, e as ações devolvem esta mensagem: "não deu para conferir" virar
+ * "nenhum outro superadmin" ou "não está na equipe" decidiria no escuro quem
+ * entra e quem sai do painel que enxerga todos os clientes.
+ */
+const SEM_CONFERIR = 'Não conseguimos conferir a equipe agora. Tente de novo em instantes.';
+
 /** Quantos superadmins existem além deste, conferido no banco e não na tela. */
 async function outrosSuperadmins(servico: Servico, exceto: string): Promise<number> {
-  const { data } = await servico.rpc('outros_superadmins', { p_exceto: exceto });
-  return typeof data === 'number' ? data : 0;
+  const { data, error } = await servico.rpc('outros_superadmins', { p_exceto: exceto });
+  if (error != null) throw new Error(`outros_superadmins: ${error.message}`);
+  return data;
 }
 
 /** O papel de um admin, ou `null` se ele não estiver mais na equipe. */
 async function papelDe(servico: Servico, userId: string): Promise<PlatformAdminRole | null> {
-  const { data } = await servico
+  const { data, error } = await servico
     .from('platform_admins')
     .select('role')
     .eq('user_id', userId)
     .maybeSingle();
+  if (error != null) throw new Error(`platform_admins: ${error.message}`);
   return data?.role ?? null;
+}
+
+/** Roda as conferências; se o banco falhar, a ação responde `SEM_CONFERIR`. */
+async function conferindo<T>(
+  conferencia: () => Promise<T>,
+): Promise<{ ok: true; valor: T } | { ok: false }> {
+  try {
+    return { ok: true, valor: await conferencia() };
+  } catch (erro) {
+    log.erro('equipe.conferencia-falhou', { erro });
+    return { ok: false };
+  }
 }
 
 async function auditar(
@@ -71,7 +94,7 @@ async function auditar(
   alvo: string,
   diff: Json,
 ): Promise<void> {
-  await servico.from('audit_logs').insert({
+  const { error } = await servico.from('audit_logs').insert({
     actor_id: autor,
     org_id: null,
     action: acao,
@@ -79,6 +102,8 @@ async function auditar(
     entity_id: alvo,
     diff,
   });
+  // A mudança já foi feita; a trilha que faltar precisa chegar à equipe.
+  if (error != null) log.erro('equipe.auditoria-nao-gravada', { acao, alvo, falha: error });
 }
 
 export async function convidarAdmin(
@@ -100,7 +125,14 @@ export async function convidarAdmin(
 
   const servico = criarClientServiceRole();
 
-  const { data: alvo } = await servico.rpc('admin_usuario_por_email', { p_email: email });
+  const { data: alvo, error: erroDoAlvo } = await servico.rpc('admin_usuario_por_email', {
+    p_email: email,
+  });
+  // Tratar a falha como "sem conta" mandaria um convite de cadastro para quem já tem conta.
+  if (erroDoAlvo != null) {
+    log.erro('equipe.conta-nao-conferida', { falha: erroDoAlvo });
+    return { mensagem: SEM_CONFERIR };
+  }
   if (alvo == null) {
     /*
      * Sem conta, vai um CONVITE: a pessoa cria a conta pelo link — vale com o
@@ -129,7 +161,9 @@ export async function convidarAdmin(
     };
   }
 
-  if ((await papelDe(servico, alvo)) !== null) {
+  const jaNaEquipe = await conferindo(() => papelDe(servico, alvo));
+  if (!jaNaEquipe.ok) return { mensagem: SEM_CONFERIR };
+  if (jaNaEquipe.valor !== null) {
     return { mensagem: 'Essa pessoa já está na equipe.' };
   }
 
@@ -152,14 +186,19 @@ export async function mudarPapelDoAdmin(
   const { usuario, papel } = await exigirPlatformAdminComPapel();
   const servico = criarClientServiceRole();
 
-  const papelDoAlvo = await papelDe(servico, alvoId);
+  const lido = await conferindo(async () => ({
+    papelDoAlvo: await papelDe(servico, alvoId),
+    outros: await outrosSuperadmins(servico, alvoId),
+  }));
+  if (!lido.ok) return { mensagem: SEM_CONFERIR };
+  const { papelDoAlvo, outros } = lido.valor;
   if (papelDoAlvo === null) return { mensagem: 'Essa pessoa não está mais na equipe.' };
 
   const permitido = podeMudarPapel(
     { id: usuario.id, papel },
     { id: alvoId, papel: papelDoAlvo },
     novoPapel,
-    await outrosSuperadmins(servico, alvoId),
+    outros,
   );
   if (!permitido.ok) return { mensagem: permitido.motivo };
 
@@ -180,13 +219,18 @@ export async function removerAdmin(alvoId: string): Promise<EstadoDaEquipe> {
   const { usuario, papel } = await exigirPlatformAdminComPapel();
   const servico = criarClientServiceRole();
 
-  const papelDoAlvo = await papelDe(servico, alvoId);
+  const lido = await conferindo(async () => ({
+    papelDoAlvo: await papelDe(servico, alvoId),
+    outros: await outrosSuperadmins(servico, alvoId),
+  }));
+  if (!lido.ok) return { mensagem: SEM_CONFERIR };
+  const { papelDoAlvo, outros } = lido.valor;
   if (papelDoAlvo === null) return { mensagem: 'Essa pessoa não está mais na equipe.' };
 
   const permitido = podeRemover(
     { id: usuario.id, papel },
     { id: alvoId, papel: papelDoAlvo },
-    await outrosSuperadmins(servico, alvoId),
+    outros,
   );
   if (!permitido.ok) return { mensagem: permitido.motivo };
 

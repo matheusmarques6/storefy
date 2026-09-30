@@ -139,12 +139,20 @@ export async function aplicarWebhook(
    * Shopify.
    */
   if (topico === 'shop/redact') {
-    const { data } = await supabase.rpc('apagar_dados_da_shopify', { p_shop_domain: shop });
-    return { feito: `apagados:${String(data ?? 0)}` };
+    const { data, error } = await supabase.rpc('apagar_dados_da_shopify', { p_shop_domain: shop });
+    /*
+     * Falhou, lança: a rota responde 500 e a Shopify reentrega. Responder 200
+     * aqui diria à Shopify que os dados da loja foram apagados quando não
+     * foram — é o pedido de exclusão da LGPD/GDPR que se perderia.
+     */
+    if (error != null) throw new Error(`shop/redact: ${error.message}`);
+    return { feito: `apagados:${String(data)}` };
   }
 
   if (topico === 'app/uninstalled') {
-    await supabase.rpc('desconectar_shopify', { p_shop_domain: shop });
+    const { error } = await supabase.rpc('desconectar_shopify', { p_shop_domain: shop });
+    // Sem isto, a loja seguiria "conectada" com um token que a Shopify já revogou.
+    if (error != null) throw new Error(`app/uninstalled: ${error.message}`);
     return { feito: 'desconectada' };
   }
 

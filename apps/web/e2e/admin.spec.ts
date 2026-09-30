@@ -478,3 +478,115 @@ test('A10: o preset nasce de uma loja no ar, com o tema dela, e chega ao lojista
     await expect.poll(() => trilha('delete')).toEqual([idAdmin]);
   }
 });
+
+/*
+ * A05: a fila de builds recortada como o suporte procura — pela loja ou pelo
+ * cliente, pela plataforma, e a partir do detalhe do cliente (A04). Os
+ * recortes somam, vivem na URL e sobrevivem à troca de situação.
+ */
+test('A05: a fila de builds filtra por loja, cliente e plataforma', async ({ page }) => {
+  test.setTimeout(90_000);
+  const sufixo = Math.random().toString(36).slice(2, 8);
+  const banco = bancoDeTeste();
+
+  async function clienteComBuilds(rotulo: string, plataformas: ('ios' | 'android')[]) {
+    const idCliente = await criarUsuarioConfirmado(
+      emailDeTeste(`a05-${rotulo}`),
+      `Empresa ${rotulo} ${sufixo}`,
+    );
+    const { data: vinculo } = await banco
+      .from('memberships')
+      .select('org_id')
+      .eq('user_id', idCliente)
+      .single();
+    const orgId = vinculo?.org_id ?? '';
+    const { data: loja } = await banco
+      .from('stores')
+      .insert({
+        org_id: orgId,
+        name: `Loja ${rotulo} ${sufixo}`,
+        primary_url: `https://${rotulo}-${sufixo}.com.br`,
+      })
+      .select('id')
+      .single();
+    const { data: app } = await banco
+      .from('apps')
+      .select('id')
+      .eq('store_id', loja?.id ?? '')
+      .single();
+    const { error } = await banco.from('builds').insert(
+      plataformas.map((platform) => ({
+        app_id: app?.id ?? '',
+        platform,
+        status: 'errored' as const,
+        error: `Falhou no ${platform} da ${rotulo}`,
+      })),
+    );
+    expect(error).toBeNull();
+    return orgId;
+  }
+
+  const orgAlfa = await clienteComBuilds('Alfa', ['ios', 'android']);
+  await clienteComBuilds('Beta', ['ios']);
+
+  const emailAdmin = emailDeTeste('equipe-a05');
+  const idAdmin = await criarUsuarioConfirmado(emailAdmin, 'Equipe A05');
+  await tornarPlatformAdmin(idAdmin);
+  await entrar(page, emailAdmin);
+
+  const linhas = page.getByRole('row').filter({ hasText: sufixo });
+
+  // Pela loja: só a Alfa, nas duas plataformas.
+  await page.goto('/admin/builds');
+  await page.getByLabel('Buscar pela loja ou pelo cliente').fill(`Loja Alfa ${sufixo}`);
+  await page.getByRole('button', { name: 'Buscar' }).click();
+  await expect(linhas).toHaveCount(2);
+  await expect(linhas.filter({ hasText: 'Loja Beta' })).toHaveCount(0);
+
+  // A plataforma soma com a busca, e as duas ficam na URL.
+  await page
+    .getByRole('navigation', { name: 'Plataforma' })
+    .getByRole('link', { name: 'iOS', exact: true })
+    .click();
+  await expect(page).toHaveURL(/plataforma=ios/);
+  await expect(page).toHaveURL(/q=Loja/);
+  await expect(linhas).toHaveCount(1);
+  await expect(linhas.first()).toContainText('Falhou no ios da Alfa');
+
+  // Trocar a situação não perde os outros recortes.
+  await page
+    .getByRole('navigation', { name: 'Filtrar builds' })
+    .getByRole('link', { name: 'Todos' })
+    .click();
+  await expect(page).toHaveURL(/filtro=todos/);
+  await expect(page).toHaveURL(/plataforma=ios/);
+  await expect(linhas).toHaveCount(1);
+
+  // Pelo nome do cliente (duas tabelas abaixo do build).
+  await page.goto('/admin/builds');
+  await page.getByLabel('Buscar pela loja ou pelo cliente').fill(`Empresa Beta ${sufixo}`);
+  await page.getByRole('button', { name: 'Buscar' }).click();
+  await expect(linhas).toHaveCount(1);
+  await expect(linhas.first()).toContainText(`Loja Beta ${sufixo}`);
+
+  // Nada casa: o vazio diz que é o filtro, e não a fila.
+  await page.getByLabel('Buscar pela loja ou pelo cliente').fill(`nada-${sufixo}`);
+  await page.getByRole('button', { name: 'Buscar' }).click();
+  await expect(page.getByText('Nenhum build com esses filtros')).toBeVisible();
+
+  // Do detalhe do cliente, a fila só dele — e o caminho de volta para todos.
+  await page.goto(`/admin/organizacoes/${orgAlfa}`);
+  await page.getByRole('link', { name: 'Ver todos os builds deste cliente' }).click();
+  await expect(page).toHaveURL(new RegExp(`org=${orgAlfa}`));
+  await expect(page.getByText(`Só os builds de Empresa Alfa ${sufixo}`)).toBeVisible();
+  await expect(linhas).toHaveCount(2);
+  await page.getByRole('link', { name: 'Ver de todos os clientes' }).click();
+  await expect(page).not.toHaveURL(/org=/);
+
+  // Um cliente que não existe sai do filtro; um valor que não é id é ignorado.
+  await page.goto('/admin/builds?filtro=todos&org=00000000-0000-4000-8000-000000000000');
+  await expect(page).not.toHaveURL(/org=/);
+  await page.goto('/admin/builds?filtro=todos&org=nao-e-um-id');
+  await expect(page.getByText('Só os builds de')).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: 'Builds' })).toBeVisible();
+});

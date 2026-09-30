@@ -11,7 +11,7 @@
  * de escrever ("membros leem as notas da própria organização") entregaria a
  * ele tudo que a equipe anotou.
  */
-import type { Metadata } from 'next';
+import type { Metadata, Route } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { ArrowLeft } from 'lucide-react';
@@ -281,10 +281,10 @@ export default async function PaginaOrganizacao({ params }: { params: Promise<{ 
           <div className="flex flex-wrap items-center justify-between gap-2">
             <CardTitle className="text-base">Últimos builds</CardTitle>
             <Link
-              href="/admin/builds?filtro=todos"
+              href={`/admin/builds?filtro=todos&org=${org.id}` as Route}
               className="text-muted-foreground hover:text-foreground text-sm"
             >
-              Ver a fila inteira
+              Ver todos os builds deste cliente
             </Link>
           </div>
           <CardDescription>As cinco publicações mais recentes deste cliente.</CardDescription>

@@ -19,6 +19,7 @@ import { CampoDeArquivo } from './campo-de-arquivo';
 import { EstadoDaConta } from './estado-da-conta';
 import { VideoDoPassoAPasso } from './video-do-passo-a-passo';
 import { conectarGoogle, desconectarConta } from '../acoes';
+import { ConfirmarDesconexao } from './confirmar-desconexao';
 
 export function CartaoDoGoogle({
   conta,
@@ -51,13 +52,26 @@ export function CartaoDoGoogle({
     });
   }
 
-  function remover() {
-    iniciar(async () => {
+  const [desconectando, setDesconectando] = useState(false);
+
+  /** Desconecta, depois da confirmação; `true` quando deu certo. */
+  async function remover(): Promise<boolean> {
+    setDesconectando(true);
+    try {
       const resultado = await desconectarConta('google');
-      if (resultado.ok === true) toast.success(resultado.mensagem ?? 'Desconectada.');
-      else toast.error(resultado.mensagem ?? 'Não foi possível desconectar.');
+      if (resultado.ok !== true) {
+        toast.error(resultado.mensagem ?? 'Não foi possível desconectar.');
+        return false;
+      }
+      toast.success(resultado.mensagem ?? 'Desconectada.');
       router.refresh();
-    });
+      return true;
+    } catch {
+      toast.error('Não conseguimos falar com a Storefy. Confira a internet e tente de novo.');
+      return false;
+    } finally {
+      setDesconectando(false);
+    }
   }
 
   return (
@@ -152,9 +166,11 @@ export function CartaoDoGoogle({
                 Validar e conectar
               </Button>
               {conectada ? (
-                <Button type="button" variant="ghost" disabled={enviando} onClick={remover}>
-                  Desconectar
-                </Button>
+                <ConfirmarDesconexao
+                  plataforma="google"
+                  ocupado={enviando || desconectando}
+                  aoConfirmar={remover}
+                />
               ) : null}
             </div>
 

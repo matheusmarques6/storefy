@@ -269,6 +269,25 @@ describe('aplicarWebhook', () => {
   });
 
   /*
+   * Falha do banco nos webhooks de privacidade vira erro, e a rota responde
+   * 500 para a Shopify reentregar. Antes, o 200 dizia "apagado" sobre dados
+   * que continuavam lá.
+   */
+  it('shop/redact e app/uninstalled com o banco fora lançam, e não dizem que fizeram', async () => {
+    const { aplicarWebhook } = await import('@/lib/shopify-webhook');
+    const quebrado = {
+      rpc: () => Promise.resolve({ data: null, error: { message: 'conexão caiu' } }),
+    };
+
+    await expect(
+      aplicarWebhook(quebrado as never, 'shop/redact', 'x.myshopify.com', '{}'),
+    ).rejects.toThrow('shop/redact');
+    await expect(
+      aplicarWebhook(quebrado as never, 'app/uninstalled', 'x.myshopify.com', '{}'),
+    ).rejects.toThrow('app/uninstalled');
+  });
+
+  /*
    * A Storefy não guarda dado de cliente final da loja: cadastro, endereço e
    * pagamento ficam na Shopify. Responder 200 sem fazer nada é a resposta
    * CORRETA, e não preguiça — apagar um "cliente" que não existe seria

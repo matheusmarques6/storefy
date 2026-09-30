@@ -51,6 +51,32 @@ export function statusDoFiltro(filtro: Filtro): BuildStatus[] | null {
   }
 }
 
+/** A plataforma, o outro recorte da fila. Ausente é "as duas". */
+export const PLATAFORMAS_DO_FILTRO = ['ios', 'android'] as const;
+export type PlataformaDoFiltro = (typeof PLATAFORMAS_DO_FILTRO)[number];
+
+export const ROTULO_DA_PLATAFORMA: Record<PlataformaDoFiltro, string> = {
+  ios: 'iOS',
+  android: 'Android',
+};
+
+export function lerPlataforma(bruto: string | undefined): PlataformaDoFiltro | null {
+  return PLATAFORMAS_DO_FILTRO.find((plataforma) => plataforma === bruto) ?? null;
+}
+
+/**
+ * O cliente da URL (`?org=`), vindo do detalhe da organização (A04).
+ *
+ * Só um uuid: o valor entra num filtro do PostgREST, e um texto qualquer ali
+ * viraria erro 400 — a tela quebrada em vez de "nenhum build".
+ */
+export function lerOrganizacao(bruto: string | undefined): string | null {
+  const valor = (bruto ?? '').trim().toLowerCase();
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(valor)
+    ? valor
+    : null;
+}
+
 /**
  * Dá para reexecutar?
  *

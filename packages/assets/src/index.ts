@@ -35,6 +35,15 @@ export {
   type ProblemaDaImagemDoPush,
 } from './imagem-do-push';
 export {
+  ERROS_DA_IMAGEM_DO_SLIDE,
+  LADO_MAXIMO_DO_SLIDE,
+  LADO_MINIMO_DO_SLIDE,
+  TAMANHO_MAXIMO_DO_SLIDE,
+  prepararImagemDoSlide,
+  type ImagemDoSlide,
+  type ProblemaDaImagemDoSlide,
+} from './imagem-do-slide';
+export {
   ERROS_DO_LOGO,
   FRACAO_DO_LOGO,
   MENOR_LOGO,

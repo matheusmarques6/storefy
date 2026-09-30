@@ -13,7 +13,8 @@ import { criarClientServidor } from '@/lib/supabase/server';
 import { definirEmpresaAtiva } from '@/lib/contexto';
 import { urlDoSite } from '@/lib/env';
 import { traduzirErroAuth } from '@/lib/erros-do-auth';
-import { mensagemDaFalha } from '@/lib/erros';
+import { FALHA_GENERICA, mensagemDaFalha } from '@/lib/erros';
+import { log } from '@/lib/log';
 import {
   aceiteDeuCerto,
   cadastroDeLojistaPeloConviteSchema,
@@ -85,8 +86,14 @@ export async function cadastrarPeloConvite(
   if (!segredoTemFormato(token)) return { mensagem: mensagemDoAceite('inexistente'), valores };
 
   const supabase = await criarClientServidor();
-  const { data: linhas } = await supabase.rpc('ver_convite', { p_token: token });
-  const convite = linhas?.[0];
+  const { data: linhas, error: erroDoConvite } = await supabase.rpc('ver_convite', {
+    p_token: token,
+  });
+  // O banco fora não é "convite inexistente": quem tem o link tenta de novo.
+  if (erroDoConvite != null) {
+    return { mensagem: mensagemDaFalha('convite', erroDoConvite, FALHA_GENERICA), valores };
+  }
+  const convite = linhas[0];
   const situacao = situacaoDoConvite(convite?.situacao);
   if (situacao !== 'pendente' || convite?.email == null) {
     return {
@@ -132,20 +139,30 @@ export async function cadastrarPeloConvite(
      * abrir a tela e enviar. O Auth devolve só "Database error saving new
      * user"; perguntar de novo pelo convite diz o que houve.
      */
-    const { data: depois } = await supabase.rpc('ver_convite', { p_token: token });
-    const agora = situacaoDoConvite(depois?.[0]?.situacao);
-    if (agora !== 'pendente') return { mensagem: mensagemDoAceite(agora), valores };
+    const { data: depois, error: erroDeDepois } = await supabase.rpc('ver_convite', {
+      p_token: token,
+    });
+    // Sem a releitura, fica o que o Auth disse — e não um "convite inexistente" inventado.
+    if (erroDeDepois == null) {
+      const agora = situacaoDoConvite(depois[0]?.situacao);
+      if (agora !== 'pendente') return { mensagem: mensagemDoAceite(agora), valores };
+    }
     return { mensagem: traduzirErroAuth(error.code, error.message), valores };
   }
 
   // Confirmação de e-mail desligada no projeto: a sessão já existe.
   if (data.session != null) {
-    const { data: vinculo } = await supabase
+    const { data: vinculo, error: erroDoVinculo } = await supabase
       .from('memberships')
       .select('org_id')
       .eq('user_id', data.session.user.id)
       .limit(1)
       .maybeSingle();
+    /*
+     * A conta já existe: sem a leitura, o painel abre na primeira empresa da
+     * pessoa (o contexto escolhe sozinho), e não numa tela de erro.
+     */
+    if (erroDoVinculo != null) log.aviso('convite.empresa-nao-lida', { falha: erroDoVinculo });
     if (vinculo != null) await definirEmpresaAtiva(vinculo.org_id);
     redirect(destinoDoTipo(convite.tipo));
   }

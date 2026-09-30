@@ -12,6 +12,7 @@ import 'server-only';
  * valor em claro existe só dentro desta função — o painel nunca vê nenhum dos
  * dois lados.
  */
+import { lido } from '@/lib/leitura';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '@storefy/db';
 import { criptografar, descriptografar } from '@/lib/cripto';
@@ -37,11 +38,18 @@ export async function estadoDasNotificacoes(
   servico: Client,
   storeId: string,
 ): Promise<EstadoDasNotificacoes> {
-  const { data: app } = await servico
-    .from('apps')
-    .select('id, onesignal_app_id, bundle_id_ios, store_id')
-    .eq('store_id', storeId)
-    .maybeSingle();
+  /*
+   * `lido`: com o banco fora, a tela de erro com "tentar de novo" — e não um
+   * aviso de "falta configurar" sobre notificações que estão ligadas.
+   */
+  const { data: app } = lido(
+    await servico
+      .from('apps')
+      .select('id, onesignal_app_id, bundle_id_ios, store_id')
+      .eq('store_id', storeId)
+      .maybeSingle(),
+    'o app da loja',
+  );
 
   if (app == null) {
     return {
@@ -53,16 +61,18 @@ export async function estadoDasNotificacoes(
     return { ligado: true, pendencias: [] };
   }
 
-  const { data: loja } = await servico
-    .from('stores')
-    .select('org_id')
-    .eq('id', storeId)
-    .maybeSingle();
+  const { data: loja } = lido(
+    await servico.from('stores').select('org_id').eq('id', storeId).maybeSingle(),
+    'a loja',
+  );
 
-  const { data: contas } = await servico
-    .from('developer_accounts')
-    .select('platform, status, apns_key_enc, google_service_account_enc')
-    .eq('org_id', loja?.org_id ?? '');
+  const { data: contas } = lido(
+    await servico
+      .from('developer_accounts')
+      .select('platform, status, apns_key_enc, google_service_account_enc')
+      .eq('org_id', loja?.org_id ?? ''),
+    'as contas de desenvolvedor',
+  );
 
   const apple = (contas ?? []).find((conta) => conta.platform === 'apple');
   const google = (contas ?? []).find((conta) => conta.platform === 'google');
@@ -84,6 +94,8 @@ export async function estadoDasNotificacoes(
   };
 }
 
+const SEM_LEITURA = 'Não conseguimos ler os dados da loja agora. Tente de novo em instantes.';
+
 export type ResultadoDaAtivacao =
   { ok: true; oneSignalAppId: string } | { ok: false; motivo: string };
 
@@ -100,12 +112,14 @@ export async function ativarNotificacoes(
   servico: Client,
   storeId: string,
 ): Promise<ResultadoDaAtivacao> {
-  const { data: app } = await servico
+  const { data: app, error: erroDoApp } = await servico
     .from('apps')
     .select('id, onesignal_app_id, bundle_id_ios, display_name, store_id')
     .eq('store_id', storeId)
     .maybeSingle();
 
+  // Banco fora do ar não é "app não encontrado", nem "falta conectar a conta".
+  if (erroDoApp != null) return { ok: false, motivo: SEM_LEITURA };
   if (app == null) return { ok: false, motivo: 'Não encontramos o app desta loja.' };
   if (app.onesignal_app_id !== null && app.onesignal_app_id !== '') {
     return { ok: true, oneSignalAppId: app.onesignal_app_id };
@@ -125,22 +139,24 @@ export async function ativarNotificacoes(
     };
   }
 
-  const { data: loja } = await servico
+  const { data: loja, error: erroDaLoja } = await servico
     .from('stores')
     .select('org_id, name')
     .eq('id', storeId)
     .maybeSingle();
+  if (erroDaLoja != null) return { ok: false, motivo: SEM_LEITURA };
   if (loja == null) return { ok: false, motivo: 'Loja não encontrada.' };
 
-  const { data: contas } = await servico
+  const { data: contas, error: erroDasContas } = await servico
     .from('developer_accounts')
     .select(
       'platform, status, apple_team_id, apns_key_id, apns_key_enc, google_service_account_enc',
     )
     .eq('org_id', loja.org_id);
+  if (erroDasContas != null) return { ok: false, motivo: SEM_LEITURA };
 
-  const apple = (contas ?? []).find((conta) => conta.platform === 'apple');
-  const google = (contas ?? []).find((conta) => conta.platform === 'google');
+  const apple = contas.find((conta) => conta.platform === 'apple');
+  const google = contas.find((conta) => conta.platform === 'google');
 
   if (apple?.apns_key_enc == null || apple.apns_key_id == null || apple.apple_team_id == null) {
     return {

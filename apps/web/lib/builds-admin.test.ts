@@ -9,7 +9,14 @@
  */
 import { describe, expect, it } from 'vitest';
 import type { BuildStatus } from '@storefy/db';
-import { diasEsperando, lerFiltro, podeReexecutar, statusDoFiltro } from '@/lib/builds-admin';
+import {
+  diasEsperando,
+  lerFiltro,
+  lerOrganizacao,
+  lerPlataforma,
+  podeReexecutar,
+  statusDoFiltro,
+} from '@/lib/builds-admin';
 
 const TODOS: BuildStatus[] = [
   'queued',
@@ -97,5 +104,24 @@ describe('diasEsperando', () => {
   /* Relógio torto não vira "esperando há -1 dia" na tela. */
   it('data no futuro vira zero, nunca negativo', () => {
     expect(diasEsperando('2026-09-30T12:00:00Z', AGORA)).toBe(0);
+  });
+});
+
+describe('lerPlataforma e lerOrganizacao', () => {
+  it('a plataforma só vale se for uma das duas; o resto é "as duas"', () => {
+    expect(lerPlataforma('ios')).toBe('ios');
+    expect(lerPlataforma('android')).toBe('android');
+    for (const bruto of [undefined, '', 'IOS', 'windows', "ios' or 1=1"]) {
+      expect(lerPlataforma(bruto), String(bruto)).toBeNull();
+    }
+  });
+
+  it('o cliente só vale como uuid — um texto qualquer viraria erro do banco', () => {
+    const id = '3F6C1A2E-8D4B-4C7A-9E10-5B2F8A7C6D41';
+    expect(lerOrganizacao(id)).toBe(id.toLowerCase());
+    expect(lerOrganizacao(` ${id} `)).toBe(id.toLowerCase());
+    for (const bruto of [undefined, '', 'empresa', `${id},outro`, `${id})`]) {
+      expect(lerOrganizacao(bruto), String(bruto)).toBeNull();
+    }
   });
 });

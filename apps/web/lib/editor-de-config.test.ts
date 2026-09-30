@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { configInicial } from '@storefy/config-schema';
+import { configInicial, type AppConfig } from '@storefy/config-schema';
 import {
   MAX_ABAS,
   MIN_ABAS,
   adicionarAba,
   MAX_TEXTO_DO_AVISO,
+  MAX_TEXTO_DO_SLIDE,
+  MAX_TITULO_DO_SLIDE,
   avisoDaConfig,
   editarAba,
   editarAviso,
@@ -238,6 +240,55 @@ describe('validarConfig', () => {
         .map((p) => p.mensagem)
         .join(' '),
     ).toContain('sem título ou sem texto');
+  });
+
+  it('o título e o texto do slide cabem na tela; a imagem precisa abrir no app', () => {
+    const mensagens = (slides: AppConfig['features']['onboardingSlides']) =>
+      validarConfig(editarRecursos(base(), { onboardingSlides: slides })).map((p) => p.mensagem);
+
+    expect(
+      mensagens([
+        { title: 'x'.repeat(MAX_TITULO_DO_SLIDE), body: 'y'.repeat(MAX_TEXTO_DO_SLIDE), image: '' },
+      ]),
+    ).toEqual([]);
+    expect(
+      mensagens([
+        { title: 'Oi', body: 'Tudo certo', image: '' },
+        {
+          title: 'x'.repeat(MAX_TITULO_DO_SLIDE + 1),
+          body: 'y'.repeat(MAX_TEXTO_DO_SLIDE + 1),
+          image: 'http://site.com/foto.jpg',
+        },
+      ]),
+    ).toEqual([
+      `O título da tela de boas-vindas 2 passa de ${String(MAX_TITULO_DO_SLIDE)} caracteres e não cabe na tela do celular. Encurte o título.`,
+      `O texto da tela de boas-vindas 2 passa de ${String(MAX_TEXTO_DO_SLIDE)} caracteres e não cabe na tela do celular. Encurte o texto.`,
+      'A imagem da tela de boas-vindas 2 não abre no app. Envie a imagem de novo.',
+    ]);
+    // A imagem enviada pelo painel (e o endereço antigo em https) passa.
+    expect(
+      mensagens([
+        {
+          title: 'Oi',
+          body: 'Tudo certo',
+          image: 'https://exemplo.supabase.co/storage/v1/object/public/imagens-do-app/a/b.png',
+        },
+      ]),
+    ).toEqual([]);
+    expect(mensagens([{ title: 'Oi', body: 'Tudo', image: 'foto.jpg' }])).toHaveLength(1);
+    // O Supabase do desenvolvimento serve em http, só no próprio computador.
+    expect(
+      mensagens([
+        {
+          title: 'Oi',
+          body: 'Tudo',
+          image: 'http://127.0.0.1:54321/storage/v1/object/public/imagens-do-app/a/b.jpg',
+        },
+      ]),
+    ).toEqual([]);
+    expect(
+      mensagens([{ title: 'Oi', body: 'Tudo', image: 'http://127.0.0.1.evil.com/b.jpg' }]),
+    ).toHaveLength(1);
   });
 
   it('nenhuma mensagem fala a língua do Zod', () => {

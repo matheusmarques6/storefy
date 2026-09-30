@@ -130,7 +130,7 @@ export default async function PaginaLoja({
             <CardDescription>Remove a loja e o app dela. Não dá para desfazer.</CardDescription>
           </CardHeader>
           <CardContent>
-            <ExcluirLoja lojaId={loja.id} nome={loja.name} />
+            <ExcluirLoja lojaId={loja.id} nome={loja.name} status={loja.status} />
           </CardContent>
         </Card>
       ) : null}

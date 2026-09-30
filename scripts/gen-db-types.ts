@@ -120,6 +120,16 @@ function argumentosTs(argumentos: string, enums: Map<string, string[]>): string 
   return `{ ${campos.join('; ')} }`;
 }
 
+/**
+ * As funções de retorno escalar que devolvem NULL. O catálogo do Postgres não
+ * diz isso (todo `returns uuid` pode ser nulo), e o tipo sem o `| null` fazia
+ * o `data == null` de quem chama parecer impossível — e virar "sempre tem".
+ */
+const RETORNO_PODE_SER_NULO = new Set([
+  // NULL quando o e-mail não tem conta.
+  'admin_usuario_por_email',
+]);
+
 /** Converte "TABLE(a uuid, b text)" ou um tipo escalar no tipo de retorno. */
 function retornoTs(retorno: string, enums: Map<string, string[]>): string {
   const tabela = /^TABLE\((.*)\)$/is.exec(retorno.trim());
@@ -258,6 +268,8 @@ async function main(): Promise<void> {
     'gravar_estatistica',
     // C08 — as imagens de push que nenhuma campanha usa, para o job apagar.
     'imagens_de_push_sem_campanha',
+    // C06d — as imagens dos slides que nenhuma versão da config usa.
+    'imagens_do_app_sem_uso',
     'builds_em_revisao',
     'gravar_revisao',
     'reservar_aviso',
@@ -430,7 +442,8 @@ export type Database = {
     for (const funcao of funcoes) {
       partes.push(`      ${funcao.nome}: {`);
       partes.push(`        Args: ${argumentosTs(funcao.argumentos, enums)};`);
-      partes.push(`        Returns: ${retornoTs(funcao.retorno, enums)};`);
+      const anulavel = RETORNO_PODE_SER_NULO.has(funcao.nome) ? ' | null' : '';
+      partes.push(`        Returns: ${retornoTs(funcao.retorno, enums)}${anulavel};`);
       partes.push('      };');
     }
     partes.push('    };');

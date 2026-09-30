@@ -7,16 +7,27 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Platform } from 'react-native';
-import type { AppConfig, OrigemDoPush } from '@storefy/config-schema';
+import type { AppConfig, AvisoDoPush, OrigemDoPush } from '@storefy/config-schema';
 import type { Ambiente } from '../nucleo/ambiente.ts';
 import { buscarCaixaDeAvisos, credenciaisDe, type AvisoDaCaixa } from './api.ts';
-import { montarCaixa, marcarLido, marcarTodosLidos, naoLidos, type AvisoNaTela } from './caixa.ts';
+import {
+  caixaDesatualizada,
+  montarCaixa,
+  marcarLido,
+  marcarTodosLidos,
+  naoLidos,
+  situacaoDaCaixa,
+  type AvisoNaTela,
+  type SituacaoDaCaixa,
+} from './caixa.ts';
 import {
   contarAbertura,
+  gravarCaixa,
   gravarHistorico,
   gravarLidos,
   gravarToque,
   idDaInstalacao,
+  lerCaixaDoDisco,
   lerHistoricoDoDisco,
   lerLidosDoDisco,
   lerToqueDoDisco,
@@ -33,6 +44,7 @@ import {
 } from './permissao.ts';
 import {
   avisarQuandoVoltar,
+  avisosParaPrometer,
   carrinhoMudou,
   checkoutIniciado,
   contarAberturaDoEnvio,
@@ -58,6 +70,11 @@ import {
 export interface UsoDoPush {
   /** Mostrar a tela de explicação (M03) agora? */
   mostrarPrePrompt: boolean;
+  /**
+   * O que a tela pode prometer além das promoções: os avisos das automações
+   * que a loja deixou ligadas. Vazio quando não deu para saber.
+   */
+  avisosPrometidos: AvisoDoPush[];
   /** O cliente aceitou na nossa tela: chama o pedido do sistema. */
   aceitarNoPrePrompt: () => void;
   /** O cliente disse "agora não". */
@@ -68,6 +85,10 @@ export interface UsoDoPush {
   avisos: AvisoNaTela[];
   avisosNaoLidos: number;
   caixaCarregando: boolean;
+  /** O que a caixa mostra: a lista, o carregando, o erro ou como ligar as notificações. */
+  situacaoDaCaixa: SituacaoDaCaixa;
+  /** A lista na tela é a guardada no aparelho: o servidor não respondeu. */
+  caixaDesatualizada: boolean;
   recarregarCaixa: () => void;
   marcarAvisoLido: (id: string) => void;
   marcarTudoLido: () => void;
@@ -166,6 +187,7 @@ export function usarPush({ ambiente, config, ativo, navegar }: Opcoes): UsoDoPus
   const [historico, setHistorico] = useState<HistoricoDoPrePrompt>(HISTORICO_VAZIO);
   const [aberturas, setAberturas] = useState(0);
   const [mostrarPrePrompt, setMostrarPrePrompt] = useState(false);
+  const [avisosPrometidos, setAvisosPrometidos] = useState<AvisoDoPush[]>([]);
 
   /** `getOptedInAsync`; `null` até ser lido. */
   const [inscrito, setInscrito] = useState<boolean | null>(null);
@@ -175,6 +197,14 @@ export function usarPush({ ambiente, config, ativo, navegar }: Opcoes): UsoDoPus
   const [avisosBrutos, setAvisosBrutos] = useState<AvisoDaCaixa[]>([]);
   const [lidos, setLidos] = useState<string[]>([]);
   const [caixaCarregando, setCaixaCarregando] = useState(false);
+  /** Já há resposta: do servidor, ou a caixa guardada no aparelho. */
+  const [caixaLida, setCaixaLida] = useState(false);
+  const [falhaNaCaixa, setFalhaNaCaixa] = useState(false);
+  /*
+   * O servidor já respondeu? A caixa guardada chega do disco depois, às vezes,
+   * e não pode trocar a lista nova pela velha.
+   */
+  const caixaDoServidor = useRef(false);
   const [marcaDoPush, setMarcaDoPush] = useState<MarcaDoPush | null>(null);
 
   /* ----------------------------------------------------------- abertura */
@@ -184,16 +214,22 @@ export function usarPush({ ambiente, config, ativo, navegar }: Opcoes): UsoDoPus
     const segueVivo = (): boolean => vivo;
 
     async function comecar(): Promise<void> {
-      const [total, guardado, lidosGuardados, toqueGuardado] = await Promise.all([
+      const [total, guardado, lidosGuardados, toqueGuardado, caixaGuardada] = await Promise.all([
         contarAbertura(),
         lerHistoricoDoDisco(),
         lerLidosDoDisco(),
         lerToqueDoDisco(),
+        lerCaixaDoDisco(),
       ]);
       if (!segueVivo()) return;
       setAberturas(total);
       setHistorico(guardado);
       setLidos(lidosGuardados);
+      // A caixa da última vez aparece já, com ou sem internet — até o servidor responder.
+      if (caixaGuardada !== null && !caixaDoServidor.current) {
+        setAvisosBrutos(caixaGuardada);
+        setCaixaLida(true);
+      }
       // O toque que abriu o app a frio chega antes do disco, e é mais novo que ele.
       setMarcaDoPush((atual) => atual ?? marcaDoToque(toqueGuardado, Date.now()));
 
@@ -379,6 +415,31 @@ export function usarPush({ ambiente, config, ativo, navegar }: Opcoes): UsoDoPus
     }
   }, []);
 
+  /*
+   * Os avisos da loja, perguntados uma vez por abertura do app. Só a resposta
+   * certa fica guardada: a incerta (sem rede, servidor fora) é perguntada de
+   * novo na próxima vez que a tela for abrir.
+   */
+  const avisosDaLoja = useRef<Promise<AvisoDoPush[] | null> | null>(null);
+  const carregarAvisos = useCallback((): Promise<AvisoDoPush[] | null> => {
+    const guardada = avisosDaLoja.current;
+    if (guardada !== null) return guardada;
+    const pergunta = avisosParaPrometer(dependencias)
+      .catch(() => null)
+      .then((avisos) => {
+        if (avisos === null) avisosDaLoja.current = null;
+        return avisos;
+      });
+    avisosDaLoja.current = pergunta;
+    return pergunta;
+  }, [dependencias]);
+
+  // Pergunta antes de precisar, para a tela abrir sem esperar a rede.
+  useEffect(() => {
+    if (!ativo || !sistemaLido || sistema !== 'nao-perguntado') return;
+    void carregarAvisos();
+  }, [ativo, carregarAvisos, sistema, sistemaLido]);
+
   const perguntarSePuder = useCallback(
     (gatilho: Gatilho): void => {
       const decisao = decidirPermissao({
@@ -393,10 +454,24 @@ export function usarPush({ ambiente, config, ativo, navegar }: Opcoes): UsoDoPus
         momento: config?.features.pushPromptTiming ?? 'manual',
       });
 
-      if (decisao.acao === 'pre-prompt') setMostrarPrePrompt(true);
+      if (decisao.acao === 'pre-prompt') {
+        // A tela só promete o que a loja manda; sem resposta, só as promoções.
+        void carregarAvisos().then((avisos) => {
+          setAvisosPrometidos(avisos ?? []);
+          setMostrarPrePrompt(true);
+        });
+      }
       if (decisao.acao === 'pedir-ao-sistema') void chamarSistema();
     },
-    [aberturas, ativo, chamarSistema, config?.features.pushPromptTiming, historico, sistema],
+    [
+      aberturas,
+      ativo,
+      carregarAvisos,
+      chamarSistema,
+      config?.features.pushPromptTiming,
+      historico,
+      sistema,
+    ],
   );
 
   const aceitarNoPrePrompt = useCallback((): void => {
@@ -427,23 +502,72 @@ export function usarPush({ ambiente, config, ativo, navegar }: Opcoes): UsoDoPus
 
   /* ---------------------------------------------------- caixa de avisos */
 
-  const recarregarCaixa = useCallback((): void => {
+  const buscarCaixa = useCallback((): void => {
     if (credenciais === null || inscricao === null) return;
     setCaixaCarregando(true);
     void buscarCaixaDeAvisos(credenciais, inscricao).then(
       (resultado) => {
         setCaixaCarregando(false);
-        if (resultado.ok) setAvisosBrutos(resultado.dados.avisos);
+        if (!resultado.ok) {
+          // A lista guardada (se houver) continua; a tela diz que está velha.
+          setFalhaNaCaixa(true);
+          return;
+        }
+        caixaDoServidor.current = true;
+        setAvisosBrutos(resultado.dados.avisos);
+        setCaixaLida(true);
+        setFalhaNaCaixa(false);
+        void gravarCaixa(resultado.dados.avisos);
       },
       () => {
         setCaixaCarregando(false);
+        setFalhaNaCaixa(true);
       },
     );
   }, [credenciais, inscricao]);
 
   useEffect(() => {
-    recarregarCaixa();
-  }, [recarregarCaixa]);
+    buscarCaixa();
+  }, [buscarCaixa]);
+
+  const notificacoes = estadoDasNotificacoes({ disponivel: ativo, sistemaLido, sistema, inscrito });
+
+  /*
+   * Notificações ligadas e nenhuma inscrição depois de um tempo (o SDK não
+   * conseguiu criá-la): sem ela não há caixa para buscar. Vira o erro com
+   * "Tentar de novo", e não um carregando sem fim.
+   */
+  useEffect(() => {
+    if (!ativo || credenciais === null || inscricao !== null || notificacoes !== 'ligadas') return;
+    const relogio = setTimeout(() => {
+      setFalhaNaCaixa(true);
+    }, 10_000);
+    return () => {
+      clearTimeout(relogio);
+    };
+  }, [ativo, credenciais, inscricao, notificacoes]);
+
+  /** O "Tentar de novo" e o puxar para atualizar: sem inscrição, pede a ela ao SDK antes. */
+  const recarregarCaixa = useCallback((): void => {
+    if (inscricao !== null) {
+      buscarCaixa();
+      return;
+    }
+    if (!ativo || credenciais === null) return;
+    setCaixaCarregando(true);
+    notificadorReal.idDaInscricao().then(
+      (id) => {
+        setCaixaCarregando(false);
+        // A inscrição nova dispara a busca (o efeito acima).
+        if (id === null) setFalhaNaCaixa(true);
+        else setInscricao(id);
+      },
+      () => {
+        setCaixaCarregando(false);
+        setFalhaNaCaixa(true);
+      },
+    );
+  }, [ativo, buscarCaixa, credenciais, inscricao]);
 
   const avisos = useMemo(() => montarCaixa(avisosBrutos, lidos), [avisosBrutos, lidos]);
 
@@ -515,16 +639,25 @@ export function usarPush({ ambiente, config, ativo, navegar }: Opcoes): UsoDoPus
     [dependencias, inscricao, inscrito, lerNotificacoes, nomeDaLoja, pedirAoSistema, sistema],
   );
 
-  const notificacoes = estadoDasNotificacoes({ disponivel: ativo, sistemaLido, sistema, inscrito });
+  const temAvisos = avisos.length > 0;
 
   return {
     mostrarPrePrompt,
+    avisosPrometidos,
     aceitarNoPrePrompt,
     recusarNoPrePrompt,
     pedirPermissao,
     avisos,
     avisosNaoLidos: naoLidos(avisos),
     caixaCarregando,
+    situacaoDaCaixa: situacaoDaCaixa({
+      notificacoes,
+      comCredenciais: credenciais !== null,
+      temAvisos,
+      jaLeu: caixaLida,
+      falhou: falhaNaCaixa,
+    }),
+    caixaDesatualizada: caixaDesatualizada({ temAvisos, falhou: falhaNaCaixa }),
     recarregarCaixa,
     marcarAvisoLido,
     marcarTudoLido,

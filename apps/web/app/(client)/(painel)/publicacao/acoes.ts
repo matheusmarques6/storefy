@@ -15,7 +15,7 @@
  */
 import { revalidatePath } from 'next/cache';
 import { exigirContextoCliente } from '@/lib/contexto';
-import { mensagemDaFalha } from '@/lib/erros';
+import { FALHA_GENERICA, mensagemDaFalha } from '@/lib/erros';
 import { log } from '@/lib/log';
 import { criarClientServiceRole } from '@/lib/supabase/admin';
 import { criarClientServidor } from '@/lib/supabase/server';
@@ -50,9 +50,9 @@ export interface EstadoDaConta {
 
 /** Só owner e admin mexem nas credenciais da empresa. */
 async function exigirPermissao(): Promise<
-  { ok: true; orgId: string } | { ok: false; motivo: string }
+  { ok: true; orgId: string; usuarioId: string } | { ok: false; motivo: string }
 > {
-  const { organizacao, papel } = await exigirContextoCliente();
+  const { organizacao, papel, usuario } = await exigirContextoCliente();
   if (papel !== 'owner' && papel !== 'admin') {
     return {
       ok: false,
@@ -65,7 +65,7 @@ async function exigirPermissao(): Promise<
       motivo: 'O servidor ainda não está pronto para guardar credenciais com segurança.',
     };
   }
-  return { ok: true, orgId: organizacao.id };
+  return { ok: true, orgId: organizacao.id, usuarioId: usuario.id };
 }
 
 /**
@@ -102,8 +102,10 @@ export async function publicarApp(plataforma: 'ios' | 'android'): Promise<Estado
    * número de build na loja de aplicativos, e a Apple recusa o segundo — mas
    * só depois de gerar os dois.
    */
-  const servico = criarClientServiceRole();
-  const { data: emAndamento } = await servico
+  // Em nome de quem pediu: a trilha do build diz quem publicou.
+  const servico = criarClientServiceRole({ ator: usuario.id });
+  // Com o banco fora, seguir poderia disparar um segundo build da mesma versão.
+  const { data: emAndamento, error: erroDoAndamento } = await servico
     .from('builds')
     .select('id')
     .eq('app_id', dados.appId)
@@ -111,7 +113,10 @@ export async function publicarApp(plataforma: 'ios' | 'android'): Promise<Estado
     .in('status', ['queued', 'building'])
     .limit(1);
 
-  if ((emAndamento ?? []).length > 0) {
+  if (erroDoAndamento != null) {
+    return { mensagem: mensagemDaFalha('publicacao', erroDoAndamento, FALHA_GENERICA) };
+  }
+  if (emAndamento.length > 0) {
     return {
       mensagem: 'Já existe uma publicação em andamento para esta plataforma. Aguarde ela terminar.',
     };
@@ -396,7 +401,7 @@ export async function conectarApple(entrada: {
     };
   }
 
-  const servico = criarClientServiceRole();
+  const servico = criarClientServiceRole({ ator: permissao.usuarioId });
 
   const validacao = await validarChaveDaApple({
     p8: entrada.ascP8,
@@ -460,7 +465,7 @@ export async function conectarGoogle(entrada: { arquivo: string }): Promise<Esta
   const permissao = await exigirPermissao();
   if (!permissao.ok) return { mensagem: permissao.motivo };
 
-  const servico = criarClientServiceRole();
+  const servico = criarClientServiceRole({ ator: permissao.usuarioId });
   const validacao = await validarContaDoGoogle(entrada.arquivo);
 
   if (!validacao.ok) {
@@ -484,7 +489,11 @@ export async function desconectarConta(plataforma: Plataforma): Promise<EstadoDa
   const permissao = await exigirPermissao();
   if (!permissao.ok) return { mensagem: permissao.motivo };
 
-  const resultado = await desconectar(criarClientServiceRole(), permissao.orgId, plataforma);
+  const resultado = await desconectar(
+    criarClientServiceRole({ ator: permissao.usuarioId }),
+    permissao.orgId,
+    plataforma,
+  );
   if (!resultado.ok) return { mensagem: 'Não conseguimos desconectar. Tente de novo.' };
 
   revalidatePath('/publicacao/contas');
@@ -596,12 +605,14 @@ export async function vincularLinksDaLoja(): Promise<EstadoDosLinks> {
   }
 
   const servico = criarClientServiceRole();
-  const { data: dentro } = await servico.rpc('consumir_limite', {
+  const { data: dentro, error: erroDoLimite } = await servico.rpc('consumir_limite', {
     p_chave: `links:${quem.lojaAtiva.id}`,
     p_maximo: VINCULOS_POR_HORA,
     p_janela_segundos: 3600,
   });
-  if (dentro === false) {
+  if (erroDoLimite != null)
+    return { mensagem: mensagemDaFalha('publicacao', erroDoLimite, FALHA_GENERICA) };
+  if (!dentro) {
     return { mensagem: 'Foram muitas tentativas seguidas. Espere alguns minutos e tente de novo.' };
   }
 

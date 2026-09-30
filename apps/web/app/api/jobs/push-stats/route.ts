@@ -6,8 +6,9 @@
  * sem mudar nada na tela.
  *
  * De carona, apaga as imagens de push que nenhuma campanha usa há um dia
- * (formulário abandonado, imagem trocada, campanha excluída): sem isso o
- * bucket só cresce, com fotos de promoções que nunca saíram.
+ * (formulário abandonado, imagem trocada, campanha excluída) e as dos slides
+ * de boas-vindas que nenhuma versão da config usa (C06d): sem isso os buckets
+ * só crescem, com fotos que nunca foram ao ar.
  *
  * O que não vier da OneSignal simplesmente não é gravado. A tela mostra traço
  * para o que ainda não sabe, e um zero gravado aqui viraria "a campanha não
@@ -20,6 +21,7 @@ import { serviceRoleConfigurada, supabaseConfigurado } from '@/lib/env';
 import { CABECALHO_DO_CRON, autorizarJob, registrarBatimento } from '@/lib/jobs';
 import { buscarEstatisticas } from '@/lib/onesignal';
 import { BUCKET_DO_PUSH } from '@/lib/imagem-do-push';
+import { BUCKET_DO_APP } from '@/lib/imagem-do-slide';
 import { log } from '@/lib/log';
 
 export const dynamic = 'force-dynamic';
@@ -48,6 +50,7 @@ export async function GET(requisicao: NextRequest): Promise<NextResponse> {
   let consultadas = 0;
   let atualizadas = 0;
   let imagensApagadas = 0;
+  let imagensDoAppApagadas = 0;
   const inicio = Date.now();
 
   try {
@@ -86,7 +89,18 @@ export async function GET(requisicao: NextRequest): Promise<NextResponse> {
       if (numeros.falhas !== null) stats.falhas = numeros.falhas;
       if (Object.keys(stats).length === 0) continue;
 
-      await supabase.rpc('gravar_estatistica', { p_id: campanha.id, p_stats: stats });
+      const { error: erroAoGravar } = await supabase.rpc('gravar_estatistica', {
+        p_id: campanha.id,
+        p_stats: stats,
+      });
+      if (erroAoGravar != null) {
+        // Não conta como atualizada; a próxima rodada tenta de novo.
+        log.erro('job-estatisticas.nao-gravou', {
+          campanha: campanha.id,
+          erro: erroAoGravar.message,
+        });
+        continue;
+      }
       atualizadas += 1;
     }
 
@@ -103,19 +117,39 @@ export async function GET(requisicao: NextRequest): Promise<NextResponse> {
       if (erroDaLimpeza != null) throw new Error(erroDaLimpeza.message);
       imagensApagadas = caminhos.length;
     }
+
+    const { data: semUso, error: erroDoSemUso } = await supabase.rpc('imagens_do_app_sem_uso', {
+      p_limite: 200,
+    });
+    if (erroDoSemUso != null) throw new Error(erroDoSemUso.message);
+    const caminhosDoApp = semUso.flatMap((imagem) =>
+      imagem.caminho === null ? [] : [imagem.caminho],
+    );
+    if (caminhosDoApp.length > 0) {
+      const { error: erroDaLimpezaDoApp } = await supabase.storage
+        .from(BUCKET_DO_APP)
+        .remove(caminhosDoApp);
+      if (erroDaLimpezaDoApp != null) throw new Error(erroDaLimpezaDoApp.message);
+      imagensDoAppApagadas = caminhosDoApp.length;
+    }
   } catch (erro) {
     log.erro('job-estatisticas.falhou', { erro });
     await registrarBatimento('push-stats', inicio, erro);
     return NextResponse.json(
-      { erro: 'falhou', consultadas, atualizadas, imagensApagadas },
+      { erro: 'falhou', consultadas, atualizadas, imagensApagadas, imagensDoAppApagadas },
       { status: 500, headers: { 'Cache-Control': 'no-store' } },
     );
   }
 
-  log.info('job-estatisticas.concluido', { consultadas, atualizadas, imagensApagadas });
+  log.info('job-estatisticas.concluido', {
+    consultadas,
+    atualizadas,
+    imagensApagadas,
+    imagensDoAppApagadas,
+  });
   await registrarBatimento('push-stats', inicio);
   return NextResponse.json(
-    { consultadas, atualizadas, imagensApagadas },
+    { consultadas, atualizadas, imagensApagadas, imagensDoAppApagadas },
     { headers: { 'Cache-Control': 'no-store' } },
   );
 }

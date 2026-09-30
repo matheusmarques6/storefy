@@ -149,6 +149,17 @@ async function montar(buildId: string): Promise<DadosParaOBuild | null> {
   if (config == null) return null;
 
   /*
+   * As imagens ANTES da reserva da versão: se o storage falhar, o build fica na
+   * fila e o workflow tenta de novo — em vez de sair sem o ícone da loja.
+   * Meia hora: mais do que um build leva para baixar, e curto o bastante para
+   * o link não sobreviver ao log da execução.
+   */
+  const [urlDoIcone, urlDaSplash] = await Promise.all([
+    urlAssinada(servico, app.icon_path, 1800),
+    urlAssinada(servico, app.splash_path, 1800),
+  ]);
+
+  /*
    * O segredo com que o app vai assinar o que manda, criado no primeiro build
    * da loja. Antes da reserva da versão: se falhar, o build fica na fila e o
    * workflow reexecutado tenta de novo, sem queimar número.
@@ -177,13 +188,6 @@ async function montar(buildId: string): Promise<DadosParaOBuild | null> {
     .eq('status', 'queued');
 
   const tema = fundoDoApp(config.config);
-
-  // Meia hora: mais do que um build leva para baixar, e curto o bastante para
-  // o link não sobreviver ao log da execução.
-  const [urlDoIcone, urlDaSplash] = await Promise.all([
-    urlAssinada(servico, app.icon_path, 1800),
-    urlAssinada(servico, app.splash_path, 1800),
-  ]);
 
   return {
     buildId: build.id,

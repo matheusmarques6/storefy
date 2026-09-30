@@ -36,7 +36,7 @@ import {
   tipoDoDocumento,
 } from '@/lib/cobranca';
 import { cancelarAssinaturaDaEmpresa, lerSituacaoDaCobranca } from '@/lib/cobranca-servidor';
-import { mensagemDaFalha } from '@/lib/erros';
+import { FALHA_GENERICA, mensagemDaFalha } from '@/lib/erros';
 import {
   extrairErros,
   valoresDigitados,
@@ -67,15 +67,21 @@ async function doDono() {
   return { ok: true as const, ...contexto };
 }
 
-async function dentroDoLimite(orgId: string): Promise<boolean> {
+/**
+ * A recusa do limite de tentativas, ou `null` quando cabe. O banco fora
+ * também recusa: o limite é a trava contra abuso da cobrança, e "não deu
+ * para contar" não é "cabe".
+ */
+async function recusaDoLimite(orgId: string): Promise<string | null> {
   // Tabela de sistema, sem policy: o contador vai pela service role, DEPOIS
   // de conferido que quem pede é o proprietário.
-  const { data } = await criarClientServiceRole().rpc('consumir_limite', {
+  const { data, error } = await criarClientServiceRole().rpc('consumir_limite', {
     p_chave: `cobranca:${orgId}`,
     p_maximo: TENTATIVAS_POR_HORA,
     p_janela_segundos: 3600,
   });
-  return data !== false;
+  if (error != null) return mensagemDaFalha('cobranca', error, FALHA_GENERICA);
+  return data ? null : 'Muitas tentativas em pouco tempo. Espere alguns minutos.';
 }
 
 /**
@@ -133,11 +139,14 @@ export async function assinarPlano(
   }
 
   const supabase = await criarClientServidor();
-  const { data: plano } = await supabase
+  const { data: plano, error: erroDoPlano } = await supabase
     .from('plans')
     .select('id, nome, preco_centavos, disponivel')
     .eq('id', analise.data.plano)
     .maybeSingle();
+  if (erroDoPlano != null) {
+    return { mensagem: mensagemDaFalha('cobranca', erroDoPlano, FALHA_GENERICA), valores };
+  }
   if (plano?.disponivel !== true) {
     return { erros: { plano: 'Este plano não está mais disponível. Escolha outro.' }, valores };
   }
@@ -150,9 +159,8 @@ export async function assinarPlano(
     };
   }
 
-  if (!(await dentroDoLimite(organizacao.id))) {
-    return { mensagem: 'Muitas tentativas em pouco tempo. Espere alguns minutos.', valores };
-  }
+  const recusa = await recusaDoLimite(organizacao.id);
+  if (recusa !== null) return { mensagem: recusa, valores };
 
   const documento = normalizarDocumento(analise.data.documento);
   const tipo = tipoDoDocumento(documento) ?? 'cpf';
@@ -165,11 +173,15 @@ export async function assinarPlano(
 
   // Quem paga: reaproveita o cliente da Asaas de uma assinatura anterior.
   const servico = criarClientServiceRole();
-  const { data: clienteAtual } = await servico
+  const { data: clienteAtual, error: erroDoCliente } = await servico
     .from('billing_customers')
     .select('external_id')
     .eq('org_id', organizacao.id)
     .maybeSingle();
+  // Sem saber se já existe, criar um cliente novo duplicaria o pagador na Asaas.
+  if (erroDoCliente != null) {
+    return { mensagem: mensagemDaFalha('cobranca', erroDoCliente, FALHA_GENERICA), valores };
+  }
 
   let cliente: string;
   if (clienteAtual == null) {
@@ -258,7 +270,7 @@ export async function trocarDePlano(planoId: string): Promise<EstadoDaCobranca> 
   const { organizacao, usuario } = dono;
 
   const supabase = await criarClientServidor();
-  const [{ data: plano }, { data: assinatura }] = await Promise.all([
+  const [lidoPlano, lidaAssinatura] = await Promise.all([
     supabase
       .from('plans')
       .select('id, nome, preco_centavos, disponivel')
@@ -270,14 +282,18 @@ export async function trocarDePlano(planoId: string): Promise<EstadoDaCobranca> 
       .eq('org_id', organizacao.id)
       .maybeSingle(),
   ]);
+  // O banco fora não é "plano indisponível" nem "sem assinatura".
+  const falha = lidoPlano.error ?? lidaAssinatura.error;
+  if (falha != null) return { mensagem: mensagemDaFalha('cobranca', falha, FALHA_GENERICA) };
+  const plano = lidoPlano.data;
+  const assinatura = lidaAssinatura.data;
   if (plano?.disponivel !== true) return { mensagem: 'Este plano não está mais disponível.' };
   if (assinatura == null || assinatura.cancelada_em != null) {
     return { mensagem: 'A empresa não tem assinatura ativa. Assine um plano primeiro.' };
   }
   if (assinatura.plan_id === plano.id) return { mensagem: 'A empresa já está neste plano.' };
-  if (!(await dentroDoLimite(organizacao.id))) {
-    return { mensagem: 'Muitas tentativas em pouco tempo. Espere alguns minutos.' };
-  }
+  const recusa = await recusaDoLimite(organizacao.id);
+  if (recusa !== null) return { mensagem: recusa };
 
   const naAsaas = await mudarValorDaAssinatura(
     assinatura.external_id,
@@ -347,20 +363,22 @@ export async function atualizarQuemPaga(
   if (!analise.success) return { erros: extrairErros(analise.error), valores };
 
   const servico = criarClientServiceRole();
-  const { data: cliente } = await servico
+  const { data: cliente, error: erroDoCliente } = await servico
     .from('billing_customers')
     .select('external_id')
     .eq('org_id', organizacao.id)
     .maybeSingle();
+  if (erroDoCliente != null) {
+    return { mensagem: mensagemDaFalha('cobranca', erroDoCliente, FALHA_GENERICA), valores };
+  }
   if (cliente == null) {
     return {
       mensagem: 'Os dados de cobrança são pedidos quando a empresa assina um plano.',
       valores,
     };
   }
-  if (!(await dentroDoLimite(organizacao.id))) {
-    return { mensagem: 'Muitas tentativas em pouco tempo. Espere alguns minutos.', valores };
-  }
+  const recusa = await recusaDoLimite(organizacao.id);
+  if (recusa !== null) return { mensagem: recusa, valores };
 
   const documento = normalizarDocumento(analise.data.documento);
   const naAsaas = await atualizarCliente(cliente.external_id, {

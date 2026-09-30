@@ -68,7 +68,7 @@ export const DESCRICAO_DO_TIPO: Record<TipoDeAutomacao, DescricaoDoTipo> = {
     nome: 'De volta ao estoque',
     gatilho: 'Quando um produto que o cliente pediu para acompanhar volta a ter estoque.',
     porque:
-      'É a notificação mais pedida que existe — literalmente: quem a recebe tocou num botão pedindo por ela. Para o botão aparecer na sua loja, ligue o bloco da Storefy no editor de tema.',
+      'É a notificação mais pedida que existe — literalmente: quem a recebe tocou num botão pedindo por ela. Para o botão aparecer, adicione o bloco “Avise-me quando voltar”, da Storefy, na página de produto do editor de tema da Shopify.',
     rotuloDoAtraso: 'Avisar depois de',
     sugestao: {
       title: 'Voltou!',

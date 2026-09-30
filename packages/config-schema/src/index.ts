@@ -231,3 +231,5 @@ export {
   valorDoAtributoDoPush,
 } from './atribuicao-do-push';
 export type { OrigemDoPush, ToqueNoPush } from './atribuicao-do-push';
+export { AVISOS_DO_PUSH, avisosDasAutomacoes, lerAvisosDoPush } from './avisos-do-push';
+export type { AvisoDoPush } from './avisos-do-push';

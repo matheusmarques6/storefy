@@ -34,6 +34,35 @@ export interface RespostaDoBanner {
 
 export const TEXTO_PADRAO = 'Baixe nosso app e compre mais rápido.';
 
+/**
+ * Os estados da Apple em que o app foi aprovado, mas ainda não está na App
+ * Store: falta o lojista liberar, ou a data marcada chegar (C12).
+ */
+const APROVADO_SEM_LIBERAR = new Set(['PENDING_DEVELOPER_RELEASE', 'PENDING_APPLE_RELEASE']);
+
+/**
+ * Em que loja de aplicativos o app ESTÁ, pelos builds aprovados.
+ *
+ * O número do app na App Store e o pacote do Android existem bem antes da
+ * aprovação — a Storefy os preenche no começo. Um banner com eles convidava o
+ * cliente a baixar um app que ainda não estava em loja nenhuma, e o erro
+ * ficava na vitrine do lojista. No iPhone, aprovado e ainda não liberado
+ * também não conta. O aprovado de antes do acompanhamento da loja (sem
+ * estado) conta, como contava.
+ */
+export function plataformasNoAr(
+  aprovados: readonly { platform: 'ios' | 'android'; store_state: string | null }[],
+): { ios: boolean; android: boolean } {
+  return {
+    ios: aprovados.some(
+      (build) =>
+        build.platform === 'ios' &&
+        (build.store_state === null || !APROVADO_SEM_LIBERAR.has(build.store_state)),
+    ),
+    android: aprovados.some((build) => build.platform === 'android'),
+  };
+}
+
 /** Quantos caracteres cabem numa tarja de celular sem quebrar em três linhas. */
 export const MAXIMO_DO_TEXTO = 90;
 

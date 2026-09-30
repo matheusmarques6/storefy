@@ -22,6 +22,24 @@ export const MAX_ABAS = 5;
  */
 export const MAX_TEXTO_DO_AVISO = 80;
 
+/** As telas de boas-vindas (C06d): o schema aceita até quatro. */
+export const MAX_SLIDES = 4;
+
+/**
+ * O título de um slide cabe em duas linhas da letra grande do app, e o texto
+ * em umas quatro, num celular pequeno. Mais do que isso empurra o botão para
+ * fora da tela — o slide não rola.
+ */
+export const MAX_TITULO_DO_SLIDE = 40;
+export const MAX_TEXTO_DO_SLIDE = 160;
+
+/**
+ * O Supabase do desenvolvimento serve as imagens em `http://127.0.0.1`. Em
+ * produção o endereço é sempre `https://`; um `localhost` numa config de
+ * verdade só chegaria por fora do painel.
+ */
+const ENDERECO_LOCAL = /^http:\/\/(127\.0\.0\.1|localhost)(:\d+)?\//;
+
 type AvisoDoTopo = NonNullable<AppConfig['announcement']>;
 
 /** Configs anteriores ao aviso não têm o campo: é o mesmo que desligado. */
@@ -309,14 +327,38 @@ export function validarConfig(config: AppConfig): Problema[] {
     });
   }
 
-  for (const slide of config.features.onboardingSlides) {
-    if (slide.title.trim() === '' || slide.body.trim() === '') {
+  config.features.onboardingSlides.forEach((slide, indice) => {
+    const tela = `tela de boas-vindas ${String(indice + 1)}`;
+    const titulo = slide.title.trim();
+    const texto = slide.body.trim();
+    if (titulo === '' || texto === '') {
+      problemas.push({ secao: 'recursos', mensagem: `A ${tela} está sem título ou sem texto.` });
+    }
+    if (titulo.length > MAX_TITULO_DO_SLIDE) {
       problemas.push({
         secao: 'recursos',
-        mensagem: 'Um slide de boas-vindas está sem título ou sem texto.',
+        mensagem: `O título da ${tela} passa de ${String(MAX_TITULO_DO_SLIDE)} caracteres e não cabe na tela do celular. Encurte o título.`,
       });
     }
-  }
+    if (texto.length > MAX_TEXTO_DO_SLIDE) {
+      problemas.push({
+        secao: 'recursos',
+        mensagem: `O texto da ${tela} passa de ${String(MAX_TEXTO_DO_SLIDE)} caracteres e não cabe na tela do celular. Encurte o texto.`,
+      });
+    }
+    /*
+     * A imagem nova é sempre enviada pelo painel (`https://`). Um endereço
+     * antigo, digitado à mão, pode ser `http://` — que o iPhone recusa — ou
+     * nem ser um endereço: o slide sairia com um buraco no lugar da imagem.
+     */
+    const imagem = slide.image.trim();
+    if (imagem !== '' && !imagem.startsWith('https://') && !ENDERECO_LOCAL.test(imagem)) {
+      problemas.push({
+        secao: 'recursos',
+        mensagem: `A imagem da ${tela} não abre no app. Envie a imagem de novo.`,
+      });
+    }
+  });
 
   const aviso = avisoDaConfig(config);
   if (aviso.enabled) {

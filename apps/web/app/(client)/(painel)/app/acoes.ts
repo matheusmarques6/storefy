@@ -20,6 +20,7 @@ import { criarClientServidor } from '@/lib/supabase/server';
 import { criarClientServiceRole } from '@/lib/supabase/admin';
 import { exigirContextoCliente } from '@/lib/contexto';
 import { guardarAsset, removerAsset } from '@/lib/assets-da-loja';
+import { guardarImagemDoSlide } from '@/lib/imagem-do-slide';
 import { iconeDoSite } from '@/lib/logo-do-site';
 import { descobrirTema } from '@/lib/pagina-da-loja';
 import { garantirRascunho, salvarRascunho } from '@/lib/configs-servidor';
@@ -116,7 +117,7 @@ export async function enviarAsset(
   tipo: 'icone' | 'splash',
   formulario: FormData,
 ): Promise<EstadoDoEditor> {
-  const { papel } = await exigirContextoCliente();
+  const { papel, usuario } = await exigirContextoCliente();
   if (papel !== 'owner' && papel !== 'admin') {
     return { mensagem: 'Apenas proprietários e administradores trocam a imagem do app.' };
   }
@@ -139,13 +140,15 @@ export async function enviarAsset(
   const arquivo = formulario.get('arquivo');
   if (!(arquivo instanceof File)) return { mensagem: 'Escolha uma imagem.' };
 
-  const resultado = await guardarAsset(criarClientServiceRole(), storeId, tipo, {
+  // Em nome de quem pediu: a trilha diz quem trocou a imagem, e não "o sistema".
+  const servico = criarClientServiceRole({ ator: usuario.id });
+  const resultado = await guardarAsset(servico, storeId, tipo, {
     tipoMime: arquivo.type,
     bytes: new Uint8Array(await arquivo.arrayBuffer()),
   });
   if (!resultado.ok) return { mensagem: resultado.motivo };
 
-  const { error } = await criarClientServiceRole()
+  const { error } = await servico
     .from('apps')
     .update(
       tipo === 'icone' ? { icon_path: resultado.caminho } : { splash_path: resultado.caminho },
@@ -164,6 +167,45 @@ export async function enviarAsset(
 }
 
 /**
+ * A imagem de um slide de boas-vindas (C06d).
+ *
+ * Só guarda o arquivo e devolve o endereço: quem o põe no slide é o editor,
+ * e o rascunho salvo leva o endereço junto. Até lá, a imagem não é usada por
+ * nenhuma versão — e o job a apaga se ninguém a salvar em um dia.
+ */
+export async function enviarImagemDoSlide(
+  storeId: string,
+  formulario: FormData,
+): Promise<{ ok: true; url: string } | { ok: false; mensagem: string }> {
+  const { papel } = await exigirContextoCliente();
+  if (papel !== 'owner' && papel !== 'admin') {
+    return { ok: false, mensagem: 'Apenas proprietários e administradores mudam o app.' };
+  }
+
+  // Pela sessão: uma loja de outra organização não volta, e nada é guardado.
+  const supabase = await criarClientServidor();
+  const { data: loja, error } = await supabase
+    .from('stores')
+    .select('id')
+    .eq('id', storeId)
+    .maybeSingle();
+  if (error != null) return { ok: false, mensagem: traduzirErro(error.code, error.message) };
+  if (loja == null) return { ok: false, mensagem: 'Loja não encontrada.' };
+
+  const arquivo = formulario.get('arquivo');
+  if (!(arquivo instanceof File) || arquivo.size === 0) {
+    return { ok: false, mensagem: 'Escolha uma imagem.' };
+  }
+
+  const guardada = await guardarImagemDoSlide(criarClientServiceRole(), loja.id, {
+    tipoMime: arquivo.type,
+    bytes: new Uint8Array(await arquivo.arrayBuffer()),
+  });
+  if (!guardada.ok) return { ok: false, mensagem: guardada.motivo };
+  return guardada;
+}
+
+/**
  * O ícone do app a partir do logo do site da loja (C03: "confirma logo").
  *
  * A página é relida no servidor — o endereço vem do CADASTRO da loja, lido
@@ -172,7 +214,7 @@ export async function enviarAsset(
  * pela MESMA conferência do ícone enviado à mão antes de ser guardado.
  */
 export async function usarLogoDoSite(storeId: string): Promise<EstadoDoEditor> {
-  const { papel } = await exigirContextoCliente();
+  const { papel, usuario } = await exigirContextoCliente();
   if (papel !== 'owner' && papel !== 'admin') {
     return { mensagem: 'Apenas proprietários e administradores trocam a imagem do app.' };
   }
@@ -201,7 +243,7 @@ export async function usarLogoDoSite(storeId: string): Promise<EstadoDoEditor> {
   const icone = await iconeDoSite(endereco, corDaMarca);
   if (!icone.ok) return { mensagem: icone.motivo };
 
-  const servico = criarClientServiceRole();
+  const servico = criarClientServiceRole({ ator: usuario.id });
   const guardado = await guardarAsset(servico, storeId, 'icone', {
     tipoMime: 'image/png',
     bytes: new Uint8Array(icone.icone),
@@ -230,7 +272,7 @@ export async function removerAssetDaLoja(
   storeId: string,
   tipo: 'icone' | 'splash',
 ): Promise<EstadoDoEditor> {
-  const { papel } = await exigirContextoCliente();
+  const { papel, usuario } = await exigirContextoCliente();
   if (papel !== 'owner' && papel !== 'admin') {
     return { mensagem: 'Apenas proprietários e administradores trocam a imagem do app.' };
   }
@@ -245,7 +287,12 @@ export async function removerAssetDaLoja(
   if (error != null) return { mensagem: traduzirErro(error.code, error.message) };
   if (app == null) return { mensagem: 'Loja não encontrada.' };
 
-  const resultado = await removerAsset(criarClientServiceRole(), storeId, app.id, tipo);
+  const resultado = await removerAsset(
+    criarClientServiceRole({ ator: usuario.id }),
+    storeId,
+    app.id,
+    tipo,
+  );
   if (!resultado.ok) return { mensagem: resultado.motivo };
 
   revalidatePath('/app');
@@ -352,12 +399,13 @@ export async function salvarConfig(storeId: string, configBruta: unknown): Promi
     };
   }
 
-  const { data: loja } = await supabase
+  const { data: loja, error: erroDaLoja } = await supabase
     .from('stores')
     .select('name, primary_url, shop_domain, platform')
     .eq('id', storeId)
     .maybeSingle();
 
+  if (erroDaLoja != null) return { mensagem: traduzirErro(erroDaLoja.code, erroDaLoja.message) };
   if (loja == null) return { mensagem: 'Loja não encontrada.' };
 
   /*

@@ -1737,7 +1737,7 @@ export type Database = {
       };
       admin_usuario_por_email: {
         Args: { p_email: string };
-        Returns: string;
+        Returns: string | null;
       };
       agendar_inativos: {
         Args: Record<string, never>;
@@ -1896,6 +1896,10 @@ export type Database = {
         Returns: boolean;
       };
       imagens_de_push_sem_campanha: {
+        Args: { p_limite?: number };
+        Returns: { caminho: string | null }[];
+      };
+      imagens_do_app_sem_uso: {
         Args: { p_limite?: number };
         Returns: { caminho: string | null }[];
       };

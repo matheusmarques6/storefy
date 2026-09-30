@@ -16,7 +16,7 @@ import { revalidatePath } from 'next/cache';
 import { exigirPlatformAdmin, exigirPlatformAdminComPapel } from '@/lib/contexto';
 import { criarClientServidor } from '@/lib/supabase/server';
 import { formatarDia } from '@/lib/cobranca';
-import { mensagemDaFalha } from '@/lib/erros';
+import { FALHA_GENERICA, mensagemDaFalha } from '@/lib/erros';
 import { criarClientServiceRole } from '@/lib/supabase/admin';
 import { conferirNota } from '@/lib/notas-internas';
 import { DURACAO_DA_VISITA_MS, conferirMotivo, criarToken } from '@/lib/visita';
@@ -69,12 +69,15 @@ export async function apagarNota(notaId: string): Promise<EstadoDaNota> {
    * uma linha dizendo "apagou a nota tal" sem dizer o que a nota dizia não
    * serve para nada daqui a seis meses.
    */
-  const { data: nota } = await servico
+  const { data: nota, error: erroDaNota } = await servico
     .from('org_notes')
     .select('id, org_id, body')
     .eq('id', notaId)
     .maybeSingle();
 
+  if (erroDaNota != null) {
+    return { mensagem: mensagemDaFalha('admin-nota', erroDaNota, FALHA_GENERICA) };
+  }
   if (nota == null) return { mensagem: 'Essa nota não existe mais.' };
 
   const { error } = await servico.from('org_notes').delete().eq('id', notaId);
@@ -125,11 +128,14 @@ export async function iniciarVisita(
   if (!motivo.ok) return { mensagem: motivo.mensagem, valores };
 
   const servico = criarClientServiceRole();
-  const { data: org } = await servico
+  const { data: org, error: erroDaOrg } = await servico
     .from('organizations')
     .select('id')
     .eq('id', orgId)
     .maybeSingle();
+  if (erroDaOrg != null) {
+    return { mensagem: mensagemDaFalha('admin-visita', erroDaOrg, FALHA_GENERICA), valores };
+  }
   if (org == null) return { mensagem: 'Este cliente não existe mais.', valores };
 
   let convite: string;

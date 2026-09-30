@@ -20,7 +20,12 @@ import { NextResponse } from 'next/server';
 import { safeParseAppConfig } from '@storefy/config-schema';
 import { criarClientServiceRole } from '@/lib/supabase/admin';
 import { serviceRoleConfigurada, supabaseConfigurado } from '@/lib/env';
-import { montarBanner, type DadosDoBanner, type RespostaDoBanner } from '@/lib/banner-do-app';
+import {
+  montarBanner,
+  plataformasNoAr,
+  type DadosDoBanner,
+  type RespostaDoBanner,
+} from '@/lib/banner-do-app';
 import { ehDominioDeLoja } from '@/lib/shopify';
 import { log } from '@/lib/log';
 import { lido } from '@/lib/leitura';
@@ -128,10 +133,21 @@ async function buscar(dominio: string): Promise<DadosDoBanner | null> {
   const analise = linha == null ? null : safeParseAppConfig(linha.config);
   const banner = analise?.success === true ? analise.data.features.appBanner : null;
 
+  // Só a loja de aplicativos em que o app JÁ está: o link de um app a caminho leva a um erro.
+  const { data: aprovados } = lido(
+    await servico
+      .from('builds')
+      .select('platform, store_state')
+      .eq('app_id', app.id)
+      .eq('status', 'approved'),
+    'os builds aprovados do banner',
+  );
+  const noAr = plataformasNoAr(aprovados ?? []);
+
   return {
     ligado: banner?.enabled ?? false,
     texto: banner?.text ?? '',
-    appStoreId: app.ios_asc_app_id,
-    pacoteAndroid: app.package_android,
+    appStoreId: noAr.ios ? app.ios_asc_app_id : null,
+    pacoteAndroid: noAr.android ? app.package_android : null,
   };
 }

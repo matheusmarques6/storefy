@@ -16,6 +16,7 @@ import { exigirPlatformAdmin } from '@/lib/contexto';
 import { criarClientServiceRole } from '@/lib/supabase/admin';
 import { MAXIMO_DA_MENSAGEM, mensagemValida } from '@/lib/ota';
 import { dispararOta } from '@/lib/disparo-da-ota';
+import { FALHA_GENERICA, mensagemDaFalha } from '@/lib/erros';
 
 export interface EstadoDaOta {
   ok?: boolean;
@@ -38,13 +39,17 @@ export async function publicarCorrecao(texto: string): Promise<EstadoDaOta> {
    * indefinida podem deixar o app de uma loja com a versão MAIS VELHA — e
    * ninguém descobre isso olhando a tela.
    */
-  const { data: emAndamento } = await servico
+  // Com o banco fora, "não sei" não é "nenhuma rodando": duas correções brigariam.
+  const { data: emAndamento, error: erroDoAndamento } = await servico
     .from('ota_updates')
     .select('id')
     .in('status', ['queued', 'running'])
     .limit(1);
 
-  if ((emAndamento ?? []).length > 0) {
+  if (erroDoAndamento != null) {
+    return { mensagem: mensagemDaFalha('ota', erroDoAndamento, FALHA_GENERICA) };
+  }
+  if (emAndamento.length > 0) {
     return { mensagem: 'Já existe uma correção sendo publicada. Aguarde ela terminar.' };
   }
 

@@ -12,6 +12,7 @@
 import type { Notificador } from './onesignal.ts';
 import type { Credenciais, Resultado, RespostaDoAparelho } from './api.ts';
 import {
+  buscarAvisosDoPush,
   registrarAberturaDoEnvio,
   registrarAparelho,
   enviarEventoDeCarrinho,
@@ -20,7 +21,13 @@ import {
 import type { PermissaoDoSistema } from './permissao.ts';
 import { tagsDaCompra, tagsDoApp, tagsDoCarrinho, type CarrinhoParaTag } from './tags.ts';
 import { destinoDoPush, linkDaNotificacao, type DestinoDoPush } from './deep-link.ts';
-import { envioDaNotificacao, origemDaNotificacao, type OrigemDoPush } from '@storefy/config-schema';
+import {
+  envioDaNotificacao,
+  lerAvisosDoPush,
+  origemDaNotificacao,
+  type AvisoDoPush,
+  type OrigemDoPush,
+} from '@storefy/config-schema';
 
 export interface DependenciasDaSessao {
   notificador: Notificador;
@@ -226,6 +233,24 @@ export async function contarAberturaDoEnvio(
   if (dependencias.credenciais === null) return false;
   const resposta = await registrarAberturaDoEnvio(dependencias.credenciais, { envio });
   return resposta.ok && resposta.dados.contada === true;
+}
+
+/**
+ * Os avisos que o pedido de permissão (M03) pode prometer, perguntados à
+ * Storefy: as automações que a loja deixou ligadas.
+ *
+ * `null` é "não deu para saber" (sem credencial, sem rede, resposta estranha),
+ * e é diferente de `[]` ("a loja não manda nenhum"): quem chama guarda a
+ * resposta certa e tenta de novo depois da incerta. Nos dois casos a tela
+ * promete só as promoções, que toda loja pode mandar — prometer a menos é o
+ * erro seguro.
+ */
+export async function avisosParaPrometer(
+  dependencias: DependenciasDaSessao,
+): Promise<AvisoDoPush[] | null> {
+  if (dependencias.credenciais === null) return null;
+  const resposta = await buscarAvisosDoPush(dependencias.credenciais);
+  return resposta.ok ? lerAvisosDoPush(resposta.dados) : null;
 }
 
 /**

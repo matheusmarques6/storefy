@@ -12,6 +12,7 @@ import 'server-only';
  * da organização consegue ler de volta o que enviou — e é assim de propósito:
  * o painel não precisa mostrar uma chave privada nunca mais.
  */
+import { lido } from '@/lib/leitura';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '@storefy/db';
 import type { ChaveDaAppStore } from '@/lib/apple';
@@ -43,10 +44,14 @@ export async function contasDaOrganizacao(
   supabase: Client,
   orgId: string,
 ): Promise<Record<Plataforma, ContaNaTela | null>> {
-  const { data } = await supabase
-    .from('developer_accounts')
-    .select('platform, status, verified_at, apple_team_id, asc_key_id, notes')
-    .eq('org_id', orgId);
+  // Falha ao ler não é "nenhuma conta conectada": o lojista conectaria de novo à toa.
+  const { data } = lido(
+    await supabase
+      .from('developer_accounts')
+      .select('platform, status, verified_at, apple_team_id, asc_key_id, notes')
+      .eq('org_id', orgId),
+    'as contas de desenvolvedor',
+  );
 
   const porPlataforma: Record<Plataforma, ContaNaTela | null> = { apple: null, google: null };
 

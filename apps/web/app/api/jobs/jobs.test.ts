@@ -28,6 +28,7 @@ const RETORNO_PADRAO: Record<string, unknown> = {
   reservar_envios_de_automacao: [],
   campanhas_para_estatistica: [],
   imagens_de_push_sem_campanha: [],
+  imagens_do_app_sem_uso: [],
 };
 
 /** O que foi pedido ao Storage para apagar, e se ele recusa. */
@@ -44,6 +45,8 @@ let respostaDaOneSignal: { status: number; corpo: unknown } = {
 let oneSignalQuebrada = false;
 /** O banco recusa toda chamada, como numa queda de conexão. */
 let bancoQuebrado = false;
+/** Uma função só recusa (a gravação de um número, por exemplo). */
+let rpcQuebrada: string | null = null;
 
 vi.mock('@/lib/env', () => ({
   supabaseConfigurado: true,
@@ -56,7 +59,7 @@ vi.mock('@/lib/supabase/admin', () => ({
   criarClientServiceRole: () => ({
     rpc: (nome: string, args: Record<string, unknown>) => {
       chamadas.push({ nome, args });
-      if (bancoQuebrado) {
+      if (bancoQuebrado || rpcQuebrada === nome) {
         return Promise.resolve({ data: null, error: { message: 'conexão caiu' } });
       }
       /*
@@ -107,6 +110,7 @@ beforeEach(() => {
   respostas = {};
   oneSignalQuebrada = false;
   bancoQuebrado = false;
+  rpcQuebrada = null;
   apagadosDoStorage = [];
   storageQuebrado = false;
   corposDaOneSignal = [];
@@ -368,6 +372,7 @@ describe('GET /api/jobs/push-stats', () => {
       consultadas: 1,
       atualizadas: 1,
       imagensApagadas: 0,
+      imagensDoAppApagadas: 0,
     });
     expect(chamou('gravar_estatistica')[0]?.args.p_stats).toEqual({
       enviados: 950,
@@ -402,6 +407,7 @@ describe('GET /api/jobs/push-stats', () => {
       consultadas: 1,
       atualizadas: 0,
       imagensApagadas: 0,
+      imagensDoAppApagadas: 0,
     });
     expect(chamou('gravar_estatistica')).toHaveLength(0);
   });
@@ -415,6 +421,31 @@ describe('GET /api/jobs/push-stats', () => {
     expect(apagadosDoStorage).toEqual([
       { bucket: 'push-imagens', caminhos: ['loja-1/velha.jpg', 'loja-2/b.jpg'] },
     ]);
+  });
+
+  it('apaga as imagens dos slides que nenhuma versão da config usa, no bucket delas', async () => {
+    respostas = {
+      imagens_de_push_sem_campanha: [{ caminho: 'loja-1/velha.jpg' }],
+      imagens_do_app_sem_uso: [{ caminho: 'loja-1/slide.png' }, { caminho: null }],
+    };
+    const resposta = await estatisticas(comSegredo('/api/jobs/push-stats'));
+    await expect(resposta.json()).resolves.toMatchObject({
+      imagensApagadas: 1,
+      imagensDoAppApagadas: 1,
+    });
+    expect(apagadosDoStorage).toEqual([
+      { bucket: 'push-imagens', caminhos: ['loja-1/velha.jpg'] },
+      { bucket: 'imagens-do-app', caminhos: ['loja-1/slide.png'] },
+    ]);
+  });
+
+  it('a gravação que falha não conta como atualizada', async () => {
+    respostas = { campanhas_para_estatistica: [campanhaEnviada()] };
+    respostaDaOneSignal = { status: 200, corpo: { successful: 10 } };
+    rpcQuebrada = 'gravar_estatistica';
+
+    const resposta = await estatisticas(comSegredo('/api/jobs/push-stats'));
+    await expect(resposta.json()).resolves.toMatchObject({ consultadas: 1, atualizadas: 0 });
   });
 
   it('sem imagem sobrando, não chama o Storage', async () => {
@@ -453,6 +484,7 @@ describe('GET /api/jobs/push-stats', () => {
       consultadas: 2,
       atualizadas: 1,
       imagensApagadas: 0,
+      imagensDoAppApagadas: 0,
     });
   });
 });

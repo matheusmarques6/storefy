@@ -4,6 +4,7 @@ import {
   CorpoDoAparelho,
   CorpoDoEvento,
   CorpoDoPareamento,
+  CorpoDosAvisosDoPush,
   TAMANHO_MAXIMO,
   autorizar,
   lerCaixaDeAvisos,
@@ -13,6 +14,7 @@ import {
   respostaDoAparelho,
   respostaDoEvento,
   respostaDoPareamento,
+  respostaDosAvisosDoPush,
 } from '@/lib/endpoint-do-app';
 import { assinar } from '@/lib/assinatura';
 import { criptografar } from '@/lib/cripto';
@@ -165,6 +167,53 @@ describe('a abertura do envio de automação (C09, C10 e C11)', () => {
     for (const dados of [null, 'CONTADA', true, { contada: true }]) {
       expect(respostaDaAbertura(dados).status, JSON.stringify(dados)).toBe(503);
     }
+  });
+});
+
+describe('os avisos do pedido de permissão (M03)', () => {
+  const SHOPIFY = { platform: 'shopify', shopify_scopes: ['read_orders'] };
+
+  it('só o app assinado pergunta', async () => {
+    const certo = JSON.stringify({ appId: APP });
+    const aceito = await autorizar(CorpoDosAvisosDoPush, certo, comAssinatura(certo), banco, AGORA);
+    expect(aceito.ok).toBe(true);
+
+    const semAssinatura = await autorizar(CorpoDosAvisosDoPush, certo, null, banco, AGORA);
+    expect(semAssinatura.ok).toBe(false);
+    if (!semAssinatura.ok) expect(semAssinatura.resposta.status).toBe(401);
+  });
+
+  it('promete só o que está ligado', () => {
+    expect(respostaDosAvisosDoPush([], SHOPIFY)).toEqual({ status: 200, corpo: { avisos: [] } });
+    expect(
+      respostaDosAvisosDoPush(
+        [{ type: 'back_in_stock' }, { type: 'welcome' }, { type: 'order_shipped' }],
+        SHOPIFY,
+      ),
+    ).toEqual({ status: 200, corpo: { avisos: ['pedido', 'estoque'] } });
+  });
+
+  it('sem a Shopify conectada, pedido enviado e estoque não saem — o carrinho sai', () => {
+    const tudo = [{ type: 'abandoned_cart' }, { type: 'order_shipped' }, { type: 'back_in_stock' }];
+    for (const loja of [
+      { platform: 'shopify', shopify_scopes: null },
+      { platform: 'nuvemshop', shopify_scopes: null },
+    ]) {
+      expect(respostaDosAvisosDoPush(tudo, loja).corpo, JSON.stringify(loja)).toEqual({
+        avisos: ['carrinho'],
+      });
+    }
+  });
+
+  it('uma automação fora do formato fica de fora; o banco fora do formato é 503', () => {
+    expect(
+      respostaDosAvisosDoPush([{ type: null }, { type: 'order_shipped' }], SHOPIFY).corpo,
+    ).toEqual({
+      avisos: ['pedido'],
+    });
+    expect(respostaDosAvisosDoPush(null, SHOPIFY).status).toBe(503);
+    expect(respostaDosAvisosDoPush([], undefined).status).toBe(503);
+    expect(respostaDosAvisosDoPush([], { platform: 'shopify' }).status).toBe(503);
   });
 });
 

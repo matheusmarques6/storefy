@@ -18,7 +18,15 @@ import {
   type ErrosDeCampo,
   type ValoresDigitados,
 } from '@/lib/validacao';
+import { podeExcluir } from '@storefy/db';
 import { criarClientServidor } from '@/lib/supabase/server';
+import { criarClientServiceRole } from '@/lib/supabase/admin';
+import { BUCKET as BUCKET_DOS_ASSETS, caminhoDoAsset } from '@/lib/assets-da-loja';
+import { urlDoSite } from '@/lib/env';
+import { ehDominioDeLoja } from '@/lib/shopify';
+import { apagarWebhooks } from '@/lib/shopify-servidor';
+import { tokenDaLoja } from '@/lib/shopify-conexao';
+import { log } from '@/lib/log';
 import { COOKIE_LOJA, exigirContextoCliente } from '@/lib/contexto';
 import { garantirRascunho, salvarRascunho } from '@/lib/configs-servidor';
 import {
@@ -242,7 +250,40 @@ export async function editarLoja(
 }
 
 export async function excluirLoja(lojaId: string): Promise<void> {
+  const { papel, usuario } = await exigirContextoCliente();
+  // Conferido ANTES de mexer na Shopify: quem não pode excluir não desliga nada.
+  if (!podeExcluir(papel)) {
+    throw new Error('Apenas o proprietário da empresa pode excluir uma loja.');
+  }
+
   const supabase = await criarClientServidor();
+  const { data: loja, error: erroDaLoja } = await supabase
+    .from('stores')
+    .select('id, shopify_scopes')
+    .eq('id', lojaId)
+    .maybeSingle();
+  if (erroDaLoja != null) throw new Error(traduzirErroBanco(erroDaLoja.code, erroDaLoja.message));
+  if (loja == null) throw new Error('Loja não encontrada. Recarregue a página.');
+
+  const servico = criarClientServiceRole({ ator: usuario.id });
+
+  /*
+   * Os webhooks saem da Shopify ANTES de a loja sair daqui, como no
+   * "Desconectar": depois, sem o token, não haveria como apagá-los — e a
+   * Shopify seguiria mandando cada pedido para uma loja que não existe mais.
+   * Melhor esforço: o token pode já ter sido revogado por uma desinstalação.
+   */
+  if (loja.shopify_scopes !== null) {
+    const conexao = await tokenDaLoja(servico, lojaId);
+    if (conexao.ok && ehDominioDeLoja(conexao.dominio)) {
+      try {
+        await apagarWebhooks(conexao.dominio, conexao.token, `${urlDoSite()}/api/webhooks/shopify`);
+      } catch {
+        log.aviso('loja-excluida.webhooks-nao-apagados', { loja: conexao.dominio });
+      }
+    }
+  }
+
   const { data: removida, error } = await supabase
     .from('stores')
     .delete()
@@ -255,6 +296,22 @@ export async function excluirLoja(lojaId: string): Promise<void> {
   }
   if (removida == null) {
     throw new Error('Apenas o proprietário da empresa pode excluir uma loja.');
+  }
+
+  /*
+   * O ícone e a tela de abertura moram no storage, fora do banco: a exclusão
+   * em cascata não os alcança. Sem isto, a imagem de marca de uma loja
+   * excluída ficaria guardada para sempre. As imagens das notificações o job
+   * das estatísticas já apaga, quando nenhuma campanha as usa.
+   */
+  const { error: erroDasImagens } = await servico.storage
+    .from(BUCKET_DOS_ASSETS)
+    .remove([caminhoDoAsset(lojaId, 'icone'), caminhoDoAsset(lojaId, 'splash')]);
+  if (erroDasImagens != null) {
+    log.erro('loja-excluida.imagens-nao-apagadas', {
+      loja: lojaId,
+      motivo: erroDasImagens.message,
+    });
   }
 
   // O cookie apontava para a loja que acabou de sumir.

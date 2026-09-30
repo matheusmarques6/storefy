@@ -1,9 +1,10 @@
 /** Lista de lojas da organização ativa. */
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import { Plus, Store as IconeLoja } from 'lucide-react';
+import { CheckCircle2, Plus, Store as IconeLoja } from 'lucide-react';
 import { ROTULO_STATUS_LOJA, podeEscrever } from '@storefy/db';
 import { exigirContextoCliente } from '@/lib/contexto';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -19,12 +20,27 @@ import {
 
 export const metadata: Metadata = { title: 'Lojas' };
 
-export default async function PaginaLojas() {
+export default async function PaginaLojas({
+  searchParams,
+}: {
+  searchParams: Promise<{ excluida?: string }>;
+}) {
   const { lojas, papel } = await exigirContextoCliente();
   const podeCriar = podeEscrever(papel);
+  // A exclusão volta para cá (`excluirLoja`): sem o aviso, a loja só "sumia".
+  const acabouDeExcluir = (await searchParams).excluida === '1';
 
   return (
     <div className="space-y-6">
+      {acabouDeExcluir ? (
+        <Alert variant="info">
+          <CheckCircle2 aria-hidden />
+          <AlertDescription>
+            Loja excluída. O app dela e as configurações foram apagados.
+          </AlertDescription>
+        </Alert>
+      ) : null}
+
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Lojas</h1>

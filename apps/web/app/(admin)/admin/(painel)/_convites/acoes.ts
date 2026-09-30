@@ -42,19 +42,35 @@ export interface EstadoDoConviteDaPlataforma {
 /** Convites de plataforma por hora. Freia spam pelo nosso domínio de e-mail. */
 const POR_HORA = 60;
 
-async function dentroDoLimite(): Promise<boolean> {
-  const { data } = await criarClientServiceRole().rpc('consumir_limite', {
+/** Com o banco fora, nenhuma das conferências abaixo dá "sim" nem "não". */
+const SEM_CONFERIR = 'Não conseguimos conferir agora. Tente de novo em instantes.';
+
+/** `null` quando não deu para conferir: o banco fora não é "dentro do limite". */
+async function dentroDoLimite(): Promise<boolean | null> {
+  const { data, error } = await criarClientServiceRole().rpc('consumir_limite', {
     p_chave: 'convites:plataforma',
     p_maximo: POR_HORA,
     p_janela_segundos: 3600,
   });
-  return data !== false;
+  if (error != null) {
+    log.erro('convites.limite-nao-conferido', { falha: error });
+    return null;
+  }
+  return data;
 }
 
-async function jaTemConta(email: string): Promise<boolean> {
-  const { data } = await criarClientServiceRole().rpc('admin_usuario_por_email', {
+/**
+ * `null` quando não deu para conferir. Tratar a falha como "não tem conta"
+ * mandaria um convite de cadastro para quem já tem conta.
+ */
+async function jaTemConta(email: string): Promise<boolean | null> {
+  const { data, error } = await criarClientServiceRole().rpc('admin_usuario_por_email', {
     p_email: email,
   });
+  if (error != null) {
+    log.erro('convites.conta-nao-conferida', { falha: error });
+    return null;
+  }
   return data != null;
 }
 
@@ -69,7 +85,9 @@ export async function convidarLojista(
   if (!analise.success) return { erros: extrairErros(analise.error), valores };
   const { email } = analise.data;
 
-  if (await jaTemConta(email)) {
+  const temConta = await jaTemConta(email);
+  if (temConta === null) return { mensagem: SEM_CONFERIR, valores };
+  if (temConta) {
     return {
       erros: {
         email: 'Esse e-mail já tem conta na Storefy: a pessoa entra normalmente, sem convite.',
@@ -77,7 +95,9 @@ export async function convidarLojista(
       valores,
     };
   }
-  if (!(await dentroDoLimite())) {
+  const cabe = await dentroDoLimite();
+  if (cabe === null) return { mensagem: SEM_CONFERIR, valores };
+  if (!cabe) {
     return {
       mensagem: 'Muitos convites em pouco tempo. Espere um pouco e tente de novo.',
       valores,
@@ -102,10 +122,13 @@ export async function convidarLojista(
   };
 }
 
-/** O convite de plataforma em aberto, lido com o cliente de quem pede (RLS). */
+/**
+ * O convite de plataforma em aberto, lido com o cliente de quem pede (RLS).
+ * `falhou` separa o banco fora de "o convite não está mais em aberto".
+ */
 async function conviteEmAberto(id: string) {
   const supabase = await criarClientServidor();
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from('invitations')
     .select('id, kind, email, platform_role')
     .eq('id', id)
@@ -113,20 +136,24 @@ async function conviteEmAberto(id: string) {
     .is('accepted_at', null)
     .is('revoked_at', null)
     .maybeSingle();
-  return { supabase, convite: data };
+  if (error != null) log.erro('convites.convite-nao-lido', { falha: error });
+  return { supabase, convite: data, falhou: error != null };
 }
 
 export async function reenviarConviteDaPlataforma(
   id: string,
 ): Promise<EstadoDoConviteDaPlataforma> {
   const { usuario, papel } = await exigirPlatformAdminComPapel();
-  const { supabase, convite } = await conviteEmAberto(id);
+  const { supabase, convite, falhou } = await conviteEmAberto(id);
+  if (falhou) return { mensagem: SEM_CONFERIR };
   if (convite == null)
     return { mensagem: 'Esse convite não está mais em aberto. Atualize a página.' };
   if (convite.kind === 'equipe' && papel !== 'superadmin') {
     return { mensagem: 'Só superadmin mexe nos convites da equipe.' };
   }
-  if (!(await dentroDoLimite())) {
+  const cabe = await dentroDoLimite();
+  if (cabe === null) return { mensagem: SEM_CONFERIR };
+  if (!cabe) {
     return { mensagem: 'Muitos convites em pouco tempo. Espere um pouco e tente de novo.' };
   }
 
@@ -162,7 +189,8 @@ export async function cancelarConviteDaPlataforma(
   id: string,
 ): Promise<EstadoDoConviteDaPlataforma> {
   const { papel } = await exigirPlatformAdminComPapel();
-  const { supabase, convite } = await conviteEmAberto(id);
+  const { supabase, convite, falhou } = await conviteEmAberto(id);
+  if (falhou) return { mensagem: SEM_CONFERIR };
   if (convite == null)
     return { mensagem: 'Esse convite não está mais em aberto. Atualize a página.' };
   if (convite.kind === 'equipe' && papel !== 'superadmin') {

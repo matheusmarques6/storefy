@@ -5,6 +5,7 @@ import { cookies } from 'next/headers';
 import { revalidatePath } from 'next/cache';
 import { COOKIE_LOJA, COOKIE_ORG } from '@/lib/contexto';
 import { criarClientServidor } from '@/lib/supabase/server';
+import { lido } from '@/lib/leitura';
 
 const UM_ANO = 60 * 60 * 24 * 365;
 
@@ -23,10 +24,11 @@ async function minhasOrganizacoes(
   } = await supabase.auth.getUser();
   if (user == null) return new Set();
 
-  const { data: vinculos } = await supabase
-    .from('memberships')
-    .select('org_id')
-    .eq('user_id', user.id);
+  // O banco fora não é "não é membro de nada": lança, e a troca não acontece.
+  const { data: vinculos } = lido(
+    await supabase.from('memberships').select('org_id').eq('user_id', user.id),
+    'os vínculos do usuário',
+  );
   return new Set((vinculos ?? []).map((vinculo) => vinculo.org_id));
 }
 
@@ -39,10 +41,11 @@ async function minhasOrganizacoes(
  */
 export async function trocarLojaAtiva(lojaId: string): Promise<void> {
   const supabase = await criarClientServidor();
-  const [{ data: loja }, minhas] = await Promise.all([
+  const [lidaLoja, minhas] = await Promise.all([
     supabase.from('stores').select('id, org_id').eq('id', lojaId).maybeSingle(),
     minhasOrganizacoes(supabase),
   ]);
+  const { data: loja } = lido(lidaLoja, 'a loja');
 
   if (loja == null || !minhas.has(loja.org_id)) {
     throw new Error('Loja não encontrada ou sem permissão de acesso.');

@@ -16,7 +16,7 @@ import {
 import { criarClientServidor } from '@/lib/supabase/server';
 import { exigirContextoCliente } from '@/lib/contexto';
 import { urlDoSite } from '@/lib/env';
-import { mensagemDaFalha } from '@/lib/erros';
+import { FALHA_GENERICA, mensagemDaFalha } from '@/lib/erros';
 
 export interface EstadoConfig {
   erros?: ErrosDeCampo;
@@ -215,12 +215,16 @@ export async function salvarAvisos(
   }
 
   const supabase = await criarClientServidor();
-  const { data: atual } = await supabase
+  const { data: atual, error: erroDaLeitura } = await supabase
     .from('email_preferences')
     .select('user_id')
     .eq('org_id', organizacao.id)
     .eq('user_id', usuario.id)
     .maybeSingle();
+  // Sem saber se já existe, o gravar tentaria criar de novo o que existe.
+  if (erroDaLeitura != null) {
+    return { mensagem: mensagemDaFalha('avisos', erroDaLeitura, FALHA_GENERICA) };
+  }
 
   const campos = {
     resposta_do_suporte: respostaDoSuporte,

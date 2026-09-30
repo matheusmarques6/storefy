@@ -22,6 +22,8 @@ let app: {
   package_android: 'br.com.oakvintage.app',
 };
 let configPublicada: unknown = null;
+/** Os builds aprovados: é por eles que o banner sabe em que loja o app já está. */
+let aprovados: { platform: 'ios' | 'android'; store_state: string | null }[] = [];
 let explodir = false;
 
 /** As tabelas consultadas, para provar o que a rota NÃO leu. */
@@ -47,10 +49,18 @@ vi.mock('@/lib/supabase/admin', () => ({
             ? { data: loja, error: null }
             : tabela === 'apps'
               ? { data: app, error: null }
-              : { data: configPublicada == null ? null : { config: configPublicada }, error: null };
+              : tabela === 'builds'
+                ? { data: aprovados, error: null }
+                : {
+                    data: configPublicada == null ? null : { config: configPublicada },
+                    error: null,
+                  };
 
         const encadeavel: Record<string, unknown> = {
           maybeSingle: () => Promise.resolve(resultado),
+          // A lista (os builds) é lida sem `maybeSingle`: a consulta é aguardada direto.
+          then: (resolver: (valor: unknown) => unknown) =>
+            Promise.resolve(resultado).then(resolver),
         };
         for (const metodo of ['select', 'eq', 'not', 'order', 'limit']) {
           encadeavel[metodo] = (...argumentos: unknown[]) => {
@@ -98,6 +108,10 @@ beforeEach(() => {
   loja = { id: 'loja-1' };
   app = { id: 'app-1', ios_asc_app_id: '6478123456', package_android: 'br.com.oakvintage.app' };
   configPublicada = CONFIG;
+  aprovados = [
+    { platform: 'ios', store_state: 'READY_FOR_DISTRIBUTION' },
+    { platform: 'android', store_state: 'PLAY_LIVE' },
+  ];
   explodir = false;
   tabelas = [];
   filtros = [];
@@ -216,13 +230,39 @@ describe('GET /api/public/banner/[loja]', () => {
   });
 
   /*
-   * A rota lê `stores`, `apps` e `app_configs` — e nada mais. Um `select` em
-   * tabela com segredo aqui seria um vazamento numa rota sem autenticação
-   * nenhuma.
+   * O número da App Store e o pacote do Android existem antes da aprovação.
+   * Um convite para baixar um app que ainda não está na loja levava o cliente
+   * a um erro, na vitrine do lojista.
    */
-  it('não encosta em tabela que não seja as três', async () => {
+  it('só convida para a loja de aplicativos em que o app já está', async () => {
+    aprovados = [];
+    expect((await corpo(await chamar('oak-vintage.myshopify.com'))).ativo).toBe(false);
+
+    aprovados = [
+      { platform: 'android', store_state: 'PLAY_LIVE' },
+      { platform: 'ios', store_state: 'PENDING_DEVELOPER_RELEASE' },
+    ];
+    expect(await corpo(await chamar('oak-vintage.myshopify.com'))).toMatchObject({
+      ativo: true,
+      ios: null,
+      android: 'https://play.google.com/store/apps/details?id=br.com.oakvintage.app',
+      smartBanner: null,
+    });
+    expect(filtros.filter((f) => f.tabela === 'builds').map((f) => f.filtro)).toContainEqual([
+      'eq',
+      'status',
+      'approved',
+    ]);
+  });
+
+  /*
+   * A rota lê `stores`, `apps`, `app_configs` e `builds` (só a plataforma e o
+   * estado na loja) — e nada mais. Um `select` em tabela com segredo aqui
+   * seria um vazamento numa rota sem autenticação nenhuma.
+   */
+  it('não encosta em tabela que não seja as quatro', async () => {
     await chamar('oak-vintage.myshopify.com');
 
-    expect([...new Set(tabelas)].sort()).toEqual(['app_configs', 'apps', 'stores']);
+    expect([...new Set(tabelas)].sort()).toEqual(['app_configs', 'apps', 'builds', 'stores']);
   });
 });

@@ -91,7 +91,7 @@ const O_QUE_A_ABA_ABRE: Record<Tab['type'], string> = {
 };
 
 const MOMENTO_DO_PEDIDO: Record<AppConfig['features']['pushPromptTiming'], string> = {
-  onboarding: 'logo nas boas-vindas',
+  onboarding: 'nas primeiras aberturas do app',
   after_first_add_to_cart: 'depois do primeiro item no carrinho',
   manual: 'só quando a loja pedir',
 };

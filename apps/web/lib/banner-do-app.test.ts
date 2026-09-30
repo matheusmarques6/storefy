@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
-  MAXIMO_DO_TEXTO,
-  TEXTO_PADRAO,
   linkDaAppStore,
   linkDaPlayStore,
+  MAXIMO_DO_TEXTO,
   montarBanner,
+  plataformasNoAr,
+  TEXTO_PADRAO,
   textoDoBanner,
 } from '@/lib/banner-do-app';
 
@@ -130,5 +131,41 @@ describe('linkDaPlayStore', () => {
     ]) {
       expect(linkDaPlayStore(pacote), String(pacote)).toBeNull();
     }
+  });
+});
+
+describe('plataformasNoAr', () => {
+  /*
+   * O número da App Store e o pacote do Android existem antes da aprovação: o
+   * banner com eles mandava o cliente para um app que ainda não estava na loja.
+   */
+  it('sem build aprovado, o app não está em loja nenhuma', () => {
+    expect(plataformasNoAr([])).toEqual({ ios: false, android: false });
+  });
+
+  it('aprovado na Play Store conta; na Apple, só depois de liberado', () => {
+    expect(
+      plataformasNoAr([
+        { platform: 'android', store_state: 'PLAY_LIVE' },
+        { platform: 'ios', store_state: 'PENDING_DEVELOPER_RELEASE' },
+      ]),
+    ).toEqual({ ios: false, android: true });
+    expect(plataformasNoAr([{ platform: 'ios', store_state: 'READY_FOR_DISTRIBUTION' }])).toEqual({
+      ios: true,
+      android: false,
+    });
+  });
+
+  it('uma versão nova esperando liberação não tira do ar a que já está na loja', () => {
+    expect(
+      plataformasNoAr([
+        { platform: 'ios', store_state: 'READY_FOR_SALE' },
+        { platform: 'ios', store_state: 'PENDING_APPLE_RELEASE' },
+      ]).ios,
+    ).toBe(true);
+  });
+
+  it('o aprovado de antes do acompanhamento da loja (sem estado) conta, como contava', () => {
+    expect(plataformasNoAr([{ platform: 'ios', store_state: null }]).ios).toBe(true);
   });
 });

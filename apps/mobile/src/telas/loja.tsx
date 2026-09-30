@@ -666,10 +666,15 @@ export function Loja({
                 <CaixaDeAvisos
                   avisos={push.avisos}
                   carregando={push.caixaCarregando}
+                  situacao={push.situacaoDaCaixa}
+                  desatualizada={push.caixaDesatualizada}
+                  nomeDaLoja={config.store.name}
                   tema={config.theme}
                   aoRecarregar={push.recarregarCaixa}
                   aoMarcarTudoLido={push.marcarTudoLido}
                   aoAbrirAjustes={abrirAjustes}
+                  aoAtivarNotificacoes={push.ligarAsNotificacoes}
+                  ativando={push.mudandoNotificacoes}
                   aoTocar={(aviso) => {
                     push.marcarAvisoLido(aviso.id);
                     if (aviso.deepLink !== null) abrirCaminho(aviso.deepLink);
@@ -705,6 +710,7 @@ export function Loja({
         visivel={push.mostrarPrePrompt}
         nomeDaLoja={config.store.name}
         tema={config.theme}
+        avisos={push.avisosPrometidos}
         aoAceitar={push.aceitarNoPrePrompt}
         aoRecusar={push.recusarNoPrePrompt}
       />

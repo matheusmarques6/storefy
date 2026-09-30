@@ -9,6 +9,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   avisarQuandoVoltar,
+  avisosParaPrometer,
   carrinhoMudou,
   checkoutIniciado,
   contarAberturaDoEnvio,
@@ -478,6 +479,53 @@ describe('contarAberturaDoEnvio', () => {
     ).resolves.toBe(false);
     expect(buscador).not.toHaveBeenCalled();
     await expect(contarAberturaDoEnvio(dependencias(notificador), ENVIO)).resolves.toBe(false);
+  });
+});
+
+describe('avisosParaPrometer', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('pergunta à rota dos avisos, assinado, e lê a resposta', async () => {
+    const { notificador } = fingirNotificador();
+    const enviados: { url: string; corpo: unknown; assinatura: string | null }[] = [];
+    vi.stubGlobal('fetch', (url: string, init?: RequestInit) => {
+      enviados.push({
+        url,
+        corpo: JSON.parse(typeof init?.body === 'string' ? init.body : '{}'),
+        assinatura: new Headers(init?.headers).get('x-storefy-signature'),
+      });
+      return Promise.resolve(new Response(JSON.stringify({ avisos: ['estoque', 'pix'] })));
+    });
+
+    await expect(avisosParaPrometer(dependencias(notificador))).resolves.toEqual(['estoque']);
+    expect(enviados).toEqual([
+      {
+        url: `${CREDENCIAIS.apiBase}/api/public/push-avisos`,
+        corpo: { appId: CREDENCIAIS.appId },
+        assinatura: expect.stringMatching(/^t=\d+,v1=[0-9a-f]{64}$/) as string,
+      },
+    ]);
+  });
+
+  it('"nenhum" é resposta; sem credencial, sem rede ou com erro é "não sei"', async () => {
+    const { notificador } = fingirNotificador();
+    vi.stubGlobal('fetch', () => Promise.resolve(new Response(JSON.stringify({ avisos: [] }))));
+    await expect(avisosParaPrometer(dependencias(notificador))).resolves.toEqual([]);
+
+    const buscador = vi.fn(() => Promise.reject(new Error('sem rede')));
+    vi.stubGlobal('fetch', buscador);
+    await expect(
+      avisosParaPrometer(dependencias(notificador, { credenciais: null })),
+    ).resolves.toBeNull();
+    expect(buscador).not.toHaveBeenCalled();
+    await expect(avisosParaPrometer(dependencias(notificador))).resolves.toBeNull();
+
+    vi.stubGlobal('fetch', () =>
+      Promise.resolve(new Response(JSON.stringify({ erro: 'indisponivel' }), { status: 503 })),
+    );
+    await expect(avisosParaPrometer(dependencias(notificador))).resolves.toBeNull();
   });
 });
 

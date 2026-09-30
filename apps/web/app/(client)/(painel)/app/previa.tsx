@@ -35,14 +35,16 @@ import {
   TelaInicialNaPrevia,
   type IdentidadeNaPrevia,
 } from './previa-da-identidade';
+import { BoasVindasNaPrevia } from './previa-das-boas-vindas';
 
-/** O que a moldura mostra: a loja, o ícone na tela inicial ou a abertura. */
-type Vista = 'loja' | 'icone' | 'abertura';
+/** O que a moldura mostra: a loja, o ícone na tela inicial, a abertura ou as boas-vindas. */
+type Vista = 'loja' | 'icone' | 'abertura' | 'boas-vindas';
 
 const ROTULO_DA_VISTA: Record<Vista, string> = {
   loja: 'Loja',
   icone: 'Ícone',
   abertura: 'Abertura',
+  'boas-vindas': 'Boas-vindas',
 };
 
 /**
@@ -75,6 +77,11 @@ interface Props {
    * e "Abertura"; sem eles (o começo, C03), fica só a loja.
    */
   identidade?: IdentidadeNaPrevia;
+  /**
+   * A tela de boas-vindas que o lojista está editando (C06d). Cada pedido
+   * novo (um objeto novo) leva a prévia até ela.
+   */
+  slideEmFoco?: { indice: number } | null;
 }
 
 export function Previa({
@@ -86,11 +93,32 @@ export function Previa({
   selecionando,
   aoEscolherSeletor,
   identidade,
+  slideEmFoco = null,
 }: Props) {
   const { theme } = config;
+  const slides = config.features.onboardingSlides;
   const [vistaEscolhida, setVista] = useState<Vista>('loja');
-  // Escolher o que esconder é na loja: a vista volta para ela.
-  const vista = identidade === undefined || selecionando ? 'loja' : vistaEscolhida;
+  const [slideNaPrevia, setSlideNaPrevia] = useState(0);
+
+  // O lojista entrou num campo de uma tela de boas-vindas: a prévia vai até ela.
+  const [focoAnterior, setFocoAnterior] = useState(slideEmFoco);
+  if (slideEmFoco !== focoAnterior) {
+    setFocoAnterior(slideEmFoco);
+    if (slideEmFoco !== null) {
+      setVista('boas-vindas');
+      setSlideNaPrevia(slideEmFoco.indice);
+    }
+  }
+
+  const vistas: Vista[] =
+    slides.length > 0
+      ? ['loja', 'icone', 'abertura', 'boas-vindas']
+      : ['loja', 'icone', 'abertura'];
+  // Escolher o que esconder é na loja: a vista volta para ela. Sem slides, não há boas-vindas.
+  const vista =
+    identidade === undefined || selecionando || !vistas.includes(vistaEscolhida)
+      ? 'loja'
+      : vistaEscolhida;
   const ativa = config.tabs.find((aba) => aba.id === abaAtiva) ?? config.tabs[0];
   const iframe = useRef<HTMLIFrameElement>(null);
   const [aparelho, trocarAparelho] = useAparelhoDaPrevia();
@@ -195,7 +223,7 @@ export function Previa({
             aria-label="O que ver na prévia"
             className="border-input inline-flex gap-1 rounded-lg border p-1"
           >
-            {(['loja', 'icone', 'abertura'] as const).map((opcao) => (
+            {vistas.map((opcao) => (
               <button
                 key={opcao}
                 type="button"
@@ -234,6 +262,19 @@ export function Previa({
         {identidade !== undefined && vista === 'abertura' ? (
           <div className="h-[560px]">
             <AberturaNaPrevia identidade={identidade} />
+          </div>
+        ) : null}
+        {identidade !== undefined && vista === 'boas-vindas' ? (
+          <div className="h-[560px]">
+            <BoasVindasNaPrevia
+              slides={slides}
+              tema={theme}
+              indice={slideNaPrevia}
+              aoTrocar={setSlideNaPrevia}
+              aoPular={() => {
+                setVista('loja');
+              }}
+            />
           </div>
         ) : null}
 

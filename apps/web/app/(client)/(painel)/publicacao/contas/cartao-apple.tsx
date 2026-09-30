@@ -24,6 +24,7 @@ import { CampoDeArquivo } from './campo-de-arquivo';
 import { EstadoDaConta } from './estado-da-conta';
 import { VideoDoPassoAPasso } from './video-do-passo-a-passo';
 import { conectarApple, desconectarConta } from '../acoes';
+import { ConfirmarDesconexao } from './confirmar-desconexao';
 
 const VAZIO = {
   ascP8: '',
@@ -66,16 +67,26 @@ export function CartaoDaApple({
     });
   }
 
-  function remover() {
-    iniciar(async () => {
+  const [desconectando, setDesconectando] = useState(false);
+
+  /** Desconecta, depois da confirmação; `true` quando deu certo. */
+  async function remover(): Promise<boolean> {
+    setDesconectando(true);
+    try {
       const resultado = await desconectarConta('apple');
-      if (resultado.ok === true) {
-        toast.success(resultado.mensagem ?? 'Desconectada.');
-        router.refresh();
-      } else {
+      if (resultado.ok !== true) {
         toast.error(resultado.mensagem ?? 'Não foi possível desconectar.');
+        return false;
       }
-    });
+      toast.success(resultado.mensagem ?? 'Desconectada.');
+      router.refresh();
+      return true;
+    } catch {
+      toast.error('Não conseguimos falar com a Storefy. Confira a internet e tente de novo.');
+      return false;
+    } finally {
+      setDesconectando(false);
+    }
   }
 
   const trocar = (campo: keyof typeof VAZIO, valor: string): void => {
@@ -240,9 +251,11 @@ export function CartaoDaApple({
                 Validar e conectar
               </Button>
               {conectada ? (
-                <Button type="button" variant="ghost" disabled={enviando} onClick={remover}>
-                  Desconectar
-                </Button>
+                <ConfirmarDesconexao
+                  plataforma="apple"
+                  ocupado={enviando || desconectando}
+                  aoConfirmar={remover}
+                />
               ) : null}
             </div>
 

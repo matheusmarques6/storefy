@@ -66,6 +66,13 @@ export default async function PaginaAjuda({
         <p className="text-muted-foreground mt-1 text-sm">
           Guias de cada parte do painel e, se precisar, uma conversa com a equipe da Storefy.
         </p>
+        <p className="text-muted-foreground mt-1 text-sm">
+          Uma notificação atrasou ou algo parou?{' '}
+          <Link href="/status" className="text-primary underline-offset-4 hover:underline">
+            Veja como a Storefy está agora
+          </Link>
+          : a página mostra o envio das notificações e as rotinas, atualizada sozinha.
+        </p>
       </div>
 
       <section aria-labelledby="titulo-artigos" className="space-y-4">

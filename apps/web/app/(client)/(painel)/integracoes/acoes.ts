@@ -46,7 +46,7 @@ export async function conectarShopifyManual(
   _anterior: EstadoDaIntegracao,
   dados: FormData,
 ): Promise<EstadoDaIntegracao> {
-  const { lojaAtiva, papel } = await exigirContextoCliente();
+  const { lojaAtiva, papel, usuario } = await exigirContextoCliente();
 
   if (lojaAtiva == null) return { mensagem: 'Nenhuma loja selecionada.' };
   if (papel !== 'owner' && papel !== 'admin') {
@@ -54,7 +54,7 @@ export async function conectarShopifyManual(
   }
 
   const resultado = await conectarPeloAppDoLojista(
-    criarClientServiceRole(),
+    criarClientServiceRole({ ator: usuario.id }),
     {
       storeId: lojaAtiva.id,
       dominio: texto(dados.get('dominio')),
@@ -84,7 +84,7 @@ function texto(valor: FormDataEntryValue | null): string {
 }
 
 export async function desconectarShopify(): Promise<EstadoDaIntegracao> {
-  const { lojaAtiva, papel } = await exigirContextoCliente();
+  const { lojaAtiva, papel, usuario } = await exigirContextoCliente();
 
   if (lojaAtiva == null) {
     return { mensagem: 'Nenhuma loja selecionada.' };
@@ -96,7 +96,7 @@ export async function desconectarShopify(): Promise<EstadoDaIntegracao> {
     return { mensagem: 'Esta loja já está desconectada.' };
   }
 
-  const servico = criarClientServiceRole();
+  const servico = criarClientServiceRole({ ator: usuario.id });
 
   /*
    * `tokenDaLoja` renova o token se preciso, e é isso que faz a limpeza

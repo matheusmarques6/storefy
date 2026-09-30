@@ -13,7 +13,7 @@ import { exigirPlatformAdmin } from '@/lib/contexto';
 import { criarClientServidor } from '@/lib/supabase/server';
 import { respostaSchema } from '@/lib/chamados';
 import { avisarQuemAbriu } from '@/lib/chamados-servidor';
-import { mensagemDaFalha } from '@/lib/erros';
+import { FALHA_GENERICA, mensagemDaFalha } from '@/lib/erros';
 import {
   extrairErros,
   valoresDigitados,
@@ -39,11 +39,14 @@ export async function responderComoEquipe(
   if (!analise.success) return { erros: extrairErros(analise.error), valores };
 
   const supabase = await criarClientServidor();
-  const { data: chamado } = await supabase
+  const { data: chamado, error: erroDoChamado } = await supabase
     .from('support_tickets')
     .select('id, titulo')
     .eq('id', ticketId)
     .maybeSingle();
+  if (erroDoChamado != null) {
+    return { mensagem: mensagemDaFalha('admin-chamado', erroDoChamado, FALHA_GENERICA), valores };
+  }
   if (chamado == null) return { mensagem: 'Chamado não encontrado.', valores };
 
   const { error } = await supabase.from('support_messages').insert({

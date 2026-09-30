@@ -99,12 +99,18 @@ export async function conectarPeloAppDoLojista(
    * conferir aqui existe para a mensagem ser uma frase em vez de um erro de
    * constraint.
    */
-  const { data: jaConectada } = await servico
+  const { data: jaConectada, error: erroDaConferencia } = await servico
     .from('stores')
     .select('id')
     .eq('shop_domain', dominio)
     .not('shopify_access_token_enc', 'is', null)
     .maybeSingle();
+  if (erroDaConferencia != null) {
+    return {
+      ok: false,
+      motivo: 'Não conseguimos conferir a loja agora. Tente de novo em instantes.',
+    };
+  }
 
   if (jaConectada != null && jaConectada.id !== pedido.storeId) {
     return {

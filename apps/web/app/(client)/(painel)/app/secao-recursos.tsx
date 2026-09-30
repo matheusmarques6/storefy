@@ -1,8 +1,19 @@
 'use client';
 
 /** Boas-vindas e permissões (C06d); banner, aviso no topo e recursos do app (C06e). */
+import { useState } from 'react';
 import { Plus, Trash2 } from 'lucide-react';
 import type { AppConfig } from '@storefy/config-schema';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -10,24 +21,44 @@ import { Select } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import {
+  MAX_SLIDES,
   MAX_TEXTO_DO_AVISO,
+  MAX_TEXTO_DO_SLIDE,
+  MAX_TITULO_DO_SLIDE,
   avisoDaConfig,
   editarAviso,
   editarRecursos,
 } from '@/lib/editor-de-config';
+import { ImagemDoSlide } from './imagem-do-slide';
 import { SecaoAtualizacao } from './secao-atualizacao';
 
-const MAX_SLIDES = 4;
+/**
+ * O que o app faz com cada escolha, dito como o app faz (`apps/mobile/src/push/permissao.ts`).
+ * A opção dizia "logo nas boas-vindas", e o app — de propósito — não pergunta na
+ * primeira abertura, quando o cliente ainda nem viu a loja.
+ */
+const EXPLICACAO_DO_MOMENTO: Record<AppConfig['features']['pushPromptTiming'], string> = {
+  onboarding:
+    'A partir da segunda abertura do app: na primeira, o cliente ainda está conhecendo a loja. Se ele puser algo no carrinho antes, o pedido aparece ali.',
+  after_first_add_to_cart:
+    'Quando o cliente põe o primeiro item no carrinho — costuma ter a melhor aceitação.',
+  manual: 'Só quando uma página da loja pedir, por um botão como "me avise".',
+};
 
 export function SecaoRecursos({
+  storeId,
   config,
   aoMudar,
   somenteLeitura,
   pushConfigurado,
   numeroExigivel,
+  aoVerSlide,
 }: {
+  storeId: string;
   config: AppConfig;
   aoMudar: (config: AppConfig) => void;
+  /** O lojista está numa tela de boas-vindas: a prévia vai até ela. */
+  aoVerSlide?: (indice: number) => void;
   somenteLeitura: boolean;
   /** O app já tem push ligado? Muda o que o momento do pedido significa. */
   pushConfigurado: boolean;
@@ -66,16 +97,24 @@ export function SecaoRecursos({
         ) : (
           <ul className="space-y-3">
             {features.onboardingSlides.map((slide, indice) => (
-              <li key={indice} className="space-y-3 rounded-xl border p-4">
+              <li
+                key={indice}
+                className="space-y-3 rounded-xl border p-4"
+                // O foco em qualquer campo da tela leva a prévia até ela.
+                onFocus={() => aoVerSlide?.(indice)}
+              >
                 <div className="flex items-center justify-between">
                   <span className="text-sm font-medium">Tela {indice + 1}</span>
-                  <Button
-                    type="button"
-                    size="icon"
-                    variant="ghost"
-                    aria-label={`Remover tela ${String(indice + 1)}`}
-                    disabled={somenteLeitura}
-                    onClick={() => {
+                  <RemoverSlide
+                    numero={indice + 1}
+                    // Uma tela em branco sai direto; a escrita, só confirmando.
+                    temConteudo={
+                      slide.title.trim() !== '' ||
+                      slide.body.trim() !== '' ||
+                      slide.image.trim() !== ''
+                    }
+                    desabilitado={somenteLeitura}
+                    aoRemover={() => {
                       aoMudar(
                         editarRecursos(config, {
                           onboardingSlides: features.onboardingSlides.filter(
@@ -84,9 +123,7 @@ export function SecaoRecursos({
                         }),
                       );
                     }}
-                  >
-                    <Trash2 className="text-destructive size-4" aria-hidden />
-                  </Button>
+                  />
                 </div>
 
                 <div className="space-y-1.5">
@@ -94,10 +131,17 @@ export function SecaoRecursos({
                   <Input
                     id={`slide-${String(indice)}-titulo`}
                     value={slide.title}
+                    placeholder="Bem-vindo à loja"
                     disabled={somenteLeitura}
+                    aria-describedby={`slide-${String(indice)}-titulo-ajuda`}
                     onChange={(evento) => {
                       trocarSlide(indice, { title: evento.target.value });
                     }}
+                  />
+                  <Contador
+                    id={`slide-${String(indice)}-titulo-ajuda`}
+                    texto={slide.title}
+                    maximo={MAX_TITULO_DO_SLIDE}
                   />
                 </div>
 
@@ -106,30 +150,31 @@ export function SecaoRecursos({
                   <Textarea
                     id={`slide-${String(indice)}-texto`}
                     value={slide.body}
+                    placeholder="Frete grátis na primeira compra pelo app."
                     className="min-h-16"
                     disabled={somenteLeitura}
+                    aria-describedby={`slide-${String(indice)}-texto-ajuda`}
                     onChange={(evento) => {
                       trocarSlide(indice, { body: evento.target.value });
                     }}
                   />
+                  <Contador
+                    id={`slide-${String(indice)}-texto-ajuda`}
+                    texto={slide.body}
+                    maximo={MAX_TEXTO_DO_SLIDE}
+                  />
                 </div>
 
-                <div className="space-y-1.5">
-                  <Label htmlFor={`slide-${String(indice)}-imagem`}>Imagem (endereço)</Label>
-                  <Input
-                    id={`slide-${String(indice)}-imagem`}
-                    value={slide.image}
-                    placeholder="https://..."
-                    spellCheck={false}
-                    disabled={somenteLeitura}
-                    onChange={(evento) => {
-                      trocarSlide(indice, { image: evento.target.value });
-                    }}
-                  />
-                  <p className="text-muted-foreground text-xs">
-                    Opcional. Deixe em branco para a tela ficar só com título e texto.
-                  </p>
-                </div>
+                <ImagemDoSlide
+                  storeId={storeId}
+                  indice={indice}
+                  url={slide.image}
+                  fundo={config.theme.background}
+                  somenteLeitura={somenteLeitura}
+                  aoMudar={(url) => {
+                    trocarSlide(indice, { image: url });
+                  }}
+                />
               </li>
             ))}
           </ul>
@@ -149,6 +194,7 @@ export function SecaoRecursos({
                   ],
                 }),
               );
+              aoVerSlide?.(features.onboardingSlides.length);
             }}
           >
             <Plus className="size-4" aria-hidden />
@@ -206,8 +252,10 @@ export function SecaoRecursos({
             */}
             <p className="text-muted-foreground border-input rounded-lg border p-3 text-xs">
               Falta um passo na Shopify: em <strong>Loja virtual › Temas › Personalizar</strong>,
-              abra <strong>Configurações do app</strong> e ligue o bloco <strong>Storefy</strong>. É
-              uma vez só — depois o texto e os links saem daqui.
+              abra o ícone de apps na barra da esquerda e ligue o <strong>Banner do app</strong>, da
+              Storefy. É uma vez só — depois o texto e os links saem daqui. A faixa aparece quando o
+              app estiver na App Store ou na Play Store, com o link só da loja em que ele já está, e
+              só no celular de quem ainda não tem o app.
             </p>
           </div>
         ) : null}
@@ -298,13 +346,13 @@ export function SecaoRecursos({
               );
             }}
           >
-            <option value="onboarding">Logo nas boas-vindas</option>
+            <option value="onboarding">Nas primeiras aberturas do app</option>
             <option value="after_first_add_to_cart">Depois do primeiro item no carrinho</option>
             <option value="manual">Só quando a loja pedir</option>
           </Select>
           <p className="text-muted-foreground text-xs">
             {pushConfigurado
-              ? 'O sistema mostra esse pedido uma vez só. Depois do primeiro item no carrinho costuma ter a melhor aceitação.'
+              ? `${EXPLICACAO_DO_MOMENTO[features.pushPromptTiming]} O sistema mostra esse pedido uma vez só. Antes dele, o app explica o que o cliente vai receber: as promoções e os avisos das automações que você deixou ligadas.`
               : 'As notificações ainda não estão configuradas neste app. Esta escolha passa a valer quando estiverem.'}
           </p>
         </div>
@@ -358,5 +406,75 @@ export function SecaoRecursos({
         numeroExigivel={numeroExigivel}
       />
     </div>
+  );
+}
+
+/** Quantos caracteres o campo tem, em vermelho quando passa do que cabe na tela. */
+function Contador({ id, texto, maximo }: { id: string; texto: string; maximo: number }) {
+  const tamanho = texto.trim().length;
+  return (
+    <p
+      id={id}
+      className={tamanho > maximo ? 'text-destructive text-xs' : 'text-muted-foreground text-xs'}
+    >
+      {tamanho} de {maximo} caracteres.
+    </p>
+  );
+}
+
+/**
+ * Tirar uma tela de boas-vindas. A que tem texto ou imagem pede confirmação:
+ * o rascunho grava sozinho, e o que foi escrito ali não volta.
+ */
+function RemoverSlide({
+  numero,
+  temConteudo,
+  desabilitado,
+  aoRemover,
+}: {
+  numero: number;
+  temConteudo: boolean;
+  desabilitado: boolean;
+  aoRemover: () => void;
+}) {
+  const [confirmando, setConfirmando] = useState(false);
+
+  return (
+    <>
+      <Button
+        type="button"
+        size="icon"
+        variant="ghost"
+        aria-label={`Remover tela ${String(numero)}`}
+        disabled={desabilitado}
+        onClick={() => {
+          if (temConteudo) setConfirmando(true);
+          else aoRemover();
+        }}
+      >
+        <Trash2 className="text-destructive size-4" aria-hidden />
+      </Button>
+      <AlertDialog open={confirmando} onOpenChange={setConfirmando}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remover a tela {numero}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              O título, o texto e a imagem desta tela saem do rascunho. Os clientes só deixam de
+              vê-la quando você publicar.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                aoRemover();
+              }}
+            >
+              Remover
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   );
 }

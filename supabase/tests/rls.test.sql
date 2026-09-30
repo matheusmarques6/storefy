@@ -9231,6 +9231,253 @@ select tests.ok('números das automações',
     where app_id = (select app from tests.na)),
   'o C11 soma os envios e as aberturas das automações nos dias delas');
 
+-- ============================== grupo: o autor das ações do servidor (migration 70)
+--
+-- Parte do que o lojista faz é gravado pelo servidor com a service role, e a
+-- trilha dizia "o sistema". O servidor declara o autor no cabeçalho
+-- `x-storefy-ator`; o gatilho só o aceita da service role.
+
+reset role;
+select tests.logout();
+
+insert into auth.users (email, raw_user_meta_data, email_confirmed_at) values
+  ('ad-dono@teste.local',  '{"company_name":"Autor Declarado"}'::jsonb, now()),
+  ('ad-outro@teste.local', '{"company_name":"Autor Outro"}'::jsonb,     now());
+
+drop table if exists tests.ad;
+create table tests.ad as
+select (select id from auth.users where email = 'ad-dono@teste.local')  as dono,
+       (select id from auth.users where email = 'ad-outro@teste.local') as outro,
+       (select m.org_id from public.memberships m join auth.users u on u.id = m.user_id
+         where u.email = 'ad-dono@teste.local') as org;
+insert into public.stores (org_id, name, primary_url)
+select org, 'Loja Autor', 'https://loja-autor.com.br' from tests.ad;
+alter table tests.ad add column app uuid;
+update tests.ad set app = (select a.id from public.apps a join public.stores s on s.id = a.store_id
+                            where s.name = 'Loja Autor');
+grant select on tests.ad to anon, authenticated, service_role;
+
+-- O servidor, com a service role, declara quem pediu — como `criarClientServiceRole({ ator })`.
+select set_config('request.jwt.claims', '{"role":"service_role"}', false);
+select set_config('request.headers',
+  json_build_object('x-storefy-ator', (select dono from tests.ad))::text, false);
+set role service_role;
+update public.apps set display_name = 'Nome pelo servidor' where id = (select app from tests.ad);
+reset role;
+
+select tests.ok('autor declarado',
+  (select l.actor_id = (select dono from tests.ad)
+     from public.audit_logs l
+    where l.entity = 'apps' and l.entity_id = (select app from tests.ad)
+      and l.diff ? 'display_name'
+    order by l.created_at desc limit 1),
+  'a service role grava com o autor que o servidor declarou, e não "o sistema"');
+
+-- Sem o cabeçalho, continua "o sistema" (um job, um webhook).
+select set_config('request.headers', '{}', false);
+set role service_role;
+update public.apps set display_name = 'Nome pelo job' where id = (select app from tests.ad);
+reset role;
+
+select tests.ok('autor declarado',
+  (select l.actor_id is null
+     from public.audit_logs l
+    where l.entity = 'apps' and l.entity_id = (select app from tests.ad)
+      and l.diff -> 'display_name' ->> 'para' = 'Nome pelo job'),
+  'sem autor declarado, a trilha diz "o sistema", como antes');
+
+-- A sessão manda o cabeçalho dizendo ser outra pessoa: vale a sessão.
+select tests.login('ad-dono@teste.local');
+select set_config('request.headers',
+  json_build_object('x-storefy-ator', (select outro from tests.ad))::text, false);
+set role authenticated;
+insert into public.push_automations (app_id, type, enabled, title, body)
+select app, 'welcome', true, 'Oi', 'Bem-vindo' from tests.ad;
+reset role;
+
+select tests.ok('autor declarado',
+  (select l.actor_id = (select dono from tests.ad)
+     from public.audit_logs l
+    where l.entity = 'push_automations' and l.org_id = (select org from tests.ad)
+      and l.action = 'create'),
+  'com sessão, o cabeçalho não troca o autor: um navegador não forja quem fez');
+
+-- Só a service role declara; e só um id de usuário que existe.
+select set_config('request.headers',
+  json_build_object('x-storefy-ator', (select outro from tests.ad))::text, false);
+select tests.ok('autor declarado',
+  public.ator_declarado() is null,
+  'o cabeçalho de uma sessão não vale nem lido direto');
+
+select set_config('request.jwt.claims', '{"role":"service_role"}', false);
+select set_config('request.headers', '{"x-storefy-ator": "11111111-1111-4111-8111-111111111111"}', false);
+select tests.ok('autor declarado',
+  public.ator_declarado() is null,
+  'um id que não é de ninguém não vira autor');
+
+select set_config('request.headers', '{"x-storefy-ator": "robert''); drop table x; --"}', false);
+select tests.ok('autor declarado',
+  public.ator_declarado() is null,
+  'e um valor fora do formato também não');
+
+select set_config('request.headers', '', false);
+select tests.logout();
+
+-- ============================== grupo: C06d — a imagem dos slides (migration 71)
+--
+-- A imagem do slide é enviada pelo painel e mora num bucket público, na pasta
+-- da loja. Só owner e admin enviam; ninguém lista a pasta de outra loja; e a
+-- imagem que nenhuma versão da config usa volta para o job apagar — mas não a
+-- de uma versão antiga, que o histórico pode restaurar.
+
+reset role;
+select tests.logout();
+
+insert into auth.users (email, raw_user_meta_data, email_confirmed_at) values
+  ('sl-dono@teste.local',   '{"company_name":"Sl Dono"}'::jsonb,   now()),
+  ('sl-outro@teste.local',  '{"company_name":"Sl Outro"}'::jsonb,  now()),
+  ('sl-membro@teste.local', '{"company_name":"Sl Membro"}'::jsonb, now());
+
+drop table if exists tests.sl;
+create table tests.sl as
+select
+  (select id from auth.users where email = 'sl-membro@teste.local') as u_membro,
+  (select m.org_id from public.memberships m
+     join auth.users u on u.id = m.user_id where u.email = 'sl-dono@teste.local')  as org_dono,
+  (select m.org_id from public.memberships m
+     join auth.users u on u.id = m.user_id where u.email = 'sl-outro@teste.local') as org_outro,
+  extensions.gen_random_uuid() as no_rascunho,
+  extensions.gen_random_uuid() as na_versao_antiga,
+  extensions.gen_random_uuid() as esquecida,
+  extensions.gen_random_uuid() as recente;
+
+insert into public.memberships (org_id, user_id, role)
+select org_dono, u_membro, 'member' from tests.sl;
+
+insert into public.stores (org_id, name, primary_url)
+select org_dono, 'Loja Slides', 'https://loja-slides.com.br' from tests.sl;
+insert into public.stores (org_id, name, primary_url)
+select org_outro, 'Loja Slides Outra', 'https://loja-slides-outra.com.br' from tests.sl;
+
+alter table tests.sl add column loja uuid, add column loja_outra uuid, add column app uuid;
+update tests.sl set
+  loja = (select id from public.stores where name = 'Loja Slides'),
+  loja_outra = (select id from public.stores where name = 'Loja Slides Outra');
+update tests.sl set app = (select a.id from public.apps a where a.store_id = tests.sl.loja);
+grant select on tests.sl to anon, authenticated, service_role;
+
+select tests.login('sl-dono@teste.local');
+set role authenticated;
+
+select tests.ok('slides',
+  tests.permitido($q$insert into storage.objects (bucket_id, name)
+    select 'imagens-do-app', loja::text || '/' || no_rascunho::text || '.png' from tests.sl$q$),
+  'o dono envia a imagem do slide para a pasta da própria loja');
+
+select tests.ok('isolamento',
+  tests.bloqueado($q$insert into storage.objects (bucket_id, name)
+    select 'imagens-do-app', loja_outra::text || '/intrusa.png' from tests.sl$q$),
+  'mas não para a pasta de outra loja');
+
+reset role;
+select tests.login('sl-membro@teste.local');
+set role authenticated;
+
+select tests.ok('papéis',
+  tests.bloqueado($q$insert into storage.objects (bucket_id, name)
+    select 'imagens-do-app', loja::text || '/do-membro.png' from tests.sl$q$),
+  'member NÃO envia imagem de slide');
+
+select tests.ok('slides',
+  tests.contar($q$select count(*) from storage.objects where bucket_id = 'imagens-do-app'$q$) = 1,
+  'mas enxerga as imagens da loja dele');
+
+reset role;
+select tests.login('sl-outro@teste.local');
+set role authenticated;
+
+select tests.ok('isolamento',
+  tests.contar($q$select count(*) from storage.objects where bucket_id = 'imagens-do-app'$q$) = 0,
+  'a outra organização não lista as imagens desta loja');
+
+reset role;
+select tests.logout();
+set role anon;
+
+select tests.ok('slides',
+  tests.contar($q$select count(*) from storage.objects where bucket_id = 'imagens-do-app'$q$) = 0,
+  'anon não lista nada: o link público da imagem não abre a listagem');
+
+reset role;
+
+select tests.ok('slides',
+  (select public and file_size_limit = 2097152
+          and allowed_mime_types = array['image/jpeg', 'image/png']
+     from storage.buckets where id = 'imagens-do-app'),
+  'o bucket é público (o app baixa sem sessão), só JPEG e PNG, até 2 MB');
+
+/*
+ * Quatro imagens: a do rascunho, a de uma versão antiga, uma esquecida (enviada
+ * e trocada antes de salvar) e uma recém-enviada. As três primeiras são velhas.
+ */
+insert into storage.objects (bucket_id, name, created_at)
+select 'imagens-do-app', loja::text || '/' || na_versao_antiga::text || '.jpg', now() - interval '2 days'
+  from tests.sl
+union all
+select 'imagens-do-app', loja::text || '/' || esquecida::text || '.jpg', now() - interval '2 days'
+  from tests.sl
+union all
+select 'imagens-do-app', loja::text || '/' || recente::text || '.jpg', now()
+  from tests.sl;
+update storage.objects set created_at = now() - interval '2 days'
+ where bucket_id = 'imagens-do-app'
+   and name = (select loja::text || '/' || no_rascunho::text || '.png' from tests.sl);
+
+-- A versão 1, publicada, com a imagem antiga; o rascunho (2), com a nova.
+insert into public.app_configs (app_id, version, config, status)
+select app, 1, jsonb_build_object('features', jsonb_build_object('onboardingSlides', jsonb_build_array(
+         jsonb_build_object('title', 'Antiga', 'body', 'Versão de antes',
+           'image', 'https://exemplo.supabase.co/storage/v1/object/public/imagens-do-app/'
+                    || loja::text || '/' || na_versao_antiga::text || '.jpg')))), 'published'::public.app_config_status
+  from tests.sl
+union all
+select app, 2, jsonb_build_object('features', jsonb_build_object('onboardingSlides', jsonb_build_array(
+         jsonb_build_object('title', 'Oi', 'body', 'Bem-vindo',
+           'image', 'https://exemplo.supabase.co/storage/v1/object/public/imagens-do-app/'
+                    || loja::text || '/' || no_rascunho::text || '.png')))), 'draft'::public.app_config_status
+  from tests.sl;
+
+select tests.login('sl-dono@teste.local');
+set role authenticated;
+
+select tests.ok('slides',
+  tests.erro('select * from public.imagens_do_app_sem_uso()'),
+  'a lista de imagens sem uso não é chamável pelo navegador');
+
+reset role;
+set role service_role;
+
+select tests.ok('slides',
+  (select array_agg(caminho) from public.imagens_do_app_sem_uso()
+    where caminho like (select loja::text from tests.sl) || '/%')
+    = array[(select loja::text || '/' || esquecida::text || '.jpg' from tests.sl)],
+  'o job recebe só a esquecida — não a do rascunho, nem a de uma versão antiga, nem a recente');
+
+reset role;
+
+-- A loja excluída leva as versões junto: as imagens dela ficam sem uso.
+delete from public.stores where id = (select loja from tests.sl);
+
+set role service_role;
+
+select tests.ok('slides',
+  (select count(*) from public.imagens_do_app_sem_uso()
+    where caminho like (select loja::text from tests.sl) || '/%') = 3,
+  'com a loja excluída, as imagens velhas dela voltam para o job (a recente espera o dia)');
+
+reset role;
+select tests.logout();
+
 -- ============================== grupo: varredura de segurança (Fase 8)
 --
 -- Duas travas que valem para o schema inteiro, e não para uma tabela: uma

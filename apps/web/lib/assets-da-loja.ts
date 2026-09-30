@@ -101,8 +101,23 @@ export async function urlAssinada(
 ): Promise<string | null> {
   if (caminho == null || caminho === '') return null;
 
-  const { data } = await supabase.storage.from(BUCKET).createSignedUrl(caminho, segundos);
-  return data?.signedUrl ?? null;
+  const { data, error } = await supabase.storage.from(BUCKET).createSignedUrl(caminho, segundos);
+  /*
+   * O arquivo que sumiu (removido, e a coluna ficou para trás) é "sem imagem".
+   * Qualquer outra falha lança: tratada como "sem imagem", ela levaria um
+   * build sem o ícone da loja para a App Store, e a tela pediria para enviar
+   * de novo uma imagem que está lá.
+   */
+  if (error != null) {
+    if (ehArquivoQueNaoExiste(error)) return null;
+    throw new Error(`Não foi possível assinar o link da imagem: ${error.message}`);
+  }
+  return data.signedUrl;
+}
+
+/** O storage responde 404 (ou "not found") para o arquivo que não existe. */
+function ehArquivoQueNaoExiste(erro: { message: string; statusCode?: string | number }): boolean {
+  return String(erro.statusCode ?? '') === '404' || /not.?found/i.test(erro.message);
 }
 
 /** Apaga o asset e limpa a coluna. */
@@ -112,7 +127,13 @@ export async function removerAsset(
   appId: string,
   tipo: TipoDeAsset,
 ): Promise<{ ok: true } | { ok: false; motivo: string }> {
-  await servico.storage.from(BUCKET).remove([caminhoDoAsset(storeId, tipo)]);
+  const { error: erroDoArquivo } = await servico.storage
+    .from(BUCKET)
+    .remove([caminhoDoAsset(storeId, tipo)]);
+  // A imagem continua lá: limpar a coluna diria "removida" sobre uma imagem que o build ainda usaria.
+  if (erroDoArquivo != null && !ehArquivoQueNaoExiste(erroDoArquivo)) {
+    return { ok: false, motivo: 'Não conseguimos remover a imagem. Tente de novo.' };
+  }
 
   const { error } = await servico
     .from('apps')

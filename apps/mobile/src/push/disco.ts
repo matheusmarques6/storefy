@@ -1,9 +1,10 @@
 /**
  * O que o push guarda no aparelho.
  *
- * Quatro coisas, e todas LOCAIS de propósito: quantas vezes já perguntamos
- * sobre notificação, quais avisos o cliente já abriu, quantas vezes ele abriu
- * o app e a última notificação que ele tocou. Nada disso sobe para o servidor
+ * Cinco coisas, e todas LOCAIS de propósito: quantas vezes já perguntamos
+ * sobre notificação, quais avisos o cliente já abriu, a última caixa de
+ * avisos (para ela abrir sem internet), quantas vezes ele abriu o app e a
+ * última notificação que ele tocou. Nada disso sobe para o servidor
  * — é informação sobre uma pessoa que não serve a ninguém fora do aparelho
  * dela. (O toque só sai do aparelho dentro do carrinho, como o atributo que
  * liga a compra à notificação, e sem nada que identifique a pessoa.)
@@ -17,10 +18,12 @@ import { randomUUID } from 'expo-crypto';
 import { lerAtributoDoPush, valorDoAtributoDoPush, type ToqueNoPush } from '@storefy/config-schema';
 import { lerOuCriarInstalacao } from './instalacao.ts';
 import { HISTORICO_VAZIO, lerHistorico, type HistoricoDoPrePrompt } from './permissao.ts';
-import { lerLidos } from './caixa.ts';
+import { avisosParaGuardar, lerCaixaGuardada, lerLidos } from './caixa.ts';
+import type { AvisoDaCaixa } from './api.ts';
 
 const CHAVE_DO_PRE_PROMPT = 'storefy:push:pre-prompt';
 const CHAVE_DOS_LIDOS = 'storefy:push:avisos-lidos';
+const CHAVE_DA_CAIXA = 'storefy:push:caixa';
 const CHAVE_DAS_ABERTURAS = 'storefy:push:aberturas';
 const CHAVE_DO_TOQUE = 'storefy:push:ultimo-toque';
 
@@ -53,6 +56,23 @@ export async function gravarLidos(ids: readonly string[]): Promise<void> {
     await AsyncStorage.setItem(CHAVE_DOS_LIDOS, JSON.stringify(ids));
   } catch {
     /* No máximo um badge que não zera até a próxima leitura dar certo. */
+  }
+}
+
+/** A última caixa de avisos que o servidor devolveu. `null` quando não há. */
+export async function lerCaixaDoDisco(): Promise<AvisoDaCaixa[] | null> {
+  try {
+    return lerCaixaGuardada(await AsyncStorage.getItem(CHAVE_DA_CAIXA));
+  } catch {
+    return null;
+  }
+}
+
+export async function gravarCaixa(avisos: readonly AvisoDaCaixa[]): Promise<void> {
+  try {
+    await AsyncStorage.setItem(CHAVE_DA_CAIXA, JSON.stringify(avisosParaGuardar(avisos)));
+  } catch {
+    /* Sem a cópia, a caixa só não abre sem internet até a próxima leitura dar certo. */
   }
 }
 

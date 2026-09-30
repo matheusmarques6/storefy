@@ -13,30 +13,33 @@
  */
 import { Ionicons } from '@expo/vector-icons';
 import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
-import type { Theme } from '@storefy/config-schema';
+import type { AvisoDoPush, Theme } from '@storefy/config-schema';
+import { vantagensDoPrePrompt } from '../push/vantagens.ts';
 
 interface Props {
   visivel: boolean;
   /** Nome da loja, para a promessa ser dela e não nossa. */
   nomeDaLoja: string;
   tema: Pick<Theme, 'primary' | 'background' | 'text'>;
+  /**
+   * Os avisos que a loja manda de verdade (as automações ligadas). A lista
+   * fixa prometia "pedido saiu para entrega" e "de volta ao estoque" também
+   * na loja que nunca mandaria esses avisos — e o cliente aceitava por eles.
+   */
+  avisos: readonly AvisoDoPush[];
   aoAceitar: () => void;
   aoRecusar: () => void;
 }
-
-const VANTAGENS: { icone: React.ComponentProps<typeof Ionicons>['name']; texto: string }[] = [
-  { icone: 'pricetag-outline', texto: 'Promoções e cupons antes de acabarem' },
-  { icone: 'cube-outline', texto: 'Aviso quando o seu pedido sair para entrega' },
-  { icone: 'refresh-outline', texto: 'O produto que você queria de volta ao estoque' },
-];
 
 export function PrePromptDePush({
   visivel,
   nomeDaLoja,
   tema,
+  avisos,
   aoAceitar,
   aoRecusar,
 }: Props): React.ReactNode {
+  const vantagens = vantagensDoPrePrompt(avisos);
   return (
     <Modal
       visible={visivel}
@@ -63,7 +66,7 @@ export function PrePromptDePush({
           </Text>
 
           <View style={estilos.lista}>
-            {VANTAGENS.map((vantagem) => (
+            {vantagens.map((vantagem) => (
               <View key={vantagem.texto} style={estilos.linha}>
                 <Ionicons name={vantagem.icone} size={18} color={tema.primary} />
                 <Text style={[estilos.itemDaLista, { color: tema.text }]}>{vantagem.texto}</Text>
