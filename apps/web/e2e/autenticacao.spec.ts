@@ -4,6 +4,7 @@ import {
   MOTIVO_PULO,
   SENHA_PADRAO,
   SUPABASE_DISPONIVEL,
+  criarLojaPelaTela,
   criarUsuarioConfirmado,
   emailDeTeste,
   entrar,
@@ -191,4 +192,26 @@ test('sair encerra a sessão e bloqueia a rota de novo', async ({ page }) => {
 
   await page.goto('/lojas');
   await expect(page).toHaveURL(/\/entrar/);
+});
+
+test('depois de sair, o botão Voltar do navegador não mostra o painel de novo', async ({
+  page,
+}) => {
+  const email = emailDeTeste('voltar');
+  await criarUsuarioConfirmado(email, 'Empresa Voltar');
+  await entrar(page, email);
+  await criarLojaPelaTela(page, 'Loja do Voltar', 'loja-do-voltar.com.br');
+
+  await page.goto('/lojas');
+  await expect(page.getByText('Loja do Voltar').first()).toBeVisible();
+
+  await page.getByRole('button', { name: 'Menu da conta' }).click();
+  await page.getByRole('menuitem', { name: 'Sair' }).click();
+  await page.waitForURL(/\/entrar/);
+
+  // Quem senta depois no mesmo computador aperta Voltar: a tela da loja não
+  // volta da memória do navegador nem da do painel — vem o login.
+  await page.goBack();
+  await expect(page).toHaveURL(/\/entrar/);
+  await expect(page.getByText('Loja do Voltar')).toHaveCount(0);
 });
