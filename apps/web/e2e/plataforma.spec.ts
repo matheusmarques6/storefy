@@ -5,7 +5,8 @@
  * As chaves da plataforma valem para TODOS os lojistas: o que estava gravado
  * antes da suíte volta no fim, mesmo se um teste falhar no meio.
  */
-import { expect, test, type Page } from '@playwright/test';
+import type { Page } from '@playwright/test';
+import { expect, test } from './base';
 import type { Json } from '@storefy/db';
 import {
   MOTIVO_PULO,

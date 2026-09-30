@@ -8,7 +8,7 @@
  * celular é destravado por um superadmin, na A11.
  */
 import { createClient } from '@supabase/supabase-js';
-import { expect, test } from '@playwright/test';
+import { expect, test } from './base';
 import type { Database } from '@storefy/db';
 import {
   MOTIVO_PULO,

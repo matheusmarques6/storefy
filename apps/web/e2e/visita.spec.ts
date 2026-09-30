@@ -6,7 +6,8 @@
  * abrir e fechar ficam na auditoria com o motivo, e que o acesso é de uma
  * pessoa só, por tempo limitado.
  */
-import { expect, test, type Browser, type Page } from '@playwright/test';
+import type { Browser, Page } from '@playwright/test';
+import { expect, test } from './base';
 import {
   MOTIVO_PULO,
   SUPABASE_DISPONIVEL,

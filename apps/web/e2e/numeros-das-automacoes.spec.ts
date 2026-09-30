@@ -9,7 +9,7 @@
  * o app faria) e as telas lendo tudo do banco.
  */
 import { randomUUID } from 'node:crypto';
-import { expect, test } from '@playwright/test';
+import { expect, test } from './base';
 import {
   MOTIVO_PULO,
   SUPABASE_DISPONIVEL,

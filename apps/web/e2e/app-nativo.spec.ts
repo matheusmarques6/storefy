@@ -6,7 +6,7 @@
  * cliente final abrem. O teste prova as duas pontas: antes de publicar, nada
  * muda; depois, as duas contam o recurso.
  */
-import { expect, test } from '@playwright/test';
+import { expect, test } from './base';
 import {
   MOTIVO_PULO,
   SUPABASE_DISPONIVEL,

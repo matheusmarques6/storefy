@@ -7,7 +7,7 @@
  * promete o que consegue sair: sem a Shopify conectada, pedido enviado e
  * estoque nunca disparam.
  */
-import { expect, test } from '@playwright/test';
+import { expect, test } from './base';
 import { MOTIVO_PULO, SUPABASE_DISPONIVEL, bancoDeTeste, limparUsuariosDeTeste } from './apoio';
 import { SEGREDO_DO_WORKFLOW, doApp, lojaComApp, postar } from './app-assinado';
 

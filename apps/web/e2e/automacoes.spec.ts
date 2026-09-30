@@ -7,7 +7,8 @@
  * volta ao estoque" reescrevia o texto do carrinho — e as duas nunca ligavam.
  * Sem um teste que ligasse cada uma pela tela e olhasse o banco, ninguém viu.
  */
-import { expect, test, type Page } from '@playwright/test';
+import type { Page } from '@playwright/test';
+import { expect, test } from './base';
 import {
   MOTIVO_PULO,
   SUPABASE_DISPONIVEL,

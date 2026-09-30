@@ -6,7 +6,8 @@
  * O e-mail não está configurado no ambiente de teste — é exatamente o caminho
  * em que a tela precisa mostrar o link para copiar, e o teste o usa.
  */
-import { expect, test, type Browser, type Page } from '@playwright/test';
+import type { Browser, Page } from '@playwright/test';
+import { expect, test } from './base';
 import type { Json } from '@storefy/db';
 import {
   MOTIVO_PULO,

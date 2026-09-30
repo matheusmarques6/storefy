@@ -8,7 +8,7 @@
  * o painel gera o QR, o "app" (uma chamada assinada, como o app faria) se
  * apresenta com o código, e o painel percebe sozinho.
  */
-import { expect, test } from '@playwright/test';
+import { expect, test } from './base';
 import { MOTIVO_PULO, SUPABASE_DISPONIVEL, bancoDeTeste, limparUsuariosDeTeste } from './apoio';
 import { varrer } from './axe';
 import { SEGREDO_DO_WORKFLOW, doApp, lojaComApp, postar } from './app-assinado';

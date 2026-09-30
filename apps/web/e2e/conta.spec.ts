@@ -3,7 +3,8 @@
  * o que acontece com cada empresa, pede e-mail e senha, e o banco faz
  * exatamente o que ela disse.
  */
-import { expect, test, type Page } from '@playwright/test';
+import type { Page } from '@playwright/test';
+import { expect, test } from './base';
 import {
   MOTIVO_PULO,
   SENHA_PADRAO,

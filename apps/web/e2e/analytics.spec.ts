@@ -10,7 +10,8 @@
  * C11 com dado: os gráficos nunca tinham sido desenhados num teste.
  */
 import { randomUUID } from 'node:crypto';
-import { expect, test, type Page } from '@playwright/test';
+import type { Page } from '@playwright/test';
+import { expect, test } from './base';
 import { MOTIVO_PULO, SUPABASE_DISPONIVEL, limparUsuariosDeTeste } from './apoio';
 import { doApp, lojaComApp } from './app-assinado';
 import { varrer } from './axe';

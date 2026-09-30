@@ -7,7 +7,8 @@
  * A Asaas é o servidor de `asaas-de-teste.ts`, na própria máquina: o painel
  * fala HTTP com ele exatamente como falaria com a Asaas.
  */
-import { expect, test, type Browser, type Page } from '@playwright/test';
+import type { Browser, Page } from '@playwright/test';
+import { expect, test } from './base';
 import { AsaasDeTeste } from './asaas-de-teste';
 import {
   MOTIVO_PULO,

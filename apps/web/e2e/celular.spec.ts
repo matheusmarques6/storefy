@@ -13,7 +13,8 @@
  * O dado é comprido de propósito: nome de loja longo e endereço sem espaço, o
  * que mais empurra uma tela para o lado, porque não quebra sozinho.
  */
-import { expect, test, type Page } from '@playwright/test';
+import type { Page } from '@playwright/test';
+import { expect, test } from './base';
 import {
   MOTIVO_PULO,
   SUPABASE_DISPONIVEL,

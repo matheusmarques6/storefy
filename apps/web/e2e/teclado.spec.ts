@@ -8,7 +8,8 @@
  * enviar formulários, e confirmar uma exclusão com o foco voltando para onde
  * estava. Aqui cada passo é feito só com o teclado.
  */
-import { expect, test, type Locator, type Page } from '@playwright/test';
+import type { Locator, Page } from '@playwright/test';
+import { expect, test } from './base';
 import {
   MOTIVO_PULO,
   SUPABASE_DISPONIVEL,

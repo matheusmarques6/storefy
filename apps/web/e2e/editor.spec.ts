@@ -6,7 +6,7 @@
  * ao ar — e só destrava com o rascunho salvo. A moldura da prévia troca entre
  * iPhone e Android e lembra a escolha de quem olha.
  */
-import { expect, test } from '@playwright/test';
+import { expect, test } from './base';
 import {
   MOTIVO_PULO,
   SUPABASE_DISPONIVEL,

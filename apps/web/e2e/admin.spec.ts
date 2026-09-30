@@ -1,5 +1,5 @@
 /** A01, A02 e a guarda do painel admin. */
-import { expect, test } from '@playwright/test';
+import { expect, test } from './base';
 import {
   MOTIVO_PULO,
   SUPABASE_DISPONIVEL,

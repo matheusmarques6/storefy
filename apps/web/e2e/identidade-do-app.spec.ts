@@ -6,7 +6,7 @@
  * lojista: ele tem teste de unidade contra uma App Store Connect falsa
  * (`lib/apple.test.ts`), e aqui entra o resto do caminho, que é todo nosso.
  */
-import { expect, test } from '@playwright/test';
+import { expect, test } from './base';
 import {
   MOTIVO_PULO,
   SUPABASE_DISPONIVEL,

@@ -41,6 +41,27 @@ export default [
     rules: { '@next/next/no-img-element': 'off' },
   },
   {
+    /*
+     * Todo e2e usa o `test` de `e2e/base.ts`, que reprova o teste com erro no
+     * console ou exceção na página. O do Playwright passaria por cima dela.
+     */
+    files: ['e2e/**/*.spec.ts'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          paths: [
+            {
+              name: '@playwright/test',
+              importNames: ['test', 'expect'],
+              message: "Use o `test` e o `expect` de './base': ele reprova erro no console.",
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
     ignores: ['.next/**', 'next-env.d.ts', 'playwright-report/**', 'test-results/**'],
   },
 ];

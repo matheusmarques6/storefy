@@ -9,7 +9,8 @@
  * sempre. Agora a tela vai ao login, que diz o que houve, e depois da senha
  * volta à tela em que ela estava.
  */
-import { expect, test, type BrowserContext, type Page } from '@playwright/test';
+import type { BrowserContext, Page } from '@playwright/test';
+import { expect, test } from './base';
 import {
   MOTIVO_PULO,
   SENHA_PADRAO,

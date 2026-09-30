@@ -7,7 +7,8 @@
  * importa: um site de fora não consegue pôr o painel dentro de um iframe. A
  * prévia da loja, que o próprio painel enquadra, continua com as regras dela.
  */
-import { expect, test, type Page } from '@playwright/test';
+import type { Page } from '@playwright/test';
+import { expect, test } from './base';
 import {
   MOTIVO_PULO,
   SUPABASE_DISPONIVEL,
@@ -96,7 +97,10 @@ test('o painel com sessão também, e a prévia da loja fica com as regras dela'
 
 test('um site de fora não consegue pôr o painel nem o admin dentro de um iframe', async ({
   page,
+  errosDoConsole,
 }) => {
+  // A recusa do navegador é o que este teste quer ver — e ela sai no console.
+  errosDoConsole.esperar(/Refused to frame .* "frame-ancestors 'self'"/);
   const origem = test.info().project.use.baseURL ?? 'http://app.localhost:3000';
   const recusas: string[] = [];
   page.on('console', (mensagem) => {

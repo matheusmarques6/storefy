@@ -11,7 +11,8 @@
  * teste que monta o valor com o código que testa não prova que os dois lados
  * falam a mesma língua.
  */
-import { expect, test, type Page } from '@playwright/test';
+import type { Page } from '@playwright/test';
+import { expect, test } from './base';
 import {
   MOTIVO_PULO,
   SUPABASE_DISPONIVEL,

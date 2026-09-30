@@ -6,7 +6,7 @@
  * plantados direto no banco, no papel do workflow e do cron da revisão: o que
  * se confere é o que o lojista lê no painel.
  */
-import { expect, test } from '@playwright/test';
+import { expect, test } from './base';
 import {
   MOTIVO_PULO,
   SUPABASE_DISPONIVEL,

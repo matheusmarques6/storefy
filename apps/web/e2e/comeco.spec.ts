@@ -6,7 +6,7 @@
  * cadastro caía direto na página da loja. Os links do Storefy Preview vêm da
  * A13; sem eles, a tela diz que o app ainda não está disponível.
  */
-import { expect, test } from '@playwright/test';
+import { expect, test } from './base';
 import {
   MOTIVO_PULO,
   SUPABASE_DISPONIVEL,

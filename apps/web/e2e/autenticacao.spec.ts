@@ -1,5 +1,5 @@
 /** C01 — cadastro, login, validações e proteção de rota. */
-import { expect, test } from '@playwright/test';
+import { expect, test } from './base';
 import {
   MOTIVO_PULO,
   SENHA_PADRAO,

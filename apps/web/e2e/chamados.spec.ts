@@ -6,7 +6,8 @@
  * E C16 — os avisos por e-mail de cada pessoa: a escolha fica gravada, e quem
  * não recebe o aviso da revisão não o desliga sem querer ao salvar.
  */
-import { expect, test, type Browser, type Page } from '@playwright/test';
+import type { Browser, Page } from '@playwright/test';
+import { expect, test } from './base';
 import {
   MOTIVO_PULO,
   SENHA_PADRAO,

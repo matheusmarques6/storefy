@@ -1,5 +1,5 @@
 /** Ciclo completo de loja: criar, alternar, editar e excluir. */
-import { expect, test } from '@playwright/test';
+import { expect, test } from './base';
 import {
   MOTIVO_PULO,
   SUPABASE_DISPONIVEL,

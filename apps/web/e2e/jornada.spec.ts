@@ -8,7 +8,8 @@
  * hoje vai do cadastro à primeira campanha sem precisar de ninguém. Os dados
  * conferidos no fim são os que a tela gravou, e não os que o teste plantou.
  */
-import { expect, test, type Page } from '@playwright/test';
+import type { Page } from '@playwright/test';
+import { expect, test } from './base';
 import {
   MOTIVO_PULO,
   SENHA_PADRAO,

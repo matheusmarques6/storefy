@@ -6,7 +6,7 @@
  * que o job gravaria (a Apple e a Google não respondem daqui) e confere o que
  * o lojista, o painel inicial e a equipe (A06) leem disso.
  */
-import { expect, test } from '@playwright/test';
+import { expect, test } from './base';
 import {
   MOTIVO_PULO,
   SUPABASE_DISPONIVEL,

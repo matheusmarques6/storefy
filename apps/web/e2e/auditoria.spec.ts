@@ -5,7 +5,7 @@
  * mostrava. Aqui: o lojista aparece pelo e-mail, a ação do sistema aparece
  * como sistema, e a A04 leva à trilha só daquele cliente.
  */
-import { expect, test } from '@playwright/test';
+import { expect, test } from './base';
 import {
   MOTIVO_PULO,
   SUPABASE_DISPONIVEL,

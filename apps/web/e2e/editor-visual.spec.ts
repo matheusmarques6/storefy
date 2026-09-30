@@ -6,7 +6,8 @@
  * sobre o ícone da aba escolhido pelo lojista (C06b); o aviso de contraste; e
  * o preset do tema da loja em primeiro (A10).
  */
-import { expect, test, type Page } from '@playwright/test';
+import type { Page } from '@playwright/test';
+import { expect, test } from './base';
 import {
   MOTIVO_PULO,
   SUPABASE_DISPONIVEL,

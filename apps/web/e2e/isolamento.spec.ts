@@ -4,7 +4,7 @@
  * A RLS já é testada no banco (supabase/tests/rls.test.sql). Aqui provamos que
  * o painel também não vaza: nem por listagem, nem por URL direta.
  */
-import { expect, test } from '@playwright/test';
+import { expect, test } from './base';
 import {
   MOTIVO_PULO,
   SUPABASE_DISPONIVEL,

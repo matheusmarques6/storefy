@@ -6,7 +6,8 @@
  * na máquina do teste. O que se prova é o caminho do dado até a tela: o
  * público vê a situação sem o erro, e a equipe vê o erro.
  */
-import { expect, test, type Page } from '@playwright/test';
+import type { Page } from '@playwright/test';
+import { expect, test } from './base';
 import {
   MOTIVO_PULO,
   SUPABASE_DISPONIVEL,
