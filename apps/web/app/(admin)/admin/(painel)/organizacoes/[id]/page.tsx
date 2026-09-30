@@ -165,7 +165,7 @@ export default async function PaginaOrganizacao({ params }: { params: Promise<{ 
           <CardTitle className="text-base">Resumo</CardTitle>
         </CardHeader>
         <CardContent>
-          <dl className="grid gap-4 text-sm sm:grid-cols-4">
+          <dl className="grid grid-cols-1 gap-4 text-sm sm:grid-cols-4">
             <div>
               <dt className="text-muted-foreground">Lojas</dt>
               <dd className="mt-1 font-medium">{listaLojas.length}</dd>

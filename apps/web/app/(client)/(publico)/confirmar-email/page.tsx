@@ -28,7 +28,9 @@ export default async function PaginaConfirmarEmail({
               <>Enviamos um link de confirmação para o seu e-mail.</>
             ) : (
               <>
-                Enviamos um link de confirmação para <strong>{email}</strong>.
+                Enviamos um link de confirmação para{' '}
+                {/* Na caixa do aviso, só `wrap-anywhere` deixa o e-mail longo quebrar. */}
+                <strong className="wrap-anywhere">{email}</strong>.
               </>
             )}{' '}
             Abra a mensagem e clique no link para ativar sua conta.

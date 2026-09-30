@@ -100,7 +100,7 @@ export default async function PaginaDaAutomacao({
         <SeletorDePeriodo atual={dias} base={`/push/automacoes/${automacao.id}`} />
       </div>
 
-      <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_320px]">
+      <div className="grid grid-cols-1 gap-8 lg:grid-cols-[minmax(0,1fr)_320px]">
         <div className="space-y-6">
           {nadaNoPeriodo ? (
             <p
@@ -158,7 +158,7 @@ export default async function PaginaDaAutomacao({
             </>
           )}
 
-          <dl className="grid gap-4 text-sm sm:grid-cols-2">
+          <dl className="grid grid-cols-1 gap-4 text-sm sm:grid-cols-2">
             <div>
               <dt className="text-muted-foreground text-xs">Mensagem</dt>
               <dd className="break-words">{automacao.body}</dd>

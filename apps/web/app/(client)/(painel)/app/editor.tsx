@@ -420,7 +420,7 @@ export function Editor({
        * propriedades · o celular ao vivo). Na média, as seções sobem para uma
        * faixa em cima e ficam as duas colunas; no celular, tudo empilha.
        */}
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px] xl:grid-cols-[176px_minmax(0,1fr)_320px]">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_320px] xl:grid-cols-[176px_minmax(0,1fr)_320px]">
         <nav
           aria-label="Seções do editor"
           className="flex flex-wrap gap-1 lg:col-span-2 xl:sticky xl:top-20 xl:col-span-1 xl:flex-col xl:self-start"

@@ -47,7 +47,7 @@ export function FormularioDoPlano({
         </Alert>
       )}
 
-      <div className="grid gap-4 sm:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <Campo id="nome" rotulo="Nome" erro={estado.erros?.nome}>
           <Input
             {...propsDoCampo('nome', estado.erros?.nome)}
@@ -86,7 +86,7 @@ export function FormularioDoPlano({
 
       <fieldset className="space-y-3">
         <legend className="text-sm font-medium">Limites (vazio é sem limite)</legend>
-        <div className="grid gap-4 sm:grid-cols-3">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
           <Campo id="limiteLojas" rotulo="Lojas" erro={estado.erros?.limiteLojas}>
             <Input
               {...propsDoCampo('limiteLojas', estado.erros?.limiteLojas)}

@@ -342,7 +342,7 @@ export function SecaoAbas({
                   <IconeDaAba nome={aba.icon} className="size-5" />
                 </div>
 
-                <div className="grid flex-1 gap-3 sm:grid-cols-2">
+                <div className="grid flex-1 grid-cols-1 gap-3 sm:grid-cols-2">
                   <div className="space-y-1.5">
                     <Label htmlFor={`aba-${aba.id}-nome`}>Nome na barra</Label>
                     <Input

@@ -84,7 +84,7 @@ export default async function PaginaConfiguracoes() {
           <CardTitle className="text-base">Resumo</CardTitle>
         </CardHeader>
         <CardContent>
-          <dl className="grid gap-4 text-sm sm:grid-cols-2">
+          <dl className="grid grid-cols-1 gap-4 text-sm sm:grid-cols-2">
             <div>
               <dt className="text-muted-foreground">Seu papel</dt>
               <dd className="mt-1">

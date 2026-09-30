@@ -100,7 +100,7 @@ export default async function PaginaDePublicacao() {
         podeEscrever={podeEscrever}
       />
 
-      <div className="grid gap-6 lg:grid-cols-2">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <ChecklistDaPlataforma plataforma="ios" itens={itens} podeEscrever={podeEscrever} />
         <ChecklistDaPlataforma plataforma="android" itens={itens} podeEscrever={podeEscrever} />
       </div>

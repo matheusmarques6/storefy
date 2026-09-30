@@ -97,7 +97,7 @@ export async function CobrancaDaOrganizacao({
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
-        <dl className="grid gap-4 text-sm sm:grid-cols-3">
+        <dl className="grid grid-cols-1 gap-4 text-sm sm:grid-cols-3">
           <div>
             <dt className="text-muted-foreground">Plano</dt>
             <dd className="mt-1 font-medium">

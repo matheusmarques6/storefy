@@ -102,7 +102,7 @@ export default async function PaginaInicio() {
               </Link>
             </Button>
           </div>
-          <div className="grid gap-4 sm:grid-cols-3">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
             <CartaoDeNumero
               icone={ShoppingBag}
               rotulo="Receita pelo app"
@@ -175,13 +175,15 @@ export default async function PaginaInicio() {
           <h2 id="titulo-lojas" className="text-muted-foreground text-sm font-medium">
             Suas lojas
           </h2>
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {/* `grid-cols-1` no celular: sem uma coluna declarada, o cartão mede o
+              nome e o endereço inteiros, e o `truncate` nunca corta. */}
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {lojas.map((loja) => (
               <Card key={loja.id}>
                 <CardHeader className="pb-3">
                   <div className="flex items-start justify-between gap-2">
                     <CardTitle className="truncate text-base">{loja.name}</CardTitle>
-                    <Badge variant={VARIANTE_POR_STATUS[loja.status]}>
+                    <Badge variant={VARIANTE_POR_STATUS[loja.status]} className="shrink-0">
                       {ROTULO_STATUS_LOJA[loja.status]}
                     </Badge>
                   </div>

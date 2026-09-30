@@ -63,11 +63,15 @@ export default async function PaginaLoja({
       ) : null}
 
       <div className="flex items-start justify-between gap-4">
-        <div>
+        {/* O endereço não tem onde quebrar: sem `min-w-0` e `wrap-anywhere`, um
+            longo empurra a tela para o lado no celular. */}
+        <div className="min-w-0">
           <h1 className="text-2xl font-semibold tracking-tight">{loja.name}</h1>
-          <p className="text-muted-foreground mt-1 text-sm">{loja.primary_url}</p>
+          <p className="text-muted-foreground mt-1 text-sm wrap-anywhere">{loja.primary_url}</p>
         </div>
-        <Badge variant="secondary">{ROTULO_STATUS_LOJA[loja.status]}</Badge>
+        <Badge variant="secondary" className="shrink-0">
+          {ROTULO_STATUS_LOJA[loja.status]}
+        </Badge>
       </div>
 
       <Card>

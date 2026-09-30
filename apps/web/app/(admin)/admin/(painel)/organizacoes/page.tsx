@@ -98,7 +98,7 @@ export default async function PaginaOrganizacoes({
               : 'O cadastro está fechado (A13): só entra quem tem convite. O lojista cria a conta pelo link, com a própria empresa.'}
           </CardDescription>
         </CardHeader>
-        <CardContent className="grid gap-6 lg:grid-cols-2">
+        <CardContent className="grid grid-cols-1 gap-6 lg:grid-cols-2">
           <FormularioConviteDeLojista emailConfigurado={emailConfigurado()} />
           <div className="space-y-2">
             <p className="text-sm font-medium">Convites de lojista em aberto</p>

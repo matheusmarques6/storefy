@@ -59,7 +59,7 @@ export default async function PaginaDaCampanha({ params }: { params: Promise<{ i
         <p className="text-muted-foreground text-sm">{EXPLICACAO_DO_STATUS[campanha.status]}</p>
       </div>
 
-      <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_320px]">
+      <div className="grid grid-cols-1 gap-8 lg:grid-cols-[minmax(0,1fr)_320px]">
         <div className="space-y-6">
           {/*
             Nada de gráfico com zeros enquanto o número não chega. A regra 1 do
@@ -82,7 +82,7 @@ export default async function PaginaDaCampanha({ params }: { params: Promise<{ i
             />
           ) : null}
 
-          <dl className="grid gap-4 text-sm sm:grid-cols-2">
+          <dl className="grid grid-cols-1 gap-4 text-sm sm:grid-cols-2">
             <Linha titulo="Mensagem" valor={campanha.body} />
             <Linha
               titulo="Abre em"

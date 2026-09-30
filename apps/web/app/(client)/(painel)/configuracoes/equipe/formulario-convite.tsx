@@ -38,7 +38,7 @@ export function FormularioDeConvite({ emailConfigurado }: { emailConfigurado: bo
         </div>
       ) : null}
 
-      <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_200px]">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-[minmax(0,1fr)_200px]">
         <Campo id="email" rotulo="E-mail da pessoa" erro={estado.erros?.email}>
           <Input
             {...propsDoCampo('email', estado.erros?.email)}

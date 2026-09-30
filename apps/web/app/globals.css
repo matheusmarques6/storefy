@@ -40,6 +40,14 @@
     color: var(--color-foreground);
     font-family: var(--font-sans);
     -webkit-font-smoothing: antialiased;
+    /*
+     * A palavra que não cabe na linha quebra no meio, em vez de furar a caixa:
+     * o endereço da loja, o domínio e o e-mail não têm ponto de quebra, e no
+     * celular um deles empurrava a página inteira para o lado. Texto comum não
+     * muda — só a palavra maior que a linha. (Isto não encolhe a medida
+     * mínima de um item de grade ou flex: lá, `grid-cols-1` e `min-w-0`.)
+     */
+    overflow-wrap: break-word;
   }
 
   /* Acessibilidade: foco sempre visível (seção 10 do plano). */

@@ -171,7 +171,7 @@ export function CartaoDaAutomacao({
         </Button>
 
         {aberto ? (
-          <div className="grid gap-6 border-t pt-4 lg:grid-cols-[minmax(0,1fr)_280px]">
+          <div className="grid grid-cols-1 gap-6 border-t pt-4 lg:grid-cols-[minmax(0,1fr)_280px]">
             <div className="space-y-4">
               {webhook === undefined ? null : (
                 <p className="text-muted-foreground text-sm">

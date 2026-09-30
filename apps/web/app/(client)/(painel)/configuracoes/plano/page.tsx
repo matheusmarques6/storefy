@@ -327,7 +327,7 @@ export default async function PaginaPlano() {
                 </p>
               ) : (
                 <div className="flex flex-wrap items-end justify-between gap-4">
-                  <dl className="grid gap-x-8 gap-y-2 text-sm sm:grid-cols-3">
+                  <dl className="grid grid-cols-1 gap-x-8 gap-y-2 text-sm sm:grid-cols-3">
                     <div>
                       <dt className="text-muted-foreground">Nome</dt>
                       <dd className="font-medium break-words">{quemPaga.data.nome}</dd>

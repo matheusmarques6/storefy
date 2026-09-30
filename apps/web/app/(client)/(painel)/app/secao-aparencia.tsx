@@ -48,7 +48,7 @@ export function SecaoAparencia({
         As imagens vêm antes das cores porque são o que a loja de aplicativos
         exige, e o que mais rejeita app. A cor o lojista muda quando quiser.
       */}
-      <div className="grid gap-6 sm:grid-cols-2">
+      <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
         <CampoDeImagem
           storeId={storeId}
           tipo="icone"
@@ -68,7 +68,7 @@ export function SecaoAparencia({
         />
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         {CORES.map(({ campo, rotulo, ajuda }) => (
           <CampoDeCor
             key={campo}

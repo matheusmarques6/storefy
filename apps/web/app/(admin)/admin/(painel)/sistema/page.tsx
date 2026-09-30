@@ -324,7 +324,7 @@ function Secao({
         <p className="text-muted-foreground mt-0.5 text-sm">{descricao}</p>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         {itens.map((item) => (
           <Card key={item.chave}>
             <CardHeader className="pb-3">

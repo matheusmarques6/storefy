@@ -80,7 +80,7 @@ export default async function PaginaAjuda({
           <BookOpen className="size-5" aria-hidden />
           Guias
         </h2>
-        <div className="grid gap-4 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           {ARTIGOS.map((artigo) => (
             <Link
               key={artigo.slug}

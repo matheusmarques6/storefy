@@ -165,7 +165,7 @@ function Selo({ situacao }: { situacao: SituacaoDaShopify }) {
 
 function Conectada({ situacao }: { situacao: SituacaoDaShopify }) {
   return (
-    <dl className="grid gap-3 text-sm sm:grid-cols-2">
+    <dl className="grid grid-cols-1 gap-3 text-sm sm:grid-cols-2">
       <div>
         <dt className="text-muted-foreground">Loja</dt>
         <dd className="mt-1 font-mono text-xs break-words">{situacao.dominio}</dd>

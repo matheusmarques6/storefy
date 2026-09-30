@@ -73,7 +73,7 @@ export default async function PaginaVisaoGeral() {
                 </CardContent>
               </Card>
             ) : (
-              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
                 {pendente.map((item) => (
                   <Numero key={item.chave} item={item} atencao />
                 ))}
@@ -83,7 +83,7 @@ export default async function PaginaVisaoGeral() {
 
           <section className="space-y-4">
             <h2 className="text-sm font-medium">A plataforma hoje</h2>
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {geral.map((item) => (
                 <Numero key={item.chave} item={item} atencao={false} />
               ))}

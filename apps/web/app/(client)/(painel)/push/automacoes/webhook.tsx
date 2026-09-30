@@ -128,7 +128,7 @@ export function SecaoDoWebhook({ endereco, chave, ligada, fuso, podeEscrever }: 
             Nenhuma chave ainda. Gere uma para a sua ferramenta poder chamar este endereço.
           </p>
         ) : (
-          <dl className="grid gap-x-4 gap-y-1 text-sm sm:grid-cols-[max-content_1fr]">
+          <dl className="grid grid-cols-1 gap-x-4 gap-y-1 text-sm sm:grid-cols-[max-content_1fr]">
             <dt className="text-muted-foreground">Termina em</dt>
             <dd className="font-mono">••••{chave.dica}</dd>
             <dt className="text-muted-foreground">Criada em</dt>

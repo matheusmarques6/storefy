@@ -69,7 +69,7 @@ export function EsqueletoDePainel() {
       <Cabecalho comAcao />
       <div className="space-y-4">
         <Skeleton className="h-4 w-24" />
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {Array.from({ length: 3 }, (_, i) => (
             <Card key={i}>
               <CardHeader className="space-y-3 pb-3">
@@ -182,7 +182,7 @@ export function EsqueletoDeDetalhe() {
           <Skeleton className="h-5 w-24" />
         </CardHeader>
         <CardContent>
-          <div className="grid gap-4 sm:grid-cols-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-4">
             {Array.from({ length: 6 }, (_, i) => (
               <div key={i} className="space-y-2">
                 <Skeleton className="h-3 w-20" />

@@ -110,7 +110,7 @@ export default async function PaginaDeAnalytics({
         />
       ) : (
         <>
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <CartaoDeNumero
               icone={ShoppingBag}
               rotulo="Receita pelo app"
@@ -171,7 +171,7 @@ export default async function PaginaDeAnalytics({
             <CardHeader>
               <CardTitle className="text-base">Notificações</CardTitle>
             </CardHeader>
-            <CardContent className="grid gap-4 sm:grid-cols-2">
+            <CardContent className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <CartaoDeNumero
                 icone={Bell}
                 rotulo="Enviadas"
