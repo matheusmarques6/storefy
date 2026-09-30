@@ -8,10 +8,9 @@
  * consulta é o painel, e não a vitrine, então a Storefront API não traz
  * vantagem nenhuma aqui.
  *
- * Este módulo é PURO: monta a URL e lê a resposta. Quem fala com a rede é
- * `lib/catalogo-servidor.ts`.
+ * Este módulo é PURO: monta a consulta e lê a resposta. Quem fala com a rede
+ * é `lib/catalogo-servidor.ts`.
  */
-import { urlDoAdmin } from '@/lib/shopify';
 
 /** Quantos resultados cabem numa lista sem virar rolagem infinita. */
 export const LIMITE_DA_BUSCA = 10;
@@ -30,76 +29,94 @@ export interface ItemDoCatalogo {
 }
 
 /**
- * A URL da busca de produtos.
- *
- * `title` e não `q`: a Admin API REST filtra produto por título, e `q` seria
- * ignorado em silêncio — a busca pareceria quebrada só para quem digita algo
- * que não é o começo de um título.
+ * Produtos ativos e coleções, numa ida só à GraphQL da Shopify. A API REST
+ * que isto usava é legado para a Shopify (app público novo usa só GraphQL),
+ * e fazia três chamadas: produtos, coleções manuais e automáticas.
  */
-export function urlDeProdutos(shop: string, termo: string): string {
-  const parametros = new URLSearchParams({
-    limit: String(LIMITE_DA_BUSCA),
-    fields: 'id,title,handle,image,status',
-    status: 'active',
-  });
-  const limpo = termo.trim();
-  if (limpo !== '') parametros.set('title', limpo);
+export const CONSULTA_DO_CATALOGO = `query Catalogo($limite: Int!, $produtos: String!, $colecoes: String!) {
+  products(first: $limite, query: $produtos, sortKey: TITLE) {
+    nodes { id title handle featuredMedia { preview { image { url } } } }
+  }
+  collections(first: $limite, query: $colecoes, sortKey: TITLE) {
+    nodes { id title handle image { url } }
+  }
+}`;
 
-  return `${urlDoAdmin(shop, 'products.json')}?${parametros.toString()}`;
-}
+/** Palavras demais não afinam a busca, só a esvaziam. */
+const PALAVRAS_DA_BUSCA = 5;
 
-/** A URL das coleções. A Shopify separa as manuais das automáticas. */
-export function urlDeColecoes(shop: string, automaticas: boolean, termo: string): string {
-  const parametros = new URLSearchParams({
-    limit: String(LIMITE_DA_BUSCA),
-    fields: 'id,title,handle,image',
-  });
-  const limpo = termo.trim();
-  if (limpo !== '') parametros.set('title', limpo);
-
-  const recurso = automaticas ? 'smart_collections.json' : 'custom_collections.json';
-  return `${urlDoAdmin(shop, recurso)}?${parametros.toString()}`;
+/**
+ * As buscas na sintaxe da Shopify, a partir do que o lojista digitou.
+ *
+ * Cada palavra vira `title:palavra*`: acha o título que tem uma palavra
+ * começando por ela, em qualquer posição — "azul" acha "Camiseta azul". E
+ * o que não é letra, número ou hífen SAI: a sintaxe da busca tem operadores
+ * (`:`, aspas, parênteses, `-` no começo), e o texto digitado não pode virar
+ * filtro.
+ */
+export function buscasDoCatalogo(termo: string): { produtos: string; colecoes: string } {
+  const palavras = termo
+    .normalize('NFC')
+    .replace(/[^\p{L}\p{N}\s-]/gu, ' ')
+    .split(/\s+/)
+    .map((palavra) => palavra.replace(/^-+/, ''))
+    .filter((palavra) => palavra !== '')
+    .slice(0, PALAVRAS_DA_BUSCA);
+  const titulo = palavras.map((palavra) => `title:${palavra}*`).join(' ');
+  return {
+    produtos: titulo === '' ? 'status:active' : `status:active ${titulo}`,
+    colecoes: titulo,
+  };
 }
 
 /**
- * Lê a lista que a Shopify devolveu, sem confiar no formato.
+ * Lê a resposta da consulta, sem confiar no formato.
  *
  * Item sem `handle` é DESCARTADO: é o `handle` que vira o caminho, e um item
  * sem ele só poderia virar um link quebrado na notificação de alguém.
  */
-export function lerItens(corpo: unknown, chave: string, tipo: TipoDoItem): ItemDoCatalogo[] {
-  if (corpo === null || typeof corpo !== 'object') return [];
+export function lerCatalogo(dados: Record<string, unknown>): ItemDoCatalogo[] {
+  const produtos = nosDa(dados.products).flatMap((no) => {
+    const midia = no.featuredMedia as {
+      preview?: { image?: { url?: unknown } | null } | null;
+    } | null;
+    const item = itemDo(no, 'produto', midia?.preview?.image?.url);
+    return item === null ? [] : [item];
+  });
+  const colecoes = nosDa(dados.collections).flatMap((no) => {
+    const imagem = no.image as { url?: unknown } | null;
+    const item = itemDo(no, 'colecao', imagem?.url);
+    return item === null ? [] : [item];
+  });
+  return montarResultados(produtos, colecoes);
+}
 
-  const lista = (corpo as Record<string, unknown>)[chave];
-  if (!Array.isArray(lista)) return [];
+function nosDa(conexao: unknown): Record<string, unknown>[] {
+  if (conexao === null || typeof conexao !== 'object') return [];
+  const nos = (conexao as { nodes?: unknown }).nodes;
+  if (!Array.isArray(nos)) return [];
+  return nos.filter((no): no is Record<string, unknown> => no !== null && typeof no === 'object');
+}
 
-  const itens: ItemDoCatalogo[] = [];
-  for (const bruto of lista) {
-    if (bruto === null || typeof bruto !== 'object') continue;
-    const item = bruto as { id?: unknown; title?: unknown; handle?: unknown; image?: unknown };
-
-    const handle = typeof item.handle === 'string' ? item.handle.trim() : '';
-    if (handle === '') continue;
-
-    itens.push({
-      tipo,
-      id: idComoTexto(item.id),
-      titulo: typeof item.title === 'string' && item.title !== '' ? item.title : handle,
-      caminho: caminhoDoItem(tipo, handle),
-      imagem: leituraDaImagem(item.image),
-    });
-  }
-  return itens;
+function itemDo(
+  no: Record<string, unknown>,
+  tipo: TipoDoItem,
+  imagem: unknown,
+): ItemDoCatalogo | null {
+  const handle = typeof no.handle === 'string' ? no.handle.trim() : '';
+  if (handle === '') return null;
+  return {
+    tipo,
+    id: typeof no.id === 'string' ? no.id : '',
+    titulo: typeof no.title === 'string' && no.title !== '' ? no.title : handle,
+    caminho: caminhoDoItem(tipo, handle),
+    imagem: imagemSegura(imagem),
+  };
 }
 
 /** `/products/<handle>` ou `/collections/<handle>`. */
 export function caminhoDoItem(tipo: TipoDoItem, handle: string): string {
   return tipo === 'produto' ? `/products/${handle}` : `/collections/${handle}`;
-}
-
-function idComoTexto(id: unknown): string {
-  if (typeof id === 'number') return String(id);
-  return typeof id === 'string' ? id : '';
 }
 
 /**
@@ -109,11 +126,8 @@ function idComoTexto(id: unknown): string {
  * viria da resposta de um servidor que não é nosso — e a resposta é da loja do
  * cliente, que instalou os apps que quis.
  */
-function leituraDaImagem(imagem: unknown): string | null {
-  if (imagem === null || typeof imagem !== 'object') return null;
-  const src = (imagem as { src?: unknown }).src;
-  if (typeof src !== 'string') return null;
-  return src.startsWith('https://') ? src : null;
+function imagemSegura(url: unknown): string | null {
+  return typeof url === 'string' && url.startsWith('https://') ? url : null;
 }
 
 /** Junta produtos e coleções na ordem em que a tela mostra. */

@@ -1,141 +1,116 @@
 import { describe, expect, it } from 'vitest';
 import {
   LIMITE_DA_BUSCA,
+  buscasDoCatalogo,
   caminhoDoItem,
-  lerItens,
+  lerCatalogo,
   montarResultados,
-  urlDeColecoes,
-  urlDeProdutos,
 } from '@/lib/catalogo';
-import { VERSAO_DA_API } from '@/lib/shopify';
 
-const LOJA = 'oak-vintage.myshopify.com';
+describe('buscasDoCatalogo', () => {
+  it('só produto ativo, e cada palavra acha o começo de uma palavra do título', () => {
+    expect(buscasDoCatalogo('jaqueta azul')).toEqual({
+      produtos: 'status:active title:jaqueta* title:azul*',
+      colecoes: 'title:jaqueta* title:azul*',
+    });
+  });
 
-describe('urlDeProdutos', () => {
-  /*
-   * `title` e não `q`: a Admin API REST filtra produto por título, e `q` seria
-   * ignorado em silêncio — a busca pareceria quebrada só para quem digita algo
-   * que não é o começo de um título.
-   */
-  it('busca por título, com limite e só produtos ativos', () => {
-    const url = new URL(urlDeProdutos(LOJA, ' jaqueta '));
-
-    expect(url.host).toBe(LOJA);
-    expect(url.pathname).toBe(`/admin/api/${VERSAO_DA_API}/products.json`);
-    expect(url.searchParams.get('title')).toBe('jaqueta');
-    expect(url.searchParams.get('status')).toBe('active');
-    expect(url.searchParams.get('limit')).toBe(String(LIMITE_DA_BUSCA));
+  it('sem termo, todos os produtos ativos e todas as coleções', () => {
+    expect(buscasDoCatalogo('   ')).toEqual({ produtos: 'status:active', colecoes: '' });
   });
 
   /*
-   * Sem termo a Shopify devolve os mais recentes — que é o que faz a lista
-   * abrir cheia em vez de pedir ao lojista que adivinhe o nome exato.
+   * O texto digitado não pode virar filtro: dois-pontos, aspas, parênteses e
+   * o "-" do começo são operadores da busca da Shopify.
    */
-  it('sem termo, não manda filtro de título', () => {
-    const url = new URL(urlDeProdutos(LOJA, '   '));
-
-    expect(url.searchParams.has('title')).toBe(false);
-  });
-
-  /* O termo vem do que o lojista digitou e vira query string. */
-  it('escapa o que foi digitado', () => {
-    const url = new URL(urlDeProdutos(LOJA, 'a&b=c #1'));
-
-    expect(url.searchParams.get('title')).toBe('a&b=c #1');
-    expect(url.searchParams.get('limit')).toBe(String(LIMITE_DA_BUSCA));
+  it('o que é operador da busca sai, e acento e hífen do meio ficam', () => {
+    expect(buscasDoCatalogo('status:draft "vip" (x) -oculto camisa-polo ação').produtos).toBe(
+      'status:active title:status* title:draft* title:vip* title:x* title:oculto*',
+    );
+    expect(buscasDoCatalogo('camisa-polo ação').colecoes).toBe('title:camisa-polo* title:ação*');
   });
 });
 
-describe('urlDeColecoes', () => {
-  /* A Shopify separa coleção manual de automática em recursos diferentes. */
-  it('aponta para o recurso certo de cada tipo', () => {
-    expect(new URL(urlDeColecoes(LOJA, false, '')).pathname).toBe(
-      `/admin/api/${VERSAO_DA_API}/custom_collections.json`,
-    );
-    expect(new URL(urlDeColecoes(LOJA, true, '')).pathname).toBe(
-      `/admin/api/${VERSAO_DA_API}/smart_collections.json`,
-    );
-  });
-});
-
-describe('lerItens', () => {
-  it('lê os produtos com caminho e miniatura', () => {
-    const itens = lerItens(
-      {
-        products: [
+describe('lerCatalogo', () => {
+  it('lê produtos e coleções com caminho e miniatura, produto primeiro', () => {
+    const itens = lerCatalogo({
+      products: {
+        nodes: [
           {
-            id: 12345,
-            title: 'Jaqueta jeans',
-            handle: 'jaqueta-jeans',
-            image: { src: 'https://cdn.shopify.com/jaqueta.jpg' },
+            id: 'gid://shopify/Product/1',
+            title: 'Jaqueta',
+            handle: 'jaqueta',
+            featuredMedia: { preview: { image: { url: 'https://cdn.shopify.com/j.jpg' } } },
           },
         ],
       },
-      'products',
-      'produto',
-    );
+      collections: {
+        nodes: [
+          {
+            id: 'gid://shopify/Collection/2',
+            title: 'Inverno',
+            handle: 'inverno',
+            image: { url: 'https://cdn.shopify.com/i.jpg' },
+          },
+        ],
+      },
+    });
 
     expect(itens).toEqual([
       {
         tipo: 'produto',
-        id: '12345',
-        titulo: 'Jaqueta jeans',
-        caminho: '/products/jaqueta-jeans',
-        imagem: 'https://cdn.shopify.com/jaqueta.jpg',
+        id: 'gid://shopify/Product/1',
+        titulo: 'Jaqueta',
+        caminho: '/products/jaqueta',
+        imagem: 'https://cdn.shopify.com/j.jpg',
+      },
+      {
+        tipo: 'colecao',
+        id: 'gid://shopify/Collection/2',
+        titulo: 'Inverno',
+        caminho: '/collections/inverno',
+        imagem: 'https://cdn.shopify.com/i.jpg',
       },
     ]);
   });
 
-  /*
-   * É o `handle` que vira o caminho. Um item sem ele só poderia virar um link
-   * quebrado na notificação de alguém.
-   */
-  it('descarta item sem handle', () => {
-    const itens = lerItens(
-      {
-        products: [
-          { id: 1, title: 'Sem handle' },
-          { id: 2, title: 'Vazio', handle: '  ' },
+  /* Sem handle não há caminho: o item só viraria um link quebrado na notificação. */
+  it('descarta item sem handle, e o sem título usa o handle', () => {
+    const itens = lerCatalogo({
+      products: {
+        nodes: [
+          { id: 'a', title: 'Sem handle' },
+          { id: 'b', handle: 'so-handle' },
         ],
       },
-      'products',
-      'produto',
-    );
+    });
 
-    expect(itens).toEqual([]);
+    expect(itens.map((item) => item.titulo)).toEqual(['so-handle']);
   });
 
-  it('sem título, o handle vira o rótulo em vez de um item em branco', () => {
-    const itens = lerItens({ products: [{ id: 1, handle: 'so-handle' }] }, 'products', 'produto');
+  /* A miniatura vai para um <img> no painel: `javascript:` ou `data:` nunca. */
+  it('só aceita miniatura https, e produto sem mídia fica sem miniatura', () => {
+    const itens = lerCatalogo({
+      products: {
+        nodes: [
+          {
+            id: 'a',
+            handle: 'a',
+            featuredMedia: { preview: { image: { url: 'javascript:alert(1)' } } },
+          },
+          { id: 'b', handle: 'b', featuredMedia: null },
+        ],
+      },
+      collections: { nodes: [{ id: 'c', handle: 'c', image: { url: 'data:image/png;base64,x' } }] },
+    });
 
-    expect(itens[0]?.titulo).toBe('so-handle');
+    expect(itens.map((item) => item.imagem)).toEqual([null, null, null]);
   });
 
-  /*
-   * A imagem vai para um `<img>` no painel, e a resposta é da loja do cliente
-   * — que instalou os apps que quis. `javascript:` e `data:` não entram.
-   */
-  it('só aceita miniatura https', () => {
-    for (const src of [
-      'http://cdn.shopify.com/x.jpg',
-      'javascript:alert(1)',
-      'data:image/svg+xml;base64,AAAA',
-      '//cdn.shopify.com/x.jpg',
-      42,
-    ]) {
-      const itens = lerItens(
-        { products: [{ id: 1, handle: 'x', image: { src } }] },
-        'products',
-        'produto',
-      );
-      expect(itens[0]?.imagem, String(src)).toBeNull();
-    }
-  });
-
-  it('payload torto não estoura', () => {
-    for (const corpo of [null, 'texto', {}, { products: 'não é lista' }, { products: [null, 7] }]) {
-      expect(lerItens(corpo, 'products', 'produto'), JSON.stringify(corpo)).toEqual([]);
-    }
+  it('resposta torta não estoura', () => {
+    expect(lerCatalogo({})).toEqual([]);
+    expect(lerCatalogo({ products: 'x', collections: { nodes: 'y' } })).toEqual([]);
+    expect(lerCatalogo({ products: { nodes: [null, 1, 'x'] } })).toEqual([]);
   });
 });
 

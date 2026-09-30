@@ -60,21 +60,37 @@ function urlDe(url: string | URL | Request): string {
   return url instanceof URL ? url.toString() : url.url;
 }
 
+/** A GraphQL da Shopify: uma consulta com produtos e coleções. */
 function redeFalsa(opcoes: OpcoesDaRede = {}) {
-  const chamadas: { url: string; token: string | null }[] = [];
+  const chamadas: {
+    url: string;
+    token: string | null;
+    variaveis: Record<string, unknown> | null;
+  }[] = [];
 
   const buscador = vi.fn((url: string | URL | Request, init?: RequestInit) => {
     const alvo = urlDe(url);
     const cabecalhos = new Headers(init?.headers);
-    chamadas.push({ url: alvo, token: cabecalhos.get('X-Shopify-Access-Token') });
+    const corpoDoPedido =
+      typeof init?.body === 'string'
+        ? (JSON.parse(init.body) as { variables?: Record<string, unknown> })
+        : null;
+    chamadas.push({
+      url: alvo,
+      token: cabecalhos.get('X-Shopify-Access-Token'),
+      variaveis: corpoDoPedido?.variables ?? null,
+    });
 
     if (opcoes.quebrar === true) return Promise.reject(new Error('sem rede'));
 
-    const corpo = alvo.includes('products.json')
-      ? (opcoes.produtos ?? {
-          products: [{ id: 1, title: 'Jaqueta', handle: 'jaqueta' }],
-        })
-      : (opcoes.colecoes ?? { custom_collections: [], smart_collections: [] });
+    const corpo = {
+      data: {
+        products: {
+          nodes: opcoes.produtos ?? [{ id: 'gid://1', title: 'Jaqueta', handle: 'jaqueta' }],
+        },
+        collections: { nodes: opcoes.colecoes ?? [] },
+      },
+    };
 
     return Promise.resolve(
       new Response(JSON.stringify(corpo), {
@@ -101,12 +117,16 @@ describe('buscarNoCatalogo', () => {
     expect(resultado.ok).toBe(true);
     if (resultado.ok) expect(resultado.itens[0]?.caminho).toBe('/products/jaqueta');
 
-    // Três chamadas: produtos, coleções manuais e coleções automáticas.
-    expect(chamadas).toHaveLength(3);
-    for (const chamada of chamadas) {
-      expect(chamada.token).toBe(TOKEN);
-      expect(new URL(chamada.url).host).toBe(LOJA);
-    }
+    // Uma consulta só, pela GraphQL (a REST é legado), com o token da loja.
+    expect(chamadas).toHaveLength(1);
+    const [chamada] = chamadas;
+    expect(chamada?.token).toBe(TOKEN);
+    expect(new URL(chamada?.url ?? '').host).toBe(LOJA);
+    expect(new URL(chamada?.url ?? '').pathname).toMatch(/\/graphql\.json$/);
+    expect(chamada?.variaveis).toMatchObject({
+      produtos: 'status:active title:jaqueta*',
+      colecoes: 'title:jaqueta*',
+    });
   });
 
   /*
@@ -203,18 +223,19 @@ describe('buscarNoCatalogo', () => {
     expect(chamadas).toEqual([]);
   });
 
-  it('uma resposta ruim não derruba as outras', async () => {
-    let chamada = 0;
-    const buscador = vi.fn((url: string | URL | Request) => {
-      chamada += 1;
-      const corpo = urlDe(url).includes('products.json')
-        ? { products: [{ id: 1, title: 'Jaqueta', handle: 'jaqueta' }] }
-        : { custom_collections: [] };
-
-      return Promise.resolve(
-        new Response(JSON.stringify(corpo), { status: chamada === 2 ? 500 : 200 }),
-      );
-    });
+  it('coleções que vêm tortas não derrubam os produtos', async () => {
+    const buscador = vi.fn(() =>
+      Promise.resolve(
+        new Response(
+          JSON.stringify({
+            data: {
+              products: { nodes: [{ id: 'gid://1', title: 'Jaqueta', handle: 'jaqueta' }] },
+              collections: null,
+            },
+          }),
+        ),
+      ),
+    );
 
     const resultado = await buscarNoCatalogo(
       servicoFalso(LOJA_CONECTADA()),
@@ -225,5 +246,34 @@ describe('buscarNoCatalogo', () => {
 
     expect(resultado.ok).toBe(true);
     if (resultado.ok) expect(resultado.itens).toHaveLength(1);
+  });
+
+  /*
+   * A GraphQL responde 200 mesmo quando nega: a permissão que falta vem em
+   * `errors`. Tratar só o status diria "nenhum produto" a quem precisa
+   * reconectar.
+   */
+  it('a permissão que falta, dita com 200, manda reconectar', async () => {
+    const buscador = vi.fn(() =>
+      Promise.resolve(
+        new Response(
+          JSON.stringify({
+            errors: [
+              { message: 'Access denied for products field. Required access: `read_products`.' },
+            ],
+          }),
+        ),
+      ),
+    );
+
+    const resultado = await buscarNoCatalogo(
+      servicoFalso(LOJA_CONECTADA()),
+      'loja-1',
+      'jaqueta',
+      buscador,
+    );
+
+    expect(resultado.ok).toBe(false);
+    if (!resultado.ok) expect(resultado.desconectada).toBe(true);
   });
 });

@@ -11,17 +11,16 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '@storefy/db';
 import { ehDominioDeLoja } from '@/lib/shopify';
 import { tokenDaLoja } from '@/lib/shopify-conexao';
+import { consultarAdmin } from '@/lib/shopify-servidor';
 import {
-  lerItens,
-  montarResultados,
-  urlDeColecoes,
-  urlDeProdutos,
+  CONSULTA_DO_CATALOGO,
+  LIMITE_DA_BUSCA,
+  buscasDoCatalogo,
+  lerCatalogo,
   type ItemDoCatalogo,
 } from '@/lib/catalogo';
 
 type Client = SupabaseClient<Database>;
-
-const TIMEOUT_MS = 10_000;
 
 export type ResultadoDaBusca =
   | { ok: true; itens: ItemDoCatalogo[] }
@@ -62,72 +61,28 @@ export async function buscarNoCatalogo(
     };
   }
 
-  /*
-   * As três chamadas em paralelo: a Shopify separa coleção manual de coleção
-   * automática em recursos diferentes, e fazer uma de cada vez triplicaria a
-   * espera de quem está digitando.
-   */
-  const [produtos, manuais, automaticas] = await Promise.all([
-    pedir(buscador, urlDeProdutos(dominio, termo), token),
-    pedir(buscador, urlDeColecoes(dominio, false, termo), token),
-    pedir(buscador, urlDeColecoes(dominio, true, termo), token),
-  ]);
+  // Produtos e coleções numa consulta só: quem está digitando espera uma ida, e não três.
+  const resposta = await consultarAdmin(
+    dominio,
+    token,
+    CONSULTA_DO_CATALOGO,
+    { limite: LIMITE_DA_BUSCA, ...buscasDoCatalogo(termo) },
+    buscador,
+  );
 
-  if (produtos === 'revogado' || manuais === 'revogado' || automaticas === 'revogado') {
-    return {
-      ok: false,
-      motivo: 'A Shopify recusou a conexão. Reconecte a loja para continuar.',
-      desconectada: true,
-    };
-  }
-
-  if (produtos === null && manuais === null && automaticas === null) {
-    return { ok: false, motivo: 'Não conseguimos falar com a Shopify agora. Tente de novo.' };
-  }
-
-  const corpoDe = (resposta: RespostaDaShopify): unknown =>
-    resposta === null || resposta === 'revogado' ? null : resposta.corpo;
-
-  return {
-    ok: true,
-    itens: montarResultados(lerItens(corpoDe(produtos), 'products', 'produto'), [
-      ...lerItens(corpoDe(manuais), 'custom_collections', 'colecao'),
-      ...lerItens(corpoDe(automaticas), 'smart_collections', 'colecao'),
-    ]),
-  };
-}
-
-/** O corpo da resposta, `null` em falha, `'revogado'` quando o token morreu. */
-type RespostaDaShopify = { corpo: unknown } | null | 'revogado';
-
-async function pedir(
-  buscador: typeof fetch,
-  url: string,
-  token: string,
-): Promise<RespostaDaShopify> {
-  const controle = new AbortController();
-  const relogio = setTimeout(() => {
-    controle.abort();
-  }, TIMEOUT_MS);
-
-  try {
-    const resposta = await buscador(url, {
-      headers: { 'X-Shopify-Access-Token': token, Accept: 'application/json' },
-      signal: controle.signal,
-    });
-
+  if (!resposta.ok) {
     /*
-     * 401 e 403 são o token revogado ou sem o escopo: a tela precisa dizer
-     * "reconecte", e não "tente de novo" — tentar de novo daria no mesmo para
-     * sempre.
+     * Token revogado ou sem o escopo: a tela precisa dizer "reconecte", e não
+     * "tente de novo" — tentar de novo daria no mesmo para sempre.
      */
-    if (resposta.status === 401 || resposta.status === 403) return 'revogado';
-    if (!resposta.ok) return null;
-
-    return { corpo: await resposta.json() };
-  } catch {
-    return null;
-  } finally {
-    clearTimeout(relogio);
+    return resposta.causa === 'sem-permissao'
+      ? {
+          ok: false,
+          motivo: 'A Shopify recusou a conexão. Reconecte a loja para continuar.',
+          desconectada: true,
+        }
+      : { ok: false, motivo: 'Não conseguimos falar com a Shopify agora. Tente de novo.' };
   }
+
+  return { ok: true, itens: lerCatalogo(resposta.dados) };
 }
