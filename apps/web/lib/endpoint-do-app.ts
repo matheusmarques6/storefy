@@ -86,6 +86,17 @@ export const CorpoDoPareamento = z
     message: 'o aparelho precisa da inscrição ou da instalação',
   });
 
+/**
+ * O toque numa notificação de automação (C09, C10 e C11).
+ *
+ * `envio` é o id que o despachante pôs nos dados da notificação: aleatório, e
+ * só quem recebeu a notificação o tem.
+ */
+export const CorpoDaAbertura = z.object({
+  appId: uuid,
+  envio: z.uuid({ message: 'envio inválido' }),
+});
+
 export const CorpoDoEvento = z.object({
   appId: uuid,
   subscriptionId: inscricao,
@@ -148,6 +159,7 @@ export const CorpoDoAviso = z.object({
 
 export type DadosDoAparelho = z.infer<typeof CorpoDoAparelho>;
 export type DadosDoPareamento = z.infer<typeof CorpoDoPareamento>;
+export type DadosDaAbertura = z.infer<typeof CorpoDaAbertura>;
 export type DadosDoEvento = z.infer<typeof CorpoDoEvento>;
 export type DadosDoAviso = z.infer<typeof CorpoDoAviso>;
 
@@ -423,4 +435,22 @@ export function respostaDoPareamento(dados: unknown): Resposta {
     corpo: { resultado },
     ...(resultado === 'pareado' ? {} : { motivo: `pareamento: ${resultado}` }),
   };
+}
+
+/**
+ * Traduz o retorno de `registrar_abertura_do_envio` em resposta HTTP.
+ *
+ * Envio desconhecido sai com 200 e `contada: false`: o app não tem o que
+ * fazer com isso (a notificação pode ser de antes de a automação ser
+ * excluída), e um erro o faria tentar de novo à toa.
+ */
+export function respostaDaAbertura(dados: unknown): Resposta {
+  if (dados === 'limitado') {
+    return { status: 429, corpo: { erro: 'muitas_requisicoes' }, motivo: 'limite das aberturas' };
+  }
+  if (dados === 'contada') return { status: 200, corpo: { contada: true } };
+  if (dados === 'desconhecido') {
+    return { status: 200, corpo: { contada: false }, motivo: 'abertura: envio desconhecido' };
+  }
+  return INDISPONIVEL;
 }

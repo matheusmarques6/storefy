@@ -11,7 +11,7 @@ import 'server-only';
  * A chave REST é POR LOJA, decifrada logo antes da chamada e nunca guardada.
  */
 
-import { dadosDaOrigem, type OrigemDoPush } from '@storefy/config-schema';
+import { dadosDaOrigem, dadosDoEnvio, type OrigemDoPush } from '@storefy/config-schema';
 import { filtrosDoPublico, publicoDoSegmento } from '@/lib/publico-do-push';
 
 export const BASE_DA_API = 'https://api.onesignal.com';
@@ -43,6 +43,11 @@ export interface NotificacaoParaEnviar {
    * venda da campanha.
    */
   origem?: OrigemDoPush;
+  /**
+   * O id do envio de automação (`automation_runs.id`). O app o devolve no
+   * toque, e é assim que a automação ganha aberturas (C09, C10 e C11).
+   */
+  envio?: string;
 }
 
 export type ResultadoDoEnvio =
@@ -79,6 +84,7 @@ export function corpoDaNotificacao(
     dados.deep_link = notificacao.deepLink;
   }
   if (notificacao.origem !== undefined) Object.assign(dados, dadosDaOrigem(notificacao.origem));
+  if (notificacao.envio !== undefined) Object.assign(dados, dadosDoEnvio(notificacao.envio));
   if (Object.keys(dados).length > 0) corpo.data = dados;
 
   /*

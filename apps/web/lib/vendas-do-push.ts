@@ -65,6 +65,12 @@ export function dicaDasVendas(vendas: Vendas): string {
   return `${textoDosPedidos(vendas.pedidos)} ${janela}, de quem tocou numa notificação.`;
 }
 
+/** Uma automação na janela: quantas notificações saíram, quantas abriram e o que venderam. */
+export interface ResultadoDaAutomacao extends Vendas {
+  envios: number;
+  aberturas: number;
+}
+
 /** Receita sobre pedidos. `null` sem pedido — ticket médio de zero pedidos não existe. */
 export function ticketMedio(vendas: Vendas): number | null {
   return vendas.pedidos > 0 ? Math.round(vendas.receitaCents / vendas.pedidos) : null;
@@ -87,6 +93,8 @@ export interface EtapaDoFunil {
   explicacao: string;
 }
 
+type ValorDaEtapa = Pick<EtapaDoFunil, 'chave' | 'rotulo' | 'valor' | 'explicacao'>;
+
 /**
  * O funil de uma campanha: enviados → entregues → aberturas → pedidos.
  *
@@ -99,7 +107,7 @@ export function funilDaCampanha(
   vendas: Vendas | undefined,
   visiveis: boolean,
 ): EtapaDoFunil[] {
-  const valores: Pick<EtapaDoFunil, 'chave' | 'rotulo' | 'valor' | 'explicacao'>[] = [
+  const valores: ValorDaEtapa[] = [
     {
       chave: 'enviados',
       rotulo: 'Enviados',
@@ -128,6 +136,16 @@ export function funilDaCampanha(
     },
   ];
 
+  return comTaxas(valores);
+}
+
+/**
+ * A taxa de cada etapa sobre a anterior e a largura da barra sobre o topo.
+ *
+ * O topo é o primeiro número que existe. Etapa sem número fica sem barra e
+ * sem taxa — o funil nunca desenha um zero que não aconteceu.
+ */
+function comTaxas(valores: readonly ValorDaEtapa[]): EtapaDoFunil[] {
   const topo = valores.find((etapa) => etapa.valor !== null)?.valor ?? null;
 
   return valores.map((etapa, indice) => {
@@ -141,3 +159,44 @@ export function funilDaCampanha(
     return { ...etapa, taxa, largura };
   });
 }
+
+/**
+ * O funil de uma automação: enviadas → aberturas → pedidos (C10).
+ *
+ * Sem "entregues": a OneSignal só diria uma notificação de cada vez, e cada
+ * envio de automação é uma notificação. As aberturas são as que o app contou;
+ * enquanto o app da loja não conta (a versão de antes), a etapa fica com
+ * traço — um zero ali diria que ninguém abre.
+ */
+export function funilDaAutomacao(
+  resultado: ResultadoDaAutomacao,
+  contaAberturas: boolean,
+  visiveis: boolean,
+): EtapaDoFunil[] {
+  return comTaxas([
+    {
+      chave: 'enviados',
+      rotulo: 'Enviadas',
+      valor: resultado.envios,
+      explicacao: 'Notificações que saíram para os aparelhos no período.',
+    },
+    {
+      chave: 'aberturas',
+      rotulo: 'Aberturas',
+      valor: contaAberturas ? resultado.aberturas : null,
+      explicacao: contaAberturas ? 'Tocaram na notificação e abriram o app.' : AVISO_DAS_ABERTURAS,
+    },
+    {
+      chave: 'pedidos',
+      rotulo: 'Pedidos',
+      valor: visiveis ? resultado.pedidos : null,
+      explicacao: visiveis
+        ? 'Compraram até 3 dias depois de tocar na notificação.'
+        : MOTIVO_SEM_VENDAS,
+    },
+  ]);
+}
+
+/** Por que as aberturas das automações aparecem como traço. */
+export const AVISO_DAS_ABERTURAS =
+  'Aparece a partir da próxima versão do app nas lojas, que conta os toques nas notificações.';

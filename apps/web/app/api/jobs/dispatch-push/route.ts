@@ -217,6 +217,8 @@ async function despacharAutomacoes(supabase: Client, resumo: ResumoDoJob): Promi
         ...(envio.automation_id === null
           ? {}
           : { origem: { tipo: 'automacao', id: envio.automation_id } as const }),
+        // O id do envio volta no toque: é por ele que a automação conta as aberturas.
+        envio: envio.id,
       },
     );
 

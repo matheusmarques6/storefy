@@ -223,6 +223,8 @@ export {
   FOLGA_DO_RELOGIO_MS,
   JANELA_DO_PUSH_MS,
   dadosDaOrigem,
+  dadosDoEnvio,
+  envioDaNotificacao,
   lerAtributoDoPush,
   origemDaNotificacao,
   toqueAindaVale,

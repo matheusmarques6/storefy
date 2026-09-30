@@ -1,6 +1,6 @@
 /**
- * O funil da campanha (C10): enviados → entregues → aberturas → pedidos, e a
- * receita no fim.
+ * O funil do C10: enviados → entregues → aberturas → pedidos na campanha, e
+ * enviadas → aberturas → pedidos na automação — e a receita no fim.
  *
  * Cada barra é a fração do topo, e cada etapa diz quanto da anterior chegou
  * até ela. Etapa sem número fica com traço e sem barra: o funil nunca desenha
@@ -23,6 +23,7 @@ export function FunilDaCampanha({
   vendas,
   vendasVisiveis,
   podeConectar,
+  de = 'campanha',
 }: {
   etapas: readonly EtapaDoFunil[];
   /** `undefined` antes do envio. */
@@ -30,8 +31,14 @@ export function FunilDaCampanha({
   vendasVisiveis: boolean;
   /** Quem pode conectar a Shopify vê o atalho; os outros, só o motivo. */
   podeConectar: boolean;
+  /** A automação tem período, e não "antes e depois do envio". */
+  de?: 'campanha' | 'automacao';
 }) {
   const ticket = vendas === undefined ? null : ticketMedio(vendas);
+  const nenhumPedido =
+    de === 'campanha'
+      ? 'Nenhum pedido veio desta notificação até agora.'
+      : 'Nenhum pedido veio desta automação no período.';
 
   return (
     <Card>
@@ -43,7 +50,10 @@ export function FunilDaCampanha({
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-5">
-        <ol className="space-y-4" aria-label="Funil da campanha">
+        <ol
+          className="space-y-4"
+          aria-label={de === 'campanha' ? 'Funil da campanha' : 'Funil da automação'}
+        >
           {etapas.map((etapa) => (
             <li key={etapa.chave} className="space-y-1.5" data-etapa={etapa.chave}>
               <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-0.5">
@@ -80,7 +90,7 @@ export function FunilDaCampanha({
           ))}
         </ol>
 
-        <div className="rounded-lg border p-4" data-testid="receita-da-campanha">
+        <div className="rounded-lg border p-4" data-testid={`receita-da-${de}`}>
           <p className="text-muted-foreground text-xs">Receita</p>
           {vendasVisiveis ? (
             vendas === undefined ? (
@@ -92,7 +102,7 @@ export function FunilDaCampanha({
                 </p>
                 <p className="text-muted-foreground text-xs">
                   {vendas.pedidos === 0
-                    ? 'Nenhum pedido veio desta notificação até agora. Um pedido conta se a compra acontece até 3 dias depois do toque.'
+                    ? `${nenhumPedido} Um pedido conta se a compra acontece até 3 dias depois do toque.`
                     : `${textoDosPedidos(vendas.pedidos)}${ticket === null ? '' : `, ticket médio de ${comoReais(ticket)}`}. Conta a compra feita até 3 dias depois do toque.`}
                 </p>
               </>

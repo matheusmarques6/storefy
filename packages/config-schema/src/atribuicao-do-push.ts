@@ -62,6 +62,25 @@ export function dadosDaOrigem(origem: OrigemDoPush): Record<string, string> {
   return origem.tipo === 'campanha' ? { campanha: origem.id } : { automacao: origem.id };
 }
 
+/**
+ * O envio de automação que a notificação carrega (C09, C10 e C11).
+ *
+ * Cada envio de automação sai numa notificação própria, e a OneSignal só
+ * diria quem abriu uma notificação de cada vez. Então o despachante põe o id
+ * do envio nos dados, e o app, no toque, avisa a Storefy com ele — é assim
+ * que a automação ganha aberturas. O id é aleatório e só viaja dentro da
+ * notificação de quem a recebeu.
+ */
+export function dadosDoEnvio(envio: string): Record<string, string> {
+  return { envio };
+}
+
+/** O envio nos dados de uma notificação tocada — ou `null` (campanha, ou app antigo). */
+export function envioDaNotificacao(dados: unknown): string | null {
+  if (dados === null || typeof dados !== 'object') return null;
+  return uuid((dados as { envio?: unknown }).envio);
+}
+
 /** A origem nos dados de uma notificação tocada — ou `null`, se não veio de nós. */
 export function origemDaNotificacao(dados: unknown): OrigemDoPush | null {
   if (dados === null || typeof dados !== 'object') return null;

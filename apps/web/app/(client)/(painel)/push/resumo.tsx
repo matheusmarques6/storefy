@@ -8,32 +8,26 @@
 import { Bell, CheckCircle2, ShoppingBag, Smartphone } from 'lucide-react';
 import { CartaoDeNumero } from '@/components/cartao-de-numero';
 import { comoReais } from '@/lib/analytics';
-import { lerMetricas, numeroOuTraco } from '@/lib/campanha';
-import type { CampanhaNaLista } from '@/lib/push-servidor';
+import { numeroOuTraco } from '@/lib/campanha';
+import type { ResumoDasCampanhas } from '@/lib/push-servidor';
 import { MOTIVO_SEM_VENDAS, dicaDasVendas, type Vendas } from '@/lib/vendas-do-push';
 
 export function ResumoDoPush({
   aparelhos,
-  campanhas,
+  resumo,
   vendas,
 }: {
   aparelhos: number | null;
-  campanhas: readonly CampanhaNaLista[];
+  /**
+   * De TODAS as campanhas, somado no banco — e não da página que a lista
+   * mostra. A soma só conta o que o job de estatísticas já gravou: uma
+   * campanha sem número ainda não entra como zero puxando o total para baixo.
+   */
+  resumo: ResumoDasCampanhas;
   /** Campanhas e automações nos últimos 30 dias. `null` sem a Shopify conectada. */
   vendas: Vendas | null;
 }) {
-  const enviadas = campanhas.filter((campanha) => campanha.status === 'sent').length;
-
-  /*
-   * Soma só o que o job de estatísticas já gravou. Uma campanha sem número
-   * ainda não entra na conta, em vez de entrar como zero e puxar o total para
-   * baixo — o que faria o lojista ler o próprio desempenho errado.
-   */
-  const comMetrica = campanhas
-    .map((campanha) => lerMetricas(campanha.stats).entregues)
-    .filter((valor): valor is number => valor !== null);
-
-  const entregues = comMetrica.length === 0 ? null : comMetrica.reduce((a, b) => a + b, 0);
+  const { enviadas, entregues } = resumo;
 
   return (
     <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">

@@ -12,7 +12,7 @@ import {
 } from 'lucide-react';
 import { exigirContextoCliente } from '@/lib/contexto';
 import { criarClientServidor } from '@/lib/supabase/server';
-import { appDaLoja } from '@/lib/push-servidor';
+import { appContaAberturas, appDaLoja } from '@/lib/push-servidor';
 import { nomeDoFuso } from '@/lib/fuso';
 import { numerosDoPeriodo } from '@/lib/analytics-servidor';
 import {
@@ -69,12 +69,10 @@ export default async function PaginaDeAnalytics({
     );
   }
 
-  const { serie, totais, ativosNoPeriodo, de, ate } = await numerosDoPeriodo(
-    supabase,
-    app.id,
-    lojaAtiva.timezone,
-    dias,
-  );
+  const [{ serie, totais, ativosNoPeriodo, de, ate }, contaAberturas] = await Promise.all([
+    numerosDoPeriodo(supabase, app.id, lojaAtiva.timezone, dias),
+    appContaAberturas(supabase, app.id),
+  ]);
 
   const fatia = fatiaDoApp(totais);
 
@@ -178,7 +176,7 @@ export default async function PaginaDeAnalytics({
                 icone={Bell}
                 rotulo="Enviadas"
                 valor={comoNumero(totais.pushSent)}
-                dica="Soma das campanhas com estatística já disponível."
+                dica="Campanhas (com o número que já voltou) e automações."
               />
               <CartaoDeNumero
                 icone={Bell}
@@ -187,7 +185,10 @@ export default async function PaginaDeAnalytics({
                 dica={
                   totais.pushSent === 0
                     ? 'Aparece depois do primeiro envio.'
-                    : `${comoPorcentagem(totais.pushOpened / totais.pushSent)} de quem recebeu.`
+                    : contaAberturas
+                      ? `${comoPorcentagem(totais.pushOpened / totais.pushSent)} de quem recebeu.`
+                      : // O app de antes não conta os toques das automações: a taxa sairia baixa demais.
+                        'Por enquanto só as das campanhas: as das automações contam a partir da próxima versão do app.'
                 }
               />
             </CardContent>

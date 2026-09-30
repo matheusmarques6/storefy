@@ -63,6 +63,7 @@ const { POST: postarAparelho } = await import('@/app/api/public/devices/route');
 const { POST: postarEvento } = await import('@/app/api/public/events/route');
 const { POST: postarErro } = await import('@/app/api/public/errors/route');
 const { POST: postarPareamento } = await import('@/app/api/public/test-device/route');
+const { POST: postarAbertura } = await import('@/app/api/public/push-opened/route');
 
 let chaveOriginal: string | undefined;
 let avisos: MockInstance<typeof console.warn>;
@@ -506,5 +507,37 @@ describe('POST /api/public/test-device', () => {
     expect(resposta.status).toBe(503);
     const texto = await resposta.text();
     expect(texto).toBe(JSON.stringify({ erro: 'indisponivel' }));
+  });
+});
+
+describe('POST /api/public/push-opened', () => {
+  const ENVIO_DA_AUTOMACAO = '99999999-9999-4999-8999-999999999999';
+  const corpo = JSON.stringify({ appId: APP, envio: ENVIO_DA_AUTOMACAO });
+
+  it('conta a abertura do envio, com o app e o envio certos', async () => {
+    retornoDaRpc = { data: 'contada', error: null };
+
+    const resposta = await postarAbertura(
+      requisicao('/api/public/push-opened', corpo, assinado(corpo)),
+    );
+
+    expect(resposta.status).toBe(200);
+    await expect(resposta.json()).resolves.toEqual({ contada: true });
+    expect(argumentosDaRpc).toEqual({ p_app_id: APP, p_envio: ENVIO_DA_AUTOMACAO });
+  });
+
+  it('sem a assinatura do app, nem chega ao banco', async () => {
+    const resposta = await postarAbertura(requisicao('/api/public/push-opened', corpo, null));
+    expect(resposta.status).toBe(401);
+    expect(argumentosDaRpc).toBeNull();
+  });
+
+  it('503 em JSON quando o banco falha, sem repetir a mensagem dele', async () => {
+    retornoDaRpc = { data: null, error: { message: 'relation "automation_runs" does not exist' } };
+    const resposta = await postarAbertura(
+      requisicao('/api/public/push-opened', corpo, assinado(corpo)),
+    );
+    expect(resposta.status).toBe(503);
+    expect(await resposta.text()).toBe(JSON.stringify({ erro: 'indisponivel' }));
   });
 });

@@ -230,6 +230,7 @@ export type Database = {
           deep_link: string | null;
           title: string | null;
           body: string | null;
+          opened_at: string | null;
         };
         Insert: {
           id?: string;
@@ -245,6 +246,7 @@ export type Database = {
           deep_link?: string | null;
           title?: string | null;
           body?: string | null;
+          opened_at?: string | null;
         };
         Update: {
           id?: string;
@@ -260,6 +262,7 @@ export type Database = {
           deep_link?: string | null;
           title?: string | null;
           body?: string | null;
+          opened_at?: string | null;
         };
         Relationships: [
           {
@@ -1756,6 +1759,10 @@ export type Database = {
         Args: { p_org_id: string };
         Returns: { store_id: string | null; nome: string | null; aparelhos_30d: number | null }[];
       };
+      app_conta_aberturas: {
+        Args: { p_app_id: string };
+        Returns: boolean;
+      };
       app_da_loja_shopify: {
         Args: { p_shop_domain: string };
         Returns: { app_id: string | null; store_id: string | null; timezone: string | null }[];
@@ -1835,6 +1842,10 @@ export type Database = {
       desconectar_shopify: {
         Args: { p_shop_domain: string };
         Returns: boolean;
+      };
+      desfechos_da_automacao: {
+        Args: { p_automacao_id: string; p_dias?: number };
+        Returns: { situacao: Database["public"]["Enums"]["automation_run_status"] | null; motivo: string | null; quantos: number | null }[];
       };
       devolver_aviso: {
         Args: { p_id: string };
@@ -1936,6 +1947,10 @@ export type Database = {
         Args: { p_app_id: string; p_dias?: number };
         Returns: { pedidos: number | null; receita_cents: number | null }[];
       };
+      registrar_abertura_do_envio: {
+        Args: { p_app_id: string; p_envio: string };
+        Returns: string;
+      };
       registrar_aparelho: {
         Args: { p_app_id: string; p_subscription?: string; p_platform?: Database["public"]["Enums"]["device_platform"]; p_app_version?: string; p_external_id?: string; p_email_hash?: string; p_install_id?: string };
         Returns: { device_id: string | null; limitado: boolean | null; novo: boolean | null; boas_vindas: boolean | null }[];
@@ -1998,7 +2013,11 @@ export type Database = {
       };
       resultado_das_automacoes: {
         Args: { p_app_id: string; p_dias?: number };
-        Returns: { automacao_id: string | null; envios: number | null; pedidos: number | null; receita_cents: number | null }[];
+        Returns: { automacao_id: string | null; envios: number | null; aberturas: number | null; pedidos: number | null; receita_cents: number | null }[];
+      };
+      resumo_das_campanhas: {
+        Args: { p_app_id: string };
+        Returns: { enviadas: number | null; entregues: number | null }[];
       };
       resumo_do_admin: {
         Args: Record<string, never>;

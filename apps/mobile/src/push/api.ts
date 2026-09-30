@@ -180,6 +180,23 @@ export function parearCelularDeTeste(
   return enviar(credenciais, '/api/public/test-device', { ...dados }, opcoes);
 }
 
+/** O que a rota da abertura responde. */
+export interface RespostaDaAbertura {
+  contada?: unknown;
+}
+
+/**
+ * Conta o toque numa notificação de automação (C09, C10 e C11), pelo id do
+ * envio que veio nos dados dela.
+ */
+export function registrarAberturaDoEnvio(
+  credenciais: Credenciais,
+  dados: { envio: string },
+  opcoes: Opcoes = {},
+): Promise<Resultado<RespostaDaAbertura>> {
+  return enviar(credenciais, '/api/public/push-opened', { ...dados }, opcoes);
+}
+
 /** Conta o que aconteceu com o carrinho. */
 export function enviarEventoDeCarrinho(
   credenciais: Credenciais,

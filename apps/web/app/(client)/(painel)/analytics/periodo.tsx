@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * O seletor de período da tela C11.
+ * O seletor de período da tela C11 (e do detalhe de uma automação, C10).
  *
  * São links de verdade, e não botões com estado: o período vira `?periodo=` na
  * URL, então o lojista pode voltar, recarregar e mandar o link para o sócio
@@ -12,7 +12,14 @@ import Link from 'next/link';
 import { PERIODOS } from '@/lib/analytics';
 import { cn } from '@/lib/utils';
 
-export function SeletorDePeriodo({ atual }: { atual: number }) {
+export function SeletorDePeriodo({
+  atual,
+  base = '/analytics',
+}: {
+  atual: number;
+  /** A tela onde o seletor está: o C11, ou o detalhe de uma automação (C10). */
+  base?: string;
+}) {
   return (
     <nav aria-label="Período" className="border-input inline-flex gap-1 rounded-lg border p-1">
       {PERIODOS.map((periodo) => {
@@ -20,7 +27,7 @@ export function SeletorDePeriodo({ atual }: { atual: number }) {
         return (
           <Link
             key={periodo.dias}
-            href={`/analytics?periodo=${String(periodo.dias)}`}
+            href={`${base}?periodo=${String(periodo.dias)}`}
             aria-current={ativo ? 'page' : undefined}
             // `scroll={false}`: a troca de período recarrega os dados no
             // lugar, e pular para o topo faria a tela parecer outra.

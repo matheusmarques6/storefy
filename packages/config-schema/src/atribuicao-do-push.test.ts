@@ -4,6 +4,8 @@ import {
   FOLGA_DO_RELOGIO_MS,
   JANELA_DO_PUSH_MS,
   dadosDaOrigem,
+  dadosDoEnvio,
+  envioDaNotificacao,
   lerAtributoDoPush,
   origemDaNotificacao,
   toqueAindaVale,
@@ -31,6 +33,24 @@ describe('a origem vai e volta pela notificação', () => {
 
   it('id em maiúsculas é normalizado', () => {
     expect(origemDaNotificacao({ campanha: CAMPANHA.id.toUpperCase() })).toEqual(CAMPANHA);
+  });
+});
+
+describe('o envio da automação vai e volta pela notificação', () => {
+  const ENVIO = '33333333-3333-4333-8333-333333333333';
+
+  it('o despachante escreve o envio junto da origem, e o app lê os dois', () => {
+    const dados = { deep_link: '/x', ...dadosDaOrigem(AUTOMACAO), ...dadosDoEnvio(ENVIO) };
+    expect(envioDaNotificacao(dados)).toBe(ENVIO);
+    expect(origemDaNotificacao(dados)).toEqual(AUTOMACAO);
+    expect(envioDaNotificacao({ envio: ENVIO.toUpperCase() })).toBe(ENVIO);
+  });
+
+  it('campanha, app antigo ou id que não é uuid não têm envio', () => {
+    expect(envioDaNotificacao(dadosDaOrigem(CAMPANHA))).toBeNull();
+    expect(envioDaNotificacao({ envio: 'drop table' })).toBeNull();
+    expect(envioDaNotificacao(null)).toBeNull();
+    expect(envioDaNotificacao('envio')).toBeNull();
   });
 });
 

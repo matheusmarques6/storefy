@@ -312,9 +312,10 @@ describe('GET /api/jobs/dispatch-push', () => {
     const resposta = await despachar(comSegredo('/api/jobs/dispatch-push'));
     await expect(resposta.json()).resolves.toMatchObject({ enviados: 1 });
 
+    // O id do envio vai junto: é o que o app devolve no toque para contar a abertura.
     expect(corpos[0]).toMatchObject({
       include_subscription_ids: ['sub-do-cliente'],
-      data: { deep_link: '/cart', automacao: 'auto-1' },
+      data: { deep_link: '/cart', automacao: 'auto-1', envio: ENVIO },
     });
     // E não para todo mundo, que seria o desastre silencioso desta rota.
     expect(corpos[0]).not.toHaveProperty('included_segments');

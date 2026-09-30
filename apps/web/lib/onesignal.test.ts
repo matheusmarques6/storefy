@@ -68,6 +68,20 @@ describe('corpoDaNotificacao', () => {
     ).toEqual({ automacao: campanha });
   });
 
+  it('o envio de automação leva o próprio id, para o app contar a abertura', () => {
+    const automacao = '22222222-2222-4222-8222-222222222222';
+    const envio = '33333333-3333-4333-8333-333333333333';
+    expect(
+      corpoDaNotificacao(CREDENCIAIS, {
+        title: 'a',
+        body: 'b',
+        deepLink: '/cart',
+        origem: { tipo: 'automacao', id: automacao },
+        envio,
+      }).data,
+    ).toEqual({ deep_link: '/cart', automacao, envio });
+  });
+
   it('sem caminho, não manda data vazio', () => {
     const corpo = corpoDaNotificacao(CREDENCIAIS, { title: 'a', body: 'b', deepLink: '' });
     expect(corpo).not.toHaveProperty('data');

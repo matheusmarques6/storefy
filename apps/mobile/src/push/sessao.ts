@@ -11,11 +11,16 @@
  */
 import type { Notificador } from './onesignal.ts';
 import type { Credenciais, Resultado, RespostaDoAparelho } from './api.ts';
-import { registrarAparelho, enviarEventoDeCarrinho, pedirAvisoDeVolta } from './api.ts';
+import {
+  registrarAberturaDoEnvio,
+  registrarAparelho,
+  enviarEventoDeCarrinho,
+  pedirAvisoDeVolta,
+} from './api.ts';
 import type { PermissaoDoSistema } from './permissao.ts';
 import { tagsDaCompra, tagsDoApp, tagsDoCarrinho, type CarrinhoParaTag } from './tags.ts';
 import { destinoDoPush, linkDaNotificacao, type DestinoDoPush } from './deep-link.ts';
-import { origemDaNotificacao, type OrigemDoPush } from '@storefy/config-schema';
+import { envioDaNotificacao, origemDaNotificacao, type OrigemDoPush } from '@storefy/config-schema';
 
 export interface DependenciasDaSessao {
   notificador: Notificador;
@@ -193,12 +198,34 @@ export function ouvirToques(
   loja: { urlDaLoja: string; dominios: readonly string[] },
   navegar: (destino: DestinoDoPush) => void,
   guardarOrigem?: (origem: OrigemDoPush) => void,
+  /** O toque numa notificação de automação: a abertura quem conta é o app. */
+  contarAbertura?: (envio: string) => void,
 ): void {
   notificador.aoTocar((notificacao) => {
     const origem = origemDaNotificacao(notificacao.additionalData);
     if (origem !== null) guardarOrigem?.(origem);
+    const envio = envioDaNotificacao(notificacao.additionalData);
+    if (envio !== null) contarAbertura?.(envio);
     navegar(destinoDoPush(linkDaNotificacao(notificacao), loja.urlDaLoja, loja.dominios));
   });
+}
+
+/**
+ * Conta a abertura de um envio de automação (C09, C10 e C11).
+ *
+ * A OneSignal diria quem abriu uma notificação de cada vez, e cada envio de
+ * automação é uma notificação — então o app avisa, com o id do envio que veio
+ * nos dados dela. Uma tentativa só: o toque já levou o cliente aonde ele
+ * queria, e uma falha de rede aqui perde uma abertura na contagem, sem nunca
+ * atrapalhar quem está comprando.
+ */
+export async function contarAberturaDoEnvio(
+  dependencias: DependenciasDaSessao,
+  envio: string,
+): Promise<boolean> {
+  if (dependencias.credenciais === null) return false;
+  const resposta = await registrarAberturaDoEnvio(dependencias.credenciais, { envio });
+  return resposta.ok && resposta.dados.contada === true;
 }
 
 /**

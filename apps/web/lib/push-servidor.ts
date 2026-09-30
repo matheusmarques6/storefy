@@ -14,7 +14,9 @@ import type { CelularDeTeste } from '@/lib/celular-de-teste';
 import type { StatusDaCampanha } from '@/lib/campanha';
 import { urlDaImagemDoPush } from '@/lib/imagem-do-push';
 import { publicoDoSegmento, type Publico } from '@/lib/publico-do-push';
-import type { Vendas } from '@/lib/vendas-do-push';
+import type { ResultadoDaAutomacao, Vendas } from '@/lib/vendas-do-push';
+import type { Desfecho } from '@/lib/desfechos-da-automacao';
+import { ehPaginaAlemDoFim } from '@/lib/listagem';
 
 type Client = SupabaseClient<Database>;
 
@@ -113,20 +115,52 @@ export async function appDaLoja(supabase: Client, storeId: string): Promise<AppD
   return data == null ? null : { id: data.id, oneSignalAppId: data.onesignal_app_id };
 }
 
+/**
+ * Uma página das campanhas, as mais novas primeiro, e quantas há ao todo.
+ *
+ * A lista lia as 50 mais novas e parava ali: as mais antigas sumiam da tela, e
+ * o total do topo era a soma só delas. `null` quando a página passou da
+ * última (campanha excluída, link antigo): a tela volta para a primeira.
+ */
 export async function listarCampanhas(
   supabase: Client,
   appId: string,
-  limite = 50,
-): Promise<CampanhaNaLista[]> {
-  const { data, error } = await supabase
+  pagina: { de: number; ate: number },
+): Promise<{ campanhas: CampanhaNaLista[]; total: number } | null> {
+  const { data, error, count } = await supabase
     .from('push_campaigns')
-    .select(COLUNAS_DA_CAMPANHA)
+    .select(COLUNAS_DA_CAMPANHA, { count: 'exact' })
     .eq('app_id', appId)
+    // O id desempata: sem ele, duas campanhas criadas no mesmo instante
+    // podiam trocar de página entre uma leitura e outra.
     .order('created_at', { ascending: false })
-    .limit(limite);
+    .order('id', { ascending: false })
+    .range(pagina.de, pagina.ate);
+  if (ehPaginaAlemDoFim(error)) return null;
   falhouAoLer('as campanhas', error);
 
-  return (data ?? []).map((linha) => campanhaDaLinha(supabase, linha));
+  return {
+    campanhas: (data ?? []).map((linha) => campanhaDaLinha(supabase, linha)),
+    total: count ?? 0,
+  };
+}
+
+/** O resumo do topo do C07, de todas as campanhas do app — e não só da página. */
+export interface ResumoDasCampanhas {
+  enviadas: number;
+  /** `null` quando nenhuma campanha tem o número ainda: a tela mostra traço. */
+  entregues: number | null;
+}
+
+export async function resumoDasCampanhas(
+  supabase: Client,
+  appId: string,
+): Promise<ResumoDasCampanhas> {
+  const { data, error } = await supabase.rpc('resumo_das_campanhas', { p_app_id: appId });
+  falhouAoLer('o resumo das campanhas', error);
+
+  const [linha] = data ?? [];
+  return { enviadas: linha?.enviadas ?? 0, entregues: linha?.entregues ?? null };
 }
 
 export async function buscarCampanha(
@@ -182,10 +216,7 @@ export async function listarAutomacoes(supabase: Client, appId: string): Promise
  */
 export type VendasDoPush = Vendas;
 
-/** Uma automação na janela: quantas notificações saíram e o que venderam. */
-export interface ResultadoDaAutomacao extends Vendas {
-  envios: number;
-}
+export type { ResultadoDaAutomacao };
 
 const SEM_VENDAS: VendasDoPush = { pedidos: 0, receitaCents: 0 };
 
@@ -217,7 +248,7 @@ export async function vendasDasCampanhas(
   return vendas;
 }
 
-/** Envios, pedidos e receita de cada automação do app nos últimos `dias`. */
+/** Envios, aberturas, pedidos e receita de cada automação do app nos últimos `dias`. */
 export async function resultadoDasAutomacoes(
   supabase: Client,
   appId: string,
@@ -234,11 +265,69 @@ export async function resultadoDasAutomacoes(
     if (linha.automacao_id === null) continue;
     resultado.set(linha.automacao_id, {
       envios: linha.envios ?? 0,
+      aberturas: linha.aberturas ?? 0,
       pedidos: linha.pedidos ?? 0,
       receitaCents: linha.receita_cents ?? 0,
     });
   }
   return resultado;
+}
+
+/**
+ * O app da loja já conta as aberturas das automações?
+ *
+ * O app de antes não avisa o toque. Até a primeira abertura contada, a tela
+ * mostra traço — e diz que o número chega com a versão nova do app.
+ */
+export async function appContaAberturas(supabase: Client, appId: string): Promise<boolean> {
+  const { data, error } = await supabase.rpc('app_conta_aberturas', { p_app_id: appId });
+  falhouAoLer('as aberturas das automações', error);
+  return data === true;
+}
+
+/** Uma automação salva deste app, ou `null` (de outra loja, ou inexistente). */
+export async function buscarAutomacao(
+  supabase: Client,
+  appId: string,
+  automacaoId: string,
+): Promise<AutomacaoSalva | null> {
+  const { data, error } = await supabase
+    .from('push_automations')
+    .select('id, type, enabled, delay_minutes, title, body, deep_link')
+    .eq('app_id', appId)
+    .eq('id', automacaoId)
+    .maybeSingle();
+  falhouAoLer('a automação', error);
+
+  if (data == null || !ehTipoDeAutomacao(data.type)) return null;
+  return {
+    id: data.id,
+    type: data.type,
+    enabled: data.enabled,
+    delayMinutes: data.delay_minutes,
+    title: data.title,
+    body: data.body,
+    deepLink: data.deep_link,
+  };
+}
+
+/** O que não saiu da automação nos últimos `dias`, com o motivo (C10). */
+export async function desfechosDaAutomacao(
+  supabase: Client,
+  automacaoId: string,
+  dias: number,
+): Promise<Desfecho[]> {
+  const { data, error } = await supabase.rpc('desfechos_da_automacao', {
+    p_automacao_id: automacaoId,
+    p_dias: dias,
+  });
+  falhouAoLer('os envios da automação', error);
+
+  return (data ?? []).flatMap((linha) =>
+    linha.situacao === 'scheduled' || linha.situacao === 'canceled' || linha.situacao === 'failed'
+      ? [{ situacao: linha.situacao, motivo: linha.motivo, quantos: linha.quantos ?? 0 }]
+      : [],
+  );
 }
 
 /** O total das notificações do app nos últimos `dias`, campanhas e automações. */

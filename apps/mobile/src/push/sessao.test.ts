@@ -6,11 +6,12 @@
  * leva a lugar nenhum, que a compra cancela o carrinho abandonado e que nada
  * disso lança — porque o cliente veio comprar, não receber push.
  */
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   avisarQuandoVoltar,
   carrinhoMudou,
   checkoutIniciado,
+  contarAberturaDoEnvio,
   identificarCliente,
   iniciarPush,
   ouvirToques,
@@ -396,6 +397,31 @@ describe('ouvirToques', () => {
     expect(passos).toEqual([`campanha:${CREDENCIAIS.appId}`, 'navegou']);
   });
 
+  /*
+   * A abertura da automação é o app quem conta: a OneSignal só diria uma
+   * notificação de cada vez, e cada envio de automação é uma notificação.
+   */
+  it('o toque numa automação conta a abertura do envio; o da campanha, não', () => {
+    const { notificador, registro } = fingirNotificador();
+    const envios: string[] = [];
+    const destinos: DestinoDoPush[] = [];
+    ouvirToques(
+      notificador,
+      loja,
+      (d) => destinos.push(d),
+      () => undefined,
+      (envio) => envios.push(envio),
+    );
+
+    const envio = '44444444-4444-4444-8444-444444444444';
+    registro.aoTocar[0]?.({
+      additionalData: { deep_link: '/cart', automacao: CREDENCIAIS.appId, envio },
+    });
+    registro.aoTocar[0]?.({ additionalData: { campanha: CREDENCIAIS.appId } });
+    expect(envios).toEqual([envio]);
+    expect(destinos).toHaveLength(2);
+  });
+
   it('notificação sem origem nossa (teste, painel da OneSignal) não guarda nada', () => {
     const { notificador, registro } = fingirNotificador();
     const origens: unknown[] = [];
@@ -409,6 +435,49 @@ describe('ouvirToques', () => {
     registro.aoTocar[0]?.({ additionalData: { deep_link: '/x' } });
     registro.aoTocar[0]?.({ additionalData: { campanha: 'não-é-uuid' } });
     expect(origens).toEqual([]);
+  });
+});
+
+describe('contarAberturaDoEnvio', () => {
+  const ENVIO = '44444444-4444-4444-8444-444444444444';
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('manda o envio para a rota da abertura, assinado', async () => {
+    const { notificador } = fingirNotificador();
+    const enviados: { url: string; corpo: Record<string, unknown>; assinatura: string | null }[] =
+      [];
+    vi.stubGlobal('fetch', (url: string, init?: RequestInit) => {
+      enviados.push({
+        url,
+        corpo: JSON.parse(typeof init?.body === 'string' ? init.body : '{}') as Record<
+          string,
+          unknown
+        >,
+        assinatura: new Headers(init?.headers).get('x-storefy-signature'),
+      });
+      return Promise.resolve(new Response(JSON.stringify({ contada: true })));
+    });
+
+    await expect(contarAberturaDoEnvio(dependencias(notificador), ENVIO)).resolves.toBe(true);
+    expect(enviados).toHaveLength(1);
+    expect(enviados[0]?.url).toBe(`${CREDENCIAIS.apiBase}/api/public/push-opened`);
+    expect(enviados[0]?.corpo).toEqual({ appId: CREDENCIAIS.appId, envio: ENVIO });
+    expect(enviados[0]?.assinatura).toMatch(/^t=\d+,v1=[0-9a-f]{64}$/);
+  });
+
+  it('sem credencial não chama nada; rede fora do ar não lança', async () => {
+    const { notificador } = fingirNotificador();
+    const buscador = vi.fn(() => Promise.reject(new Error('sem rede')));
+    vi.stubGlobal('fetch', buscador);
+
+    await expect(
+      contarAberturaDoEnvio(dependencias(notificador, { credenciais: null }), ENVIO),
+    ).resolves.toBe(false);
+    expect(buscador).not.toHaveBeenCalled();
+    await expect(contarAberturaDoEnvio(dependencias(notificador), ENVIO)).resolves.toBe(false);
   });
 });
 

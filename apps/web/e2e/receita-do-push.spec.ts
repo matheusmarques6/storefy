@@ -185,7 +185,8 @@ test('o pedido que veio de um toque aparece na lista, no funil e na automação'
   // C09: o card da automação diz o que ela fez nos últimos 30 dias.
   await page.goto('/push/automacoes');
   const resultado = carrinho.getByRole('region', { name: 'Últimos 30 dias' });
-  await expect(resultado.locator('dd')).toHaveText(['1', '1', /^R\$\s59,90$/]);
+  // Enviadas, aberturas (traço: o app ainda não contou toque nenhum), pedidos e receita.
+  await expect(resultado.locator('dd')).toHaveText(['1', '—', '1', /^R\$\s59,90$/]);
 
   // No celular, os números da campanha cabem numa linha embaixo do texto.
   await page.setViewportSize({ width: 390, height: 844 });

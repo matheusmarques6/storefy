@@ -7,6 +7,7 @@ import { criarClientServidor } from '@/lib/supabase/server';
 import { criarClientServiceRole } from '@/lib/supabase/admin';
 import { estadoDasNotificacoes } from '@/lib/ativar-push';
 import {
+  appContaAberturas,
   appDaLoja,
   chaveDoWebhook,
   listarAutomacoes,
@@ -53,11 +54,12 @@ export default async function PaginaDeAutomacoes() {
     );
   }
 
-  const [salvas, notificacoes, chave, resultados] = await Promise.all([
+  const [salvas, notificacoes, chave, resultados, contaAberturas] = await Promise.all([
     listarAutomacoes(supabase, app.id),
     estadoDasNotificacoes(criarClientServiceRole(), lojaAtiva.id),
     chaveDoWebhook(supabase, app.id),
     resultadoDasAutomacoes(supabase, app.id, JANELA_DAS_VENDAS_EM_DIAS),
+    appContaAberturas(supabase, app.id),
   ]);
   const comVendas = vendasVisiveis(lojaAtiva);
   const podeEscrever = papel === 'owner' || papel === 'admin';
@@ -86,6 +88,7 @@ export default async function PaginaDeAutomacoes() {
               tipo={tipo}
               salva={salva}
               resultado={salva === null ? null : (resultados.get(salva.id) ?? null)}
+              contaAberturas={contaAberturas}
               vendasVisiveis={comVendas}
               urlDaLoja={lojaAtiva.primary_url}
               nomeDoApp={lojaAtiva.name}

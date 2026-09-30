@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
+  CorpoDaAbertura,
   CorpoDoAparelho,
   CorpoDoEvento,
   CorpoDoPareamento,
@@ -8,6 +9,7 @@ import {
   lerCaixaDeAvisos,
   lerLinhaDoAparelho,
   lerLinhaDoEvento,
+  respostaDaAbertura,
   respostaDoAparelho,
   respostaDoEvento,
   respostaDoPareamento,
@@ -131,6 +133,37 @@ describe('o pareamento do celular de teste (C08)', () => {
       const r = respostaDoPareamento(dados);
       expect(r.status, JSON.stringify(dados)).toBe(503);
       expect(r.corpo).toEqual({ erro: 'indisponivel' });
+    }
+  });
+});
+
+describe('a abertura do envio de automação (C09, C10 e C11)', () => {
+  const ENVIO = '44444444-4444-4444-8444-444444444444';
+
+  it('aceita o envio assinado, e recusa o que não é id de envio', async () => {
+    const certo = JSON.stringify({ appId: APP, envio: ENVIO });
+    const aceito = await autorizar(CorpoDaAbertura, certo, comAssinatura(certo), banco, AGORA);
+    expect(aceito.ok).toBe(true);
+
+    for (const corpo of [
+      JSON.stringify({ appId: APP }),
+      JSON.stringify({ appId: APP, envio: 'drop table' }),
+    ]) {
+      const r = await autorizar(CorpoDaAbertura, corpo, comAssinatura(corpo), banco, AGORA);
+      expect(r.ok, corpo).toBe(false);
+      if (!r.ok) expect(r.resposta.status).toBe(400);
+    }
+  });
+
+  it('contada e desconhecida saem com 200; limite com 429; o resto é 503', () => {
+    expect(respostaDaAbertura('contada')).toEqual({ status: 200, corpo: { contada: true } });
+    expect(respostaDaAbertura('desconhecido')).toMatchObject({
+      status: 200,
+      corpo: { contada: false },
+    });
+    expect(respostaDaAbertura('limitado').status).toBe(429);
+    for (const dados of [null, 'CONTADA', true, { contada: true }]) {
+      expect(respostaDaAbertura(dados).status, JSON.stringify(dados)).toBe(503);
     }
   });
 });

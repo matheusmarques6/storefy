@@ -1,13 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import { lerMetricas } from '@/lib/campanha';
 import {
-  MOTIVO_SEM_VENDAS,
+  AVISO_DAS_ABERTURAS,
   dicaDasVendas,
+  funilDaAutomacao,
   funilDaCampanha,
-  receitaDaCampanha,
-  textoDosPedidos,
   ticketMedio,
+  MOTIVO_SEM_VENDAS,
+  receitaDaCampanha,
   vendasVisiveis,
+  textoDosPedidos,
 } from '@/lib/vendas-do-push';
 
 /** O espaço do `Intl` em "R$ 1.234,56" é o não separável. */
@@ -107,5 +109,40 @@ describe('funilDaCampanha', () => {
   it('campanha sem nenhum número não tem topo nem barra', () => {
     const funil = funilDaCampanha(lerMetricas({}), undefined, true);
     expect(funil.every((etapa) => etapa.valor === null && etapa.largura === null)).toBe(true);
+  });
+});
+
+describe('funilDaAutomacao', () => {
+  const resultado = { envios: 200, aberturas: 50, pedidos: 5, receitaCents: 45_000 };
+
+  it('enviadas → aberturas → pedidos, sem "entregues"', () => {
+    const etapas = funilDaAutomacao(resultado, true, true);
+    expect(etapas.map((etapa) => etapa.chave)).toEqual(['enviados', 'aberturas', 'pedidos']);
+    expect(etapas.map((etapa) => etapa.valor)).toEqual([200, 50, 5]);
+    expect(etapas[1]?.taxa).toBe(0.25);
+    expect(etapas[2]?.taxa).toBe(0.1);
+    expect(etapas[2]?.largura).toBe(5 / 200);
+  });
+
+  /* O app de antes não conta o toque: um zero ali diria que ninguém abre. */
+  it('enquanto o app não conta as aberturas, a etapa fica com traço, e os pedidos sem taxa', () => {
+    const etapas = funilDaAutomacao(resultado, false, true);
+    expect(etapas[1]).toMatchObject({ valor: null, taxa: null, largura: null });
+    expect(etapas[1]?.explicacao).toBe(AVISO_DAS_ABERTURAS);
+    expect(etapas[2]).toMatchObject({ valor: 5, taxa: null });
+  });
+
+  it('sem a Shopify, os pedidos ficam com traço', () => {
+    expect(funilDaAutomacao(resultado, true, false)[2]).toMatchObject({ valor: null });
+  });
+
+  it('nada enviado ainda: zeros de verdade, sem barra', () => {
+    const etapas = funilDaAutomacao(
+      { envios: 0, aberturas: 0, pedidos: 0, receitaCents: 0 },
+      true,
+      true,
+    );
+    expect(etapas.map((etapa) => etapa.valor)).toEqual([0, 0, 0]);
+    expect(etapas.every((etapa) => etapa.largura === null && etapa.taxa === null)).toBe(true);
   });
 });

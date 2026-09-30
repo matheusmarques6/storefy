@@ -8,8 +8,9 @@
  * de um formulário faria a automação que mais traz venda ficar desligada.
  */
 import { useState, useTransition } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Loader2 } from 'lucide-react';
+import { ChevronRight, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import {
   opcoesDeAtraso,
@@ -22,10 +23,15 @@ import {
   MAXIMO_DO_CORPO,
   MAXIMO_DO_TITULO,
   numeroOuTraco,
+  porcentagemOuTraco,
   type ProblemaNoFormulario,
 } from '@/lib/campanha';
 import type { AutomacaoSalva, ChaveDoWebhook, ResultadoDaAutomacao } from '@/lib/push-servidor';
-import { JANELA_DAS_VENDAS_EM_DIAS, MOTIVO_SEM_VENDAS } from '@/lib/vendas-do-push';
+import {
+  AVISO_DAS_ABERTURAS,
+  JANELA_DAS_VENDAS_EM_DIAS,
+  MOTIVO_SEM_VENDAS,
+} from '@/lib/vendas-do-push';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -43,8 +49,10 @@ interface Props {
   nomeDoApp: string;
   podeEscrever: boolean;
   fuso: string;
-  /** Envios, pedidos e receita nos últimos 30 dias. `null` sem linha no banco. */
+  /** Envios, aberturas, pedidos e receita nos últimos 30 dias. `null` sem linha no banco. */
   resultado: ResultadoDaAutomacao | null;
+  /** O app da loja já conta os toques? Antes disso, as aberturas são traço. */
+  contaAberturas: boolean;
   /** A loja manda os pedidos (Shopify conectada)? Sem isso, pedido e receita são traço. */
   vendasVisiveis: boolean;
   /** Só no card do webhook: o endereço que a ferramenta chama e a chave em uso. */
@@ -59,6 +67,7 @@ export function CartaoDaAutomacao({
   podeEscrever,
   fuso,
   resultado,
+  contaAberturas,
   vendasVisiveis,
   webhook,
 }: Props) {
@@ -139,7 +148,13 @@ export function CartaoDaAutomacao({
 
       <CardContent className="space-y-4">
         {salva === null ? null : (
-          <ResultadoNaJanela resultado={resultado} vendasVisiveis={vendasVisiveis} tipo={tipo} />
+          <ResultadoNaJanela
+            automacaoId={salva.id}
+            resultado={resultado}
+            contaAberturas={contaAberturas}
+            vendasVisiveis={vendasVisiveis}
+            tipo={tipo}
+          />
         )}
 
         <Button
@@ -268,32 +283,62 @@ export function CartaoDaAutomacao({
 }
 
 /**
- * O que a automação fez nos últimos 30 dias (C09 e C10): quantas notificações
- * saíram e o que elas venderam.
+ * O que a automação fez nos últimos 30 dias (C09): quantas notificações
+ * saíram, quantas abriram e o que venderam — e o caminho para o detalhe (C10).
  *
  * Só aparece para automação que existe no banco — sugestão nunca salva não
- * tem histórico, e três zeros ali afirmariam um desempenho que não existiu.
+ * tem histórico, e zeros ali afirmariam um desempenho que não existiu.
  */
 function ResultadoNaJanela({
+  automacaoId,
   resultado,
+  contaAberturas,
   vendasVisiveis,
   tipo,
 }: {
+  automacaoId: string;
   resultado: ResultadoDaAutomacao | null;
+  contaAberturas: boolean;
   vendasVisiveis: boolean;
   tipo: TipoDeAutomacao;
 }) {
   const vendas = vendasVisiveis && resultado !== null;
+  const aberturas = contaAberturas && resultado !== null ? resultado.aberturas : null;
+  const taxa =
+    aberturas !== null && resultado !== null && resultado.envios > 0
+      ? aberturas / resultado.envios
+      : null;
   return (
     <section aria-labelledby={`resultado-${tipo}`} className="space-y-2">
-      <h3 id={`resultado-${tipo}`} className="text-muted-foreground text-xs font-medium">
-        Últimos {JANELA_DAS_VENDAS_EM_DIAS} dias
-      </h3>
-      <dl className="grid grid-cols-3 gap-2 rounded-lg border p-3">
+      <div className="flex items-center justify-between gap-2">
+        <h3 id={`resultado-${tipo}`} className="text-muted-foreground text-xs font-medium">
+          Últimos {JANELA_DAS_VENDAS_EM_DIAS} dias
+        </h3>
+        <Link
+          href={`/push/automacoes/${automacaoId}`}
+          className="text-muted-foreground hover:text-foreground inline-flex items-center gap-0.5 text-xs font-medium"
+        >
+          Ver detalhes
+          <ChevronRight className="size-3.5" aria-hidden />
+        </Link>
+      </div>
+      <dl className="grid grid-cols-2 gap-2 rounded-lg border p-3 sm:grid-cols-4">
         <div>
           <dt className="text-muted-foreground text-xs">Enviadas</dt>
           <dd className="text-sm font-semibold tabular-nums">
             {numeroOuTraco(resultado?.envios ?? null)}
+          </dd>
+        </div>
+        <div>
+          <dt className="text-muted-foreground text-xs">Aberturas</dt>
+          <dd className="text-sm font-semibold tabular-nums">
+            {numeroOuTraco(aberturas)}
+            {taxa === null ? null : (
+              <span className="text-muted-foreground font-normal">
+                {' '}
+                · {porcentagemOuTraco(taxa)}
+              </span>
+            )}
           </dd>
         </div>
         <div>
@@ -313,6 +358,7 @@ function ResultadoNaJanela({
         {vendasVisiveis
           ? 'Conta a compra feita até 3 dias depois de o cliente tocar na notificação.'
           : MOTIVO_SEM_VENDAS}
+        {contaAberturas ? null : ` Aberturas: ${AVISO_DAS_ABERTURAS.toLowerCase()}`}
       </p>
     </section>
   );

@@ -117,7 +117,7 @@ export function ListaDeCampanhas({
 
   return (
     <>
-      <ul className="divide-y rounded-xl border">
+      <ul className="divide-y rounded-xl border" aria-label="Campanhas">
         {campanhas.map((campanha) => {
           const metricas = lerMetricas(campanha.stats);
           const quando = campanha.sentAt ?? campanha.scheduledAt ?? campanha.createdAt;

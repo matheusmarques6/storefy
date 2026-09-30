@@ -35,6 +35,7 @@ import {
   avisarQuandoVoltar,
   carrinhoMudou,
   checkoutIniciado,
+  contarAberturaDoEnvio,
   identificarCliente,
   iniciarPush,
   ouvirToques,
@@ -274,6 +275,14 @@ export function usarPush({ ambiente, config, ativo, navegar }: Opcoes): UsoDoPus
     void gravarToque(toque);
   }, []);
 
+  /* O toque numa automação vira abertura no painel (C09, C10 e C11). */
+  const contarToqueNaAutomacao = useCallback(
+    (envio: string): void => {
+      void contarAberturaDoEnvio(dependencias, envio);
+    },
+    [dependencias],
+  );
+
   const jaEscuta = useRef(false);
   useEffect(() => {
     if (!ativo || config === null || jaEscuta.current) return;
@@ -284,8 +293,9 @@ export function usarPush({ ambiente, config, ativo, navegar }: Opcoes): UsoDoPus
       { urlDaLoja: config.store.url, dominios: config.store.domains },
       navegar,
       guardarOrigem,
+      contarToqueNaAutomacao,
     );
-  }, [ativo, config, guardarOrigem, navegar]);
+  }, [ativo, config, contarToqueNaAutomacao, guardarOrigem, navegar]);
 
   /* ------------------------------------------------------- a permissão */
 

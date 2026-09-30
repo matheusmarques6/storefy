@@ -1852,10 +1852,14 @@ select tests.ok('carrinho',
     (select app_a from tests.lojas), 'sub-do-cliente', 'add', 1, 'token-sexto')),
   'automação desligada: o evento entra, o push não é agendado');
 
--- Mesmo desligada, a compra ainda cancela o que ficou agendado de antes.
+-- Desligar cancela o que ficou agendado de antes (migration 69): nenhum push órfão sai
+-- quando o lojista ligar de novo.
 select tests.ok('carrinho',
-  (select cancelou >= 1 from public.registrar_evento_de_carrinho(
-    (select app_a from tests.lojas), 'sub-do-cliente', 'purchased', 1, 'token-sexto')),
+  not exists (select 1 from public.automation_runs
+               where automation_id = (select id from tests.automacao) and status = 'scheduled')
+  and exists (select 1 from public.automation_runs
+               where automation_id = (select id from tests.automacao)
+                 and status = 'canceled' and canceled_reason = 'automação desligada'),
   'desligar a automação no meio do caminho não deixa push órfão sair');
 
 select tests.ok('carrinho',
@@ -3210,6 +3214,10 @@ delete from public.device_days where app_id = (select app_a from tests.lojas);
 delete from public.analytics_daily where app_id = (select app_a from tests.lojas);
 delete from public.shop_orders where app_id = (select app_a from tests.lojas);
 delete from public.rate_limits where chave like 'aparelhos:%';
+-- O C11 também soma os envios das automações (migration 69): os dos grupos de antes saem.
+delete from public.automation_runs r
+ using public.push_automations a
+ where a.id = r.automation_id and a.app_id = (select app_a from tests.lojas);
 
 /*
  * Momento FIXO, escolhido onde os dois fusos discordam: 01h30 UTC ainda é o
@@ -6634,6 +6642,25 @@ select tests.ok('inativos',
     where d.onesignal_subscription_id = 'sub-sumido-7'$q$) = 1,
   'rodar de novo não repete: um aviso por sumiço');
 
+/*
+ * Antes de desligar (desligar cancela a fila, migration 69): quem voltou ao
+ * app antes do envio é cancelado pelo despacho.
+ */
+insert into public.device_days (app_id, device_id, day)
+select d.app_id, d.id, (select hoje from tests.hoje_da_loja)
+  from public.devices d where d.onesignal_subscription_id = 'sub-sumido-7';
+
+set role service_role;
+select count(*) from public.reservar_envios_de_automacao(1000);
+reset role;
+
+select tests.ok('inativos',
+  (select r.status = 'canceled' and r.canceled_reason = 'voltou a abrir o app'
+     from public.automation_runs r
+     join public.devices d on d.id = r.device_id
+    where d.onesignal_subscription_id = 'sub-sumido-7'),
+  'quem voltou ao app antes do envio não recebe o "sentimos sua falta"');
+
 -- Desligada, nada é agendado — nem para quem acabou de completar 7 dias.
 insert into public.devices (app_id, onesignal_subscription_id, platform)
 select app_a, 'sub-sumido-8', 'android' from tests.lojas;
@@ -6667,21 +6694,10 @@ select tests.ok('inativos',
     where d.onesignal_subscription_id = 'sub-sumido-8'$q$) = 1,
   'a janela vai até 9 dias: uma hora ou um dia sem cron não deixa ninguém de fora');
 
--- Voltou ao app antes do envio: o despacho cancela.
-insert into public.device_days (app_id, device_id, day)
-select d.app_id, d.id, (select hoje from tests.hoje_da_loja)
-  from public.devices d where d.onesignal_subscription_id = 'sub-sumido-7';
-
+-- O despacho de novo, agora com o sumido de 8 dias na fila.
 set role service_role;
 select count(*) from public.reservar_envios_de_automacao(1000);
 reset role;
-
-select tests.ok('inativos',
-  (select r.status = 'canceled' and r.canceled_reason = 'voltou a abrir o app'
-     from public.automation_runs r
-     join public.devices d on d.id = r.device_id
-    where d.onesignal_subscription_id = 'sub-sumido-7'),
-  'quem voltou ao app antes do envio não recebe o "sentimos sua falta"');
 
 select tests.ok('inativos',
   (select r.status <> 'canceled'
@@ -9017,6 +9033,203 @@ select tests.ok('celular de teste',
   and (select count(*) from public.test_device_codes c join tests.ct on c.app_id = tests.ct.app
         where c.nome = 'Mais um') = 1,
   'o código novo leva embora os vencidos da loja: a tabela não cresce para sempre');
+
+-- ============================== grupo: os números das automações e o total do C07 (migration 69)
+--
+-- A automação ganha aberturas — contadas pelo app, pela rota assinada — e a
+-- tela de detalhe; o C11 soma as automações; e o total do C07 vem do banco,
+-- de todas as campanhas, e não das 50 que a tela lia.
+
+reset role;
+select tests.logout();
+
+insert into auth.users (email, raw_user_meta_data, email_confirmed_at) values
+  ('na-dono@teste.local',  '{"company_name":"Numeros Dono"}'::jsonb,  now()),
+  ('na-outro@teste.local', '{"company_name":"Numeros Outro"}'::jsonb, now());
+
+drop table if exists tests.na;
+create table tests.na as
+select
+  (select m.org_id from public.memberships m
+     join auth.users u on u.id = m.user_id where u.email = 'na-dono@teste.local')  as org_dono,
+  (select m.org_id from public.memberships m
+     join auth.users u on u.id = m.user_id where u.email = 'na-outro@teste.local') as org_outro;
+
+insert into public.stores (org_id, name, primary_url)
+select org_dono, 'Loja Numeros', 'https://loja-numeros.com.br' from tests.na;
+insert into public.stores (org_id, name, primary_url)
+select org_outro, 'Loja Numeros Outra', 'https://loja-numeros-outra.com.br' from tests.na;
+
+alter table tests.na
+  add column app uuid, add column app_outro uuid, add column aparelho uuid,
+  add column automacao uuid, add column automacao_outra uuid,
+  add column enviado uuid, add column enviado2 uuid, add column agendado uuid,
+  add column enviado_outro uuid;
+update tests.na set
+  app = (select a.id from public.apps a join public.stores s on s.id = a.store_id
+          where s.name = 'Loja Numeros'),
+  app_outro = (select a.id from public.apps a join public.stores s on s.id = a.store_id
+                where s.name = 'Loja Numeros Outra');
+
+insert into public.push_automations (app_id, type, enabled, title, body)
+select app, 'abandoned_cart'::public.push_automation_type, true, 'Esqueceu algo?', 'Seu carrinho' from tests.na
+union all
+select app_outro, 'abandoned_cart'::public.push_automation_type, true, 'Esqueceu algo?', 'Seu carrinho' from tests.na;
+insert into public.devices (app_id, onesignal_subscription_id, platform)
+select app, 'na-aparelho', 'ios'::public.device_platform from tests.na
+union all
+select app_outro, 'na-aparelho-outro', 'android'::public.device_platform from tests.na;
+
+update tests.na set
+  automacao = (select id from public.push_automations where app_id = tests.na.app),
+  automacao_outra = (select id from public.push_automations where app_id = tests.na.app_outro),
+  aparelho = (select id from public.devices where onesignal_subscription_id = 'na-aparelho');
+
+-- Dois enviados, um agendado, um cancelado, um que falhou; e um enviado da outra loja.
+insert into public.automation_runs (id, automation_id, device_id, status, scheduled_for, sent_at, canceled_reason)
+select extensions.gen_random_uuid(), automacao, aparelho, 'sent'::public.automation_run_status, now() - interval '1 hour', now() - interval '1 hour', null from tests.na
+union all
+select extensions.gen_random_uuid(), automacao, aparelho, 'sent'::public.automation_run_status, now() - interval '2 days', now() - interval '2 days', null from tests.na
+union all
+select extensions.gen_random_uuid(), automacao, aparelho, 'scheduled'::public.automation_run_status, now() + interval '1 hour', null::timestamptz, null::text from tests.na
+union all
+select extensions.gen_random_uuid(), automacao, aparelho, 'canceled'::public.automation_run_status, now() - interval '3 hours', null, 'compra concluída' from tests.na
+union all
+select extensions.gen_random_uuid(), automacao, aparelho, 'failed'::public.automation_run_status, now() - interval '4 hours', null, 'Nenhum aparelho recebeu.' from tests.na
+union all
+select extensions.gen_random_uuid(), automacao_outra,
+       (select id from public.devices where onesignal_subscription_id = 'na-aparelho-outro'),
+       'sent'::public.automation_run_status, now() - interval '1 hour', now() - interval '1 hour', null from tests.na;
+
+update tests.na set
+  enviado = (select id from public.automation_runs where automation_id = tests.na.automacao
+              and status = 'sent' order by sent_at desc limit 1),
+  enviado2 = (select id from public.automation_runs where automation_id = tests.na.automacao
+               and status = 'sent' order by sent_at asc limit 1),
+  agendado = (select id from public.automation_runs where automation_id = tests.na.automacao
+               and status = 'scheduled'),
+  enviado_outro = (select id from public.automation_runs where automation_id = tests.na.automacao_outra);
+grant select on tests.na to anon, authenticated, service_role;
+
+-- Campanhas: duas enviadas (uma com o número, outra com lixo no lugar dele), um rascunho.
+insert into public.push_campaigns (app_id, title, body, status, stats)
+select app, 'Enviada com número', 'Texto', 'sent'::public.push_campaign_status, '{"entregues": 40}'::jsonb from tests.na
+union all
+select app, 'Enviada sem número', 'Texto', 'sent'::public.push_campaign_status, '{"entregues": "n/d"}'::jsonb from tests.na
+union all
+select app, 'Rascunho', 'Texto', 'draft'::public.push_campaign_status, '{}'::jsonb from tests.na;
+
+select tests.ok('números das automações',
+  (select public.app_conta_aberturas(app) = false from tests.na),
+  'antes do primeiro toque contado, o app ainda não conta aberturas (a tela mostra traço)');
+
+set role service_role;
+
+select tests.ok('números das automações',
+  (select public.registrar_abertura_do_envio(app, enviado) = 'contada' from tests.na),
+  'o app conta a abertura do envio que o celular recebeu');
+
+reset role;
+select tests.ok('números das automações',
+  (select opened_at is not null from public.automation_runs where id = (select enviado from tests.na)),
+  'e ela fica gravada no envio');
+
+set role service_role;
+select tests.ok('números das automações',
+  (select public.registrar_abertura_do_envio(app, enviado) = 'contada' from tests.na)
+  and (select public.registrar_abertura_do_envio(app, agendado) = 'desconhecido' from tests.na)
+  and (select public.registrar_abertura_do_envio(app, enviado_outro) = 'desconhecido' from tests.na)
+  and (select public.registrar_abertura_do_envio(app, extensions.gen_random_uuid()) = 'desconhecido'
+         from tests.na),
+  'o mesmo toque de novo não soma; envio que não saiu, de outra loja ou inventado não conta');
+
+reset role;
+select tests.ok('números das automações',
+  (select opened_at is null from public.automation_runs where id = (select enviado_outro from tests.na))
+  and (select opened_at is null from public.automation_runs where id = (select agendado from tests.na)),
+  'o envio da outra loja continua sem abertura, mesmo com o id certo');
+
+select tests.login('na-dono@teste.local');
+set role authenticated;
+
+select tests.ok('números das automações',
+  tests.erro($q$select public.registrar_abertura_do_envio(
+    (select app from tests.na), (select enviado2 from tests.na))$q$)
+  and tests.bloqueado($q$update public.automation_runs set opened_at = now()
+    where id = (select enviado2 from tests.na)$q$),
+  'o lojista não conta abertura pela sessão, nem pela função, nem direto na tabela');
+
+select tests.ok('números das automações',
+  (select envios = 2 and aberturas = 1
+     from public.resultado_das_automacoes((select app from tests.na), 30)
+    where automacao_id = (select automacao from tests.na))
+  and (select public.app_conta_aberturas((select app from tests.na))),
+  'o resultado da automação traz as aberturas, e o app passa a contar');
+
+select tests.ok('números das automações',
+  (select count(*) = 3 from public.desfechos_da_automacao((select automacao from tests.na), 30))
+  and (select quantos = 1 from public.desfechos_da_automacao((select automacao from tests.na), 30)
+        where situacao = 'canceled' and motivo = 'compra concluída')
+  and (select quantos = 1 from public.desfechos_da_automacao((select automacao from tests.na), 30)
+        where situacao = 'failed')
+  and (select quantos = 1 from public.desfechos_da_automacao((select automacao from tests.na), 30)
+        where situacao = 'scheduled')
+  and not exists (select 1 from public.desfechos_da_automacao((select automacao from tests.na), 30)
+                   where situacao = 'sent'),
+  'o detalhe diz o que não saiu e por quê: agendado, cancelado (comprou antes) e falha');
+
+select tests.ok('números das automações',
+  (select enviadas = 2 and entregues = 40
+     from public.resumo_das_campanhas((select app from tests.na))),
+  'o total do C07 conta todas as enviadas, e só soma número de verdade');
+
+-- Desligar e ligar de novo, pela sessão, como o card da C09 faz.
+update public.push_automations set enabled = false where id = (select automacao from tests.na);
+update public.push_automations set enabled = true where id = (select automacao from tests.na);
+
+select tests.ok('números das automações',
+  (select status = 'canceled' and canceled_reason = 'automação desligada'
+     from public.automation_runs where id = (select agendado from tests.na))
+  and (select count(*) = 2 from public.automation_runs
+        where automation_id = (select automacao from tests.na) and status = 'sent'),
+  'desligar cancela o que estava na fila: ligar de novo não o faz sair semanas depois');
+
+reset role;
+select tests.login('na-outro@teste.local');
+set role authenticated;
+
+select tests.ok('isolamento',
+  tests.contar($q$select count(*) from public.desfechos_da_automacao(
+    (select automacao from tests.na), 30)$q$) = 0
+  and not (select public.app_conta_aberturas((select app from tests.na)))
+  and (select enviadas = 0 and entregues is null
+         from public.resumo_das_campanhas((select app from tests.na))),
+  'outra empresa não vê os desfechos, as aberturas nem o total das campanhas alheias');
+
+reset role;
+select tests.logout();
+set role anon;
+
+select tests.ok('números das automações',
+  tests.erro($q$select * from public.desfechos_da_automacao(extensions.gen_random_uuid(), 30)$q$)
+  and tests.erro($q$select public.app_conta_aberturas(extensions.gen_random_uuid())$q$)
+  and tests.erro($q$select * from public.resumo_das_campanhas(extensions.gen_random_uuid())$q$)
+  and tests.erro($q$select public.registrar_abertura_do_envio(
+    extensions.gen_random_uuid(), extensions.gen_random_uuid())$q$),
+  'anon não chama nenhuma delas');
+
+reset role;
+
+-- O C11: a consolidação do dia soma os envios e as aberturas das automações.
+set role service_role;
+select public.consolidar_analytics(3);
+reset role;
+
+select tests.ok('números das automações',
+  (select coalesce(sum(push_sent), 0) >= 2 and coalesce(sum(push_opened), 0) >= 1
+     from public.analytics_daily
+    where app_id = (select app from tests.na)),
+  'o C11 soma os envios e as aberturas das automações nos dias delas');
 
 -- ============================== grupo: varredura de segurança (Fase 8)
 --

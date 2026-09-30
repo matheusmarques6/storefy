@@ -1,6 +1,7 @@
 /** Campanhas de push da loja ativa (C07). */
 import type { Metadata } from 'next';
 import Link from 'next/link';
+import { redirect } from 'next/navigation';
 import { Bell, Plus, Smartphone } from 'lucide-react';
 import { exigirContextoCliente } from '@/lib/contexto';
 import { criarClientServidor } from '@/lib/supabase/server';
@@ -10,9 +11,12 @@ import {
   appDaLoja,
   contarAparelhos,
   listarCampanhas,
+  resumoDasCampanhas,
   vendasDasCampanhas,
   vendasDoPush,
 } from '@/lib/push-servidor';
+import { lerParams } from '@/lib/listagem';
+import { Paginacao } from '@/components/paginacao';
 import { vendasVisiveis } from '@/lib/vendas-do-push';
 import { EstadoVazio } from '@/components/estado-vazio';
 import { Button } from '@/components/ui/button';
@@ -23,8 +27,13 @@ import { ResumoDoPush } from './resumo';
 
 export const metadata: Metadata = { title: 'Notificações' };
 
-export default async function PaginaDeCampanhas() {
+export default async function PaginaDeCampanhas({
+  searchParams,
+}: {
+  searchParams: Promise<{ pagina?: string }>;
+}) {
   const { lojaAtiva, papel } = await exigirContextoCliente();
+  const { pagina, de, ate } = lerParams(await searchParams);
 
   if (lojaAtiva == null) {
     return (
@@ -55,8 +64,9 @@ export default async function PaginaDeCampanhas() {
   }
 
   const comVendas = vendasVisiveis(lojaAtiva);
-  const [campanhas, aparelhos, notificacoes, totalDeVendas] = await Promise.all([
-    listarCampanhas(supabase, app.id),
+  const [lista, resumo, aparelhos, notificacoes, totalDeVendas] = await Promise.all([
+    listarCampanhas(supabase, app.id, { de, ate }),
+    resumoDasCampanhas(supabase, app.id),
     contarAparelhos(supabase, app.id),
     // Lido com a service role porque precisa saber se os SEGREDOS existem, e
     // as colunas `_enc` são invisíveis para o painel de propósito. O que volta
@@ -64,6 +74,10 @@ export default async function PaginaDeCampanhas() {
     estadoDasNotificacoes(criarClientServiceRole(), lojaAtiva.id),
     comVendas ? vendasDoPush(supabase, app.id) : Promise.resolve(null),
   ]);
+
+  // Página depois da última (campanha excluída, link antigo): volta para a primeira.
+  if (lista === null) redirect('/push');
+  const { campanhas, total } = lista;
 
   // Só as enviadas: campanha que não saiu não vendeu, e a soma não precisa dela.
   const vendas = comVendas
@@ -98,7 +112,7 @@ export default async function PaginaDeCampanhas() {
         <PushNaoConfigurado pendencias={notificacoes.pendencias} podeEscrever={podeEscrever} />
       )}
 
-      <ResumoDoPush aparelhos={aparelhos} campanhas={campanhas} vendas={totalDeVendas} />
+      <ResumoDoPush aparelhos={aparelhos} resumo={resumo} vendas={totalDeVendas} />
 
       <AbasDoPush atual="campanhas" />
 
@@ -109,6 +123,8 @@ export default async function PaginaDeCampanhas() {
         podeEscrever={podeEscrever}
         fuso={lojaAtiva.timezone}
       />
+
+      <Paginacao pagina={pagina} total={total} base="/push" busca="" />
     </div>
   );
 }
