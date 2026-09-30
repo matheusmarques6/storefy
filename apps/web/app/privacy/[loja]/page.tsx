@@ -9,6 +9,10 @@
  * Só três campos da loja chegam aqui — nome, endereço e contato —, e todos
  * são públicos por natureza: os dois primeiros estão na vitrine dela, e o
  * terceiro é o atendimento que ela mesma divulga.
+ *
+ * Sem `loading.tsx` de propósito: com ele a resposta começaria antes da
+ * busca, e a loja que não existe sairia como 200, não como 404. A busca é uma
+ * linha só; o documento chega inteiro.
  */
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';

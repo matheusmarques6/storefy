@@ -224,3 +224,29 @@ export function EsqueletoDeCartaoPublico({ campos = 2 }: { campos?: number }) {
     </Moldura>
   );
 }
+
+/**
+ * A página pública de status: o resumo e a lista das partes do sistema, na
+ * mesma largura e no mesmo espaçamento da página de verdade.
+ */
+export function EsqueletoDoStatus({ partes = 8 }: { partes?: number }) {
+  return (
+    <main className="mx-auto max-w-2xl px-5 py-12">
+      <Moldura>
+        <Skeleton className="h-8 w-56" />
+        <Skeleton className="h-14 w-full rounded-2xl" />
+        <div className="divide-y rounded-2xl border">
+          {Array.from({ length: partes }, (_, i) => (
+            <div key={i} className="flex items-start justify-between gap-3 p-4">
+              <div className="w-full space-y-2">
+                <Skeleton className="h-4 w-40" />
+                <Skeleton className="h-3 w-3/4" />
+              </div>
+              <Skeleton className="h-5 w-20 shrink-0 rounded-full" />
+            </div>
+          ))}
+        </div>
+      </Moldura>
+    </main>
+  );
+}
