@@ -18,6 +18,17 @@ export default async function LayoutPainel({ children }: { children: React.React
 
   return (
     <div className="flex min-h-dvh flex-col">
+      {/*
+       * O primeiro Tab da página: quem navega pelo teclado pula o cabeçalho
+       * (loja, conta e as seções) direto para o conteúdo, em vez de passar
+       * por uma dúzia de paradas em toda tela. Só aparece com o foco.
+       */}
+      <a
+        href="#conteudo"
+        className="bg-background focus:ring-ring sr-only rounded-md px-3 py-2 text-sm font-medium focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-50 focus:ring-2"
+      >
+        Pular para o conteúdo
+      </a>
       {contexto.visita == null ? null : (
         <FaixaDaVisita cliente={contexto.organizacao.name} expiraEm={contexto.visita.expiraEm} />
       )}
@@ -62,7 +73,14 @@ export default async function LayoutPainel({ children }: { children: React.React
         <NavegacaoAbas />
       </header>
 
-      <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-8">{children}</main>
+      {/* `tabIndex={-1}`: o "Pular para o conteúdo" põe o foco aqui. */}
+      <main
+        id="conteudo"
+        tabIndex={-1}
+        className="mx-auto w-full max-w-6xl flex-1 px-4 py-8 focus:outline-none"
+      >
+        {children}
+      </main>
 
       <footer className="border-t py-6">
         <div className="text-muted-foreground mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-2 px-4 text-xs">

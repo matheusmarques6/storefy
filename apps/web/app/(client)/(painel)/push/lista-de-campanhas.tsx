@@ -1,7 +1,7 @@
 'use client';
 
 /** A lista de campanhas (C07), com as ações que cada status permite. */
-import { useState, useTransition } from 'react';
+import { useRef, useState, useTransition } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { BellRing, Loader2, MoreHorizontal } from 'lucide-react';
@@ -77,6 +77,18 @@ export function ListaDeCampanhas({
   const router = useRouter();
   const [confirmacao, setConfirmacao] = useState<Confirmacao>(null);
   const [enviando, iniciar] = useTransition();
+  /*
+   * Para o foco voltar ao botão de ações quando a confirmação fecha. Aberta por
+   * um item do menu — que some junto com o menu —, ela devolvia o foco a um
+   * elemento que não existia mais, e quem usa o teclado recomeçava do topo.
+   */
+  const botoesDeAcoes = useRef(new Map<string, HTMLButtonElement>());
+  const campanhaConfirmada = useRef<string | null>(null);
+
+  function abrirConfirmacao(nova: NonNullable<Confirmacao>) {
+    campanhaConfirmada.current = nova.campanha.id;
+    setConfirmacao(nova);
+  }
 
   if (campanhas.length === 0) {
     return (
@@ -194,7 +206,15 @@ export function ListaDeCampanhas({
                 podeExcluir(campanha.status)) ? (
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" size="icon" aria-label={`Ações de ${campanha.title}`}>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      aria-label={`Ações de ${campanha.title}`}
+                      ref={(botao: HTMLButtonElement | null) => {
+                        if (botao === null) botoesDeAcoes.current.delete(campanha.id);
+                        else botoesDeAcoes.current.set(campanha.id, botao);
+                      }}
+                    >
                       <MoreHorizontal className="size-4" aria-hidden />
                     </Button>
                   </DropdownMenuTrigger>
@@ -207,7 +227,7 @@ export function ListaDeCampanhas({
                     {podeCancelar(campanha.status) ? (
                       <DropdownMenuItem
                         onSelect={() => {
-                          setConfirmacao({ tipo: 'cancelar', campanha });
+                          abrirConfirmacao({ tipo: 'cancelar', campanha });
                         }}
                       >
                         Cancelar envio
@@ -217,7 +237,7 @@ export function ListaDeCampanhas({
                       <DropdownMenuItem
                         className="text-destructive focus:text-destructive"
                         onSelect={() => {
-                          setConfirmacao({ tipo: 'excluir', campanha });
+                          abrirConfirmacao({ tipo: 'excluir', campanha });
                         }}
                       >
                         Excluir
@@ -237,7 +257,16 @@ export function ListaDeCampanhas({
           if (!aberto) setConfirmacao(null);
         }}
       >
-        <AlertDialogContent>
+        <AlertDialogContent
+          onCloseAutoFocus={(evento) => {
+            evento.preventDefault();
+            const id = campanhaConfirmada.current;
+            const botao = id === null ? undefined : botoesDeAcoes.current.get(id);
+            // A campanha excluída leva o botão junto: o foco vai ao conteúdo.
+            if (botao?.isConnected === true) botao.focus();
+            else document.getElementById('conteudo')?.focus();
+          }}
+        >
           <AlertDialogHeader>
             <AlertDialogTitle>
               {confirmacao?.tipo === 'cancelar' ? 'Cancelar o envio?' : 'Excluir a campanha?'}

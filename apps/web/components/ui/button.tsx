@@ -26,8 +26,9 @@ const variantes = cva(
   },
 );
 
+/** Com o `ref` (React 19: prop comum), que o `asChild` do Radix e as telas repassam ao botão. */
 export interface ButtonProps
-  extends React.ButtonHTMLAttributes<HTMLButtonElement>, VariantProps<typeof variantes> {
+  extends React.ComponentProps<'button'>, VariantProps<typeof variantes> {
   asChild?: boolean;
 }
 

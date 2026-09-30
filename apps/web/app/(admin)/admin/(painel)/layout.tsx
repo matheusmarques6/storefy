@@ -18,6 +18,17 @@ export default async function LayoutAdmin({ children }: { children: React.ReactN
 
   return (
     <div className="flex min-h-dvh flex-col">
+      {/*
+       * O primeiro Tab da página: quem navega pelo teclado pula o cabeçalho
+       * (a conta e as seções) direto para o conteúdo, em vez de passar
+       * por uma dúzia de paradas em toda tela. Só aparece com o foco.
+       */}
+      <a
+        href="#conteudo"
+        className="bg-background focus:ring-ring sr-only rounded-md px-3 py-2 text-sm font-medium focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-50 focus:ring-2"
+      >
+        Pular para o conteúdo
+      </a>
       <VisitaAberta adminId={usuario.id} />
       <header className="bg-background/95 sticky top-0 z-40 border-b backdrop-blur">
         <div className="flex h-14 items-center gap-2 px-4 sm:gap-4">
@@ -48,7 +59,12 @@ export default async function LayoutAdmin({ children }: { children: React.ReactN
             <NavegacaoAdmin />
           </div>
         </aside>
-        <main className="min-w-0 flex-1 px-4 py-8 lg:px-8">
+        {/* `tabIndex={-1}`: o "Pular para o conteúdo" põe o foco aqui. */}
+        <main
+          id="conteudo"
+          tabIndex={-1}
+          className="min-w-0 flex-1 px-4 py-8 focus:outline-none lg:px-8"
+        >
           <div className="mx-auto max-w-6xl">{children}</div>
         </main>
       </div>
