@@ -144,9 +144,12 @@ set -e
 # para "/"). O servidor está certo em registrar, e não há o que consertar do
 # lado dele. Qualquer outro erro continua reprovando.
 #
-# `requisicao.falhou` é a mesma coisa pelo log estruturado (`instrumentation.ts`):
-# o que vai para o Sentry em produção reprova aqui.
-FALHAS='⨯ Error|"evento":"requisicao\.falhou"'
+# No log estruturado, TODO `log.erro` reprova — e não só o `requisicao.falhou`
+# do `instrumentation.ts`: a prévia pedida sem loja registrava "banco fora do
+# ar" (`previa.loja-nao-lida`) com a suíte inteira verde. O cliente que vai
+# embora já sai ali como informação (`requisicao.interrompida`); o que sobra
+# como erro é defeito, ou um teste que o provoca sem dizer.
+FALHAS='⨯ Error|"nivel":"erro"'
 ERROS="$(grep -E "${FALHAS}" "${LOG}" | grep -v 'The destination stream closed early' || true)"
 if [[ -n "${ERROS}" ]]; then
   echo ""
