@@ -13,6 +13,7 @@ const NOVA: EntradaDosPrimeirosPassos = {
   appleConectada: false,
   googleConectada: false,
   statusDosBuilds: [],
+  ultimoPassoPendente: false,
 };
 
 const feitos = (entrada: EntradaDosPrimeirosPassos) =>
@@ -50,6 +51,20 @@ describe('primeirosPassos', () => {
     );
   });
 
+  /* "Acompanhar a revisão" de um app que ninguém mandou revisar era a mentira. */
+  it('com o último passo pendente, o checklist manda fazê-lo, e não esperar', () => {
+    const noAr = (entrada: EntradaDosPrimeirosPassos) =>
+      primeirosPassos(entrada).find((passo) => passo.chave === 'no-ar');
+    expect(
+      noAr({ ...NOVA, statusDosBuilds: ['submitted'], ultimoPassoPendente: true }),
+    ).toMatchObject({
+      feito: false,
+      acao: 'Fazer o último passo',
+      caminho: '/publicacao',
+    });
+    expect(noAr({ ...NOVA, statusDosBuilds: ['in_review'] })?.acao).toBe('Acompanhar a revisão');
+  });
+
   it('com tudo feito, o checklist acaba', () => {
     const tudo: EntradaDosPrimeirosPassos = {
       iconePronto: true,
@@ -59,6 +74,7 @@ describe('primeirosPassos', () => {
       appleConectada: true,
       googleConectada: true,
       statusDosBuilds: ['approved'],
+      ultimoPassoPendente: false,
     };
     expect(progressoDosPassos(primeirosPassos(tudo))).toEqual({
       feitos: 7,

@@ -462,6 +462,8 @@ export type Database = {
           submission_id: string | null;
           manual_action: string | null;
           notified_status: Database["public"]["Enums"]["build_status"] | null;
+          store_state: string | null;
+          store_state_at: string | null;
         };
         Insert: {
           id?: string;
@@ -485,6 +487,8 @@ export type Database = {
           submission_id?: string | null;
           manual_action?: string | null;
           notified_status?: Database["public"]["Enums"]["build_status"] | null;
+          store_state?: string | null;
+          store_state_at?: string | null;
         };
         Update: {
           id?: string;
@@ -508,6 +512,8 @@ export type Database = {
           submission_id?: string | null;
           manual_action?: string | null;
           notified_status?: Database["public"]["Enums"]["build_status"] | null;
+          store_state?: string | null;
+          store_state_at?: string | null;
         };
         Relationships: [
           {
@@ -1682,7 +1688,7 @@ export type Database = {
       };
       builds_em_revisao: {
         Args: { p_limite?: number };
-        Returns: { id: string | null; bundle_id_ios: string | null; asc_key_enc: string | null; asc_key_id: string | null; asc_issuer_id: string | null }[];
+        Returns: { id: string | null; platform: Database["public"]["Enums"]["device_platform"] | null; build_number: number | null; version: string | null; bundle_id_ios: string | null; package_android: string | null; asc_key_enc: string | null; asc_key_id: string | null; asc_issuer_id: string | null; google_service_account_enc: string | null }[];
       };
       caixa_de_avisos: {
         Args: { p_app_id: string; p_subscription: string; p_limite?: number };
@@ -1785,7 +1791,7 @@ export type Database = {
         Returns: unknown;
       };
       gravar_revisao: {
-        Args: { p_id: string; p_status?: Database["public"]["Enums"]["build_status"]; p_erro?: string };
+        Args: { p_id: string; p_status?: Database["public"]["Enums"]["build_status"]; p_erro?: string; p_estado?: string };
         Returns: boolean;
       };
       imagens_de_push_sem_campanha: {

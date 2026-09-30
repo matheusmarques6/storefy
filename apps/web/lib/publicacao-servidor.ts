@@ -66,6 +66,12 @@ export interface BuildNaLista {
   artifactUrl: string | null;
   /** O passo manual que destrava este build, quando existe um. */
   acaoManual: AcaoManualDoBuild | null;
+  /**
+   * O que a loja de aplicativos diz desta versão (`PREPARE_FOR_SUBMISSION`,
+   * `PLAY_INTERNAL`...), como o job da revisão gravou. É por ele que a tela
+   * sabe se falta um passo do lojista.
+   */
+  storeState: string | null;
   createdAt: string;
   finishedAt: string | null;
 }
@@ -160,7 +166,7 @@ export async function dadosDaPublicacao(
     supabase
       .from('builds')
       .select(
-        'id, platform, status, version, build_number, error, logs_url, artifact_url, manual_action, created_at, finished_at',
+        'id, platform, status, version, build_number, error, logs_url, artifact_url, manual_action, store_state, created_at, finished_at',
       )
       .eq('app_id', app.id)
       .order('created_at', { ascending: false })
@@ -244,6 +250,7 @@ export async function dadosDaPublicacao(
       logsUrl: linha.logs_url,
       artifactUrl: linha.artifact_url,
       acaoManual: lerAcaoManual(linha.manual_action),
+      storeState: linha.store_state,
       createdAt: linha.created_at,
       finishedAt: linha.finished_at,
     })),

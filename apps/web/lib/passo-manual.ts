@@ -26,7 +26,13 @@ export function passoAPasso(acao: AcaoManualDoBuild, temArquivo: boolean): Passo
             'Abra o Google Play Console e escolha o seu app.',
             'Vá em Teste › Teste interno e clique em "Criar nova versão".',
             'Arraste o arquivo baixado e clique em "Salvar" e depois em "Avaliar versão".',
-            'Pronto. As próximas publicações saem daqui automaticamente.',
+            /*
+             * "As próximas saem daqui automaticamente" era meia verdade: elas
+             * chegam sozinhas ao TESTE INTERNO, que nenhum cliente vê. Ir para
+             * a produção é um passo do lojista a cada versão — e o cartão
+             * "Falta um passo seu" mostra qual, quando chegar a hora.
+             */
+            'Pronto: as próximas versões chegam sozinhas ao teste interno. Para chegar aos clientes, cada uma é publicada em produção — esta tela avisa quando for a hora.',
           ]
         : /*
            * Sem arquivo, mandar abrir o Play Console seria mandar o lojista

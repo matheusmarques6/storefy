@@ -90,13 +90,22 @@ export const ARTIGOS: readonly Artigo[] = [
       {
         titulo: 'Gere e envie',
         paragrafos: [
-          'A lista de verificação da tela Publicação diz o que ainda falta. Com tudo pronto, "Publicar" gera o app (leva de 15 a 30 minutos) e envia para a revisão da loja. O andamento aparece na própria tela.',
+          'A lista de verificação da tela Publicação diz o que ainda falta. Com tudo pronto, "Publicar" gera o app (leva de 15 a 30 minutos) e o envia para a sua conta: na Apple, para a App Store Connect; no Google, para o teste interno do Play Console. O andamento aparece na própria tela.',
+        ],
+      },
+      {
+        titulo: 'O último passo é seu',
+        paragrafos: [
+          'As lojas de aplicativos exigem que o dono da conta mande o app para a revisão. Quando for a sua vez, a tela Publicação mostra "Falta um passo seu", com o passo a passo e o botão que abre o lugar certo.',
+          'Na Apple: na App Store Connect, escolha o build que a Storefy enviou, complete a ficha (capturas, textos e política de privacidade), responda o questionário "Privacidade do app" e clique em "Enviar para a revisão do app". Numa atualização, cada versão precisa existir lá com o mesmo número do build.',
+          'No Google: a primeira vez, termine as tarefas de "Configurar o app" e a página da loja no Play Console. Depois, em "Produção", crie uma versão, adicione o build da biblioteca e envie para a revisão. Toda versão nova chega sozinha ao teste interno, e vai para os clientes quando você a publica em produção.',
+          'Os textos da ficha e o endereço da política de privacidade estão prontos em Publicação, para copiar.',
         ],
       },
       {
         titulo: 'A revisão',
         paragrafos: [
-          'A Apple e o Google revisam todo app novo e toda versão nova. Costuma levar de um a alguns dias. Quando sair o resultado, avisamos por e-mail os proprietários e administradores (dá para desligar em Configurações › Empresa).',
+          'A Apple e o Google revisam todo app novo e toda versão nova. Costuma levar de algumas horas a alguns dias. A tela Publicação acompanha sozinha, de hora em hora, e quando sair o resultado avisamos por e-mail os proprietários e administradores (dá para desligar em Configurações › Empresa).',
           'Se o app for recusado, o motivo aparece em Publicação. Corrija o que foi pedido e envie de novo.',
         ],
       },

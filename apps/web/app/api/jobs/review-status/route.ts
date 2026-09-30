@@ -1,22 +1,31 @@
 /**
- * `GET /api/jobs/review-status` — em que pé está a revisão da Apple.
+ * `GET /api/jobs/review-status` — em que pé está cada app nas duas lojas.
  *
- * O Vercel Cron chama de hora em hora. Não existe webhook para a revisão da
- * App Store: a única forma de saber é perguntar, e a revisão leva de um a três
- * dias — perguntar mais rápido só gastaria cota da chave do lojista sem mudar
- * nada na tela.
+ * O Vercel Cron chama de hora em hora. Nem a Apple nem o Google avisam por
+ * webhook: a única forma de saber é perguntar, e as revisões levam de horas a
+ * dias — perguntar mais rápido só gastaria a cota da chave do lojista.
  *
- * Só builds de iOS entram. O envio ao Google vai para a trilha interna, que
- * não passa por revisão: ali `submitted` já é o estado final até o lojista
- * promover a versão no Play Console, e inventar um `approved` diria a ele que
- * o app está no ar quando não está.
+ * O que a loja diz vira `builds.store_state` a cada consulta, mesmo quando não
+ * há decisão nenhuma: é o estado que conta ao lojista se falta um passo DELE —
+ * enviar para a revisão na App Store Connect, promover para a produção no
+ * Play Console — e que antes era jogado fora.
+ *
+ * No Android, a versão vai para o teste interno, que a Google não revisa. Ela
+ * passa a "em revisão" quando o lojista a manda para a produção, e a
+ * "aprovada" quando o app está aberto na Play Store (`lib/google-play.ts`).
  */
 import { NextResponse, type NextRequest } from 'next/server';
 import { criarClientServiceRole } from '@/lib/supabase/admin';
 import { criptografiaConfigurada, descriptografar } from '@/lib/cripto';
 import { serviceRoleConfigurada, supabaseConfigurado, urlDoSite } from '@/lib/env';
 import { CABECALHO_DO_CRON, autorizarJob, registrarBatimento } from '@/lib/jobs';
-import { consultarRevisao, mensagemDaRevisao } from '@/lib/revisao';
+import {
+  consultarRevisao,
+  estadoGravavel,
+  mensagemDaRevisao,
+  type StatusDaRevisao,
+} from '@/lib/revisao';
+import { consultarPlay } from '@/lib/google-play';
 import { enviarEmail } from '@/lib/email';
 import { mereceAviso, montarAviso } from '@/lib/aviso-da-revisao';
 import type { SupabaseClient } from '@supabase/supabase-js';
@@ -65,30 +74,12 @@ export async function GET(requisicao: NextRequest): Promise<NextResponse> {
     if (error != null) throw new Error(error.message);
 
     for (const build of builds) {
-      if (build.id === null || build.bundle_id_ios === null || build.asc_key_enc === null) continue;
-      if (build.asc_key_id === null || build.asc_issuer_id === null) continue;
+      if (build.id === null) continue;
 
+      const consulta = await consultarBuild(build);
+      // Sem chave completa, ou com a chave que não abre: não há o que perguntar.
+      if (consulta === null) continue;
       consultados += 1;
-
-      let p8: string;
-      try {
-        p8 = descriptografar(build.asc_key_enc);
-      } catch (erro) {
-        /*
-         * A chave de uma loja não abrir não pode parar as outras. Ela vai
-         * aparecer como falha no próximo build, com o motivo — aqui, gravar
-         * erro seria transformar um problema nosso de criptografia numa
-         * mensagem que o lojista não consegue agir. Mas a equipe precisa
-         * saber: é problema NOSSO.
-         */
-        log.erro('job-revisao.chave-nao-abre', { build: build.id, erro });
-        continue;
-      }
-
-      const consulta = await consultarRevisao(
-        { p8, keyId: build.asc_key_id, issuerId: build.asc_issuer_id },
-        build.bundle_id_ios,
-      );
 
       if (!consulta.ok) {
         // Falha passageira: a próxima hora tenta de novo, sem mexer no build.
@@ -102,7 +93,7 @@ export async function GET(requisicao: NextRequest): Promise<NextResponse> {
 
         /*
          * Sem `p_status`: o build fica onde está e só a mensagem aparece. Uma
-         * chave revogada não é uma decisão da Apple sobre o app, e mover o
+         * chave revogada não é uma decisão da loja sobre o app, e mover o
          * status por causa dela mentiria sobre a revisão.
          */
         const { error: erroAoGravar } = await supabase.rpc('gravar_revisao', {
@@ -118,16 +109,16 @@ export async function GET(requisicao: NextRequest): Promise<NextResponse> {
         continue;
       }
 
-      // Estado que não vira nada nosso: a linha fica como está, de propósito.
-      if (consulta.status === null) continue;
-
-      const motivo = mensagemDaRevisao(consulta.status, consulta.estado);
       const { data: mudou, error: erroAoGravar } = await supabase.rpc('gravar_revisao', {
         p_id: build.id,
-        p_status: consulta.status,
-        // Sem mensagem, o campo é limpo: um "aprovado" não pode carregar o
-        // texto de uma recusa anterior.
-        p_erro: motivo ?? undefined,
+        p_status: consulta.status ?? undefined,
+        /*
+         * Sem mensagem, o campo é limpo: um "aprovado" não pode carregar o
+         * texto de uma recusa anterior, nem uma consulta que voltou a dar
+         * certo o aviso da chave que não abria.
+         */
+        p_erro: consulta.motivo ?? undefined,
+        p_estado: consulta.estado ?? undefined,
       });
       if (erroAoGravar != null) {
         log.erro('job-revisao.gravacao-falhou', { build: build.id, falha: erroAoGravar });
@@ -142,10 +133,11 @@ export async function GET(requisicao: NextRequest): Promise<NextResponse> {
        * O aviso vem depois da gravação, nunca antes: se a ordem fosse ao
        * contrário, uma queda entre os dois mandaria ao lojista um "seu app foi
        * aprovado" sobre um build que continua marcado como em revisão na tela
-       * dele.
+       * dele. A reserva do aviso garante um e-mail só por build, mesmo quando
+       * o que mudou foi só o estado ("aprovado" → "na loja").
        */
-      if (mereceAviso(consulta.status)) {
-        if (await avisar(supabase, build.id, consulta.status, motivo)) avisados += 1;
+      if (consulta.status !== null && mereceAviso(consulta.status)) {
+        if (await avisar(supabase, build.id, consulta.status, consulta.motivo)) avisados += 1;
       }
     }
   } catch (erro) {
@@ -166,6 +158,67 @@ export async function GET(requisicao: NextRequest): Promise<NextResponse> {
     naoGravados > 0 ? `${String(naoGravados)} revisão(ões) não gravada(s)` : undefined,
   );
   return NextResponse.json({ consultados, mudados, avisados, naoGravados }, { headers: SEM_CACHE });
+}
+
+type LinhaDaRevisao = Database['public']['Functions']['builds_em_revisao']['Returns'][number];
+
+type ConsultaDoBuild =
+  | { ok: true; status: StatusDaRevisao | null; estado: string | null; motivo: string | null }
+  | { ok: false; passageiro: boolean; motivo: string };
+
+/**
+ * Pergunta à loja certa em que pé está o build. `null` quando não há como
+ * perguntar: a conta sem as chaves completas, ou a chave que não abre.
+ */
+async function consultarBuild(build: LinhaDaRevisao): Promise<ConsultaDoBuild | null> {
+  if (build.id === null) return null;
+
+  if (build.platform === 'ios') {
+    const { bundle_id_ios: bundle, asc_key_enc: cifrada } = build;
+    const { asc_key_id: keyId, asc_issuer_id: issuerId } = build;
+    if (bundle === null || cifrada === null || keyId === null || issuerId === null) return null;
+    const p8 = abrirChave(build.id, cifrada);
+    if (p8 === null) return null;
+
+    const consulta = await consultarRevisao({ p8, keyId, issuerId }, bundle, build.version);
+    if (!consulta.ok) return consulta;
+    return {
+      ok: true,
+      status: consulta.status,
+      estado: estadoGravavel(consulta.estado),
+      motivo: consulta.status === null ? null : mensagemDaRevisao(consulta.status, consulta.estado),
+    };
+  }
+
+  if (build.platform === 'android') {
+    const { package_android: pacote, google_service_account_enc: cifrada } = build;
+    if (pacote === null || cifrada === null || build.build_number === null) return null;
+    const conta = abrirChave(build.id, cifrada);
+    if (conta === null) return null;
+
+    const consulta = await consultarPlay(conta, pacote, build.build_number);
+    if (!consulta.ok) return consulta;
+    return { ok: true, status: consulta.status, estado: consulta.estado, motivo: null };
+  }
+
+  return null;
+}
+
+/**
+ * Abre a chave cifrada da conta do lojista.
+ *
+ * A chave de uma loja não abrir não pode parar as outras. Ela vai aparecer
+ * como falha no próximo build, com o motivo — aqui, gravar erro seria
+ * transformar um problema nosso de criptografia numa mensagem que o lojista
+ * não consegue agir. Mas a equipe precisa saber: é problema NOSSO.
+ */
+function abrirChave(buildId: string, cifrada: string): string | null {
+  try {
+    return descriptografar(cifrada);
+  } catch (erro) {
+    log.erro('job-revisao.chave-nao-abre', { build: buildId, erro });
+    return null;
+  }
 }
 
 /**

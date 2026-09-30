@@ -108,4 +108,12 @@ describe('montarAviso', () => {
     const ocorrencias = aviso.html.split(BASE.url).length - 1;
     expect(ocorrencias).toBe(1);
   });
+
+  /* A API da Google não diz quando a revisão de uma atualização acabou. */
+  it('no Android, diz que está na Play Store, sem prometer revisão concluída', () => {
+    const aviso = montarAviso({ ...BASE, decisao: 'approved', plataforma: 'android' });
+    expect(aviso.assunto).toContain('está na Play Store');
+    expect(aviso.texto).toContain('em produção na Play Store');
+    expect(aviso.texto).not.toContain('passou na revisão');
+  });
 });

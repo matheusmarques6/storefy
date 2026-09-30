@@ -90,13 +90,29 @@ let erros: MockInstance<typeof console.error>;
 function linha(extra: Record<string, unknown> = {}): Record<string, unknown> {
   return {
     id: BUILD,
+    platform: 'ios',
+    build_number: 3,
+    version: '1.0.3',
     bundle_id_ios: 'br.com.loja',
+    package_android: null,
     asc_key_enc: criptografar(P8),
     asc_key_id: 'KEY123',
     asc_issuer_id: 'ISS-456',
+    google_service_account_enc: null,
     ...extra,
   };
 }
+
+/** A conta de serviço do Google de uma loja (cifrada no teste, como o banco guarda). */
+const { privateKey: chaveDoGoogle } = generateKeyPairSync('rsa', { modulusLength: 2048 });
+const CONTA_DO_GOOGLE = JSON.stringify({
+  type: 'service_account',
+  client_email: 'storefy@loja-123.iam.gserviceaccount.com',
+  private_key: chaveDoGoogle.export({ type: 'pkcs8', format: 'pem' }).toString(),
+});
+/** A trilha de produção que a Play devolve, e se a página pública está aberta. */
+let producaoDaPlay: { status: string; versionCodes: string[] }[] = [];
+let paginaPublica = 404;
 
 beforeEach(() => {
   chaveOriginal = process.env.ENCRYPTION_KEY;
@@ -118,6 +134,8 @@ beforeEach(() => {
     corpo: { data: [{ attributes: { appStoreState: 'IN_REVIEW', versionString: '1.0' } }] },
   };
   emRevisao = [linha()];
+  producaoDaPlay = [];
+  paginaPublica = 404;
 
   vi.stubGlobal('fetch', (entrada: RequestInfo | URL, init?: RequestInit) => {
     if (appleQuebrada) return Promise.reject(new Error('sem rede'));
@@ -128,6 +146,24 @@ beforeEach(() => {
       const corpo: unknown = JSON.parse(texto);
       enviados.push(corpo as Record<string, unknown>);
       return Promise.resolve(new Response('{}', { status: respostaDaResend.status }));
+    }
+
+    // A Play: token, edição, trilhas, apagar a edição e a página pública.
+    if (url.includes('oauth2.googleapis.com/token')) {
+      return Promise.resolve(new Response(JSON.stringify({ access_token: 'ya29.t' })));
+    }
+    if (url.includes('androidpublisher')) {
+      if (init?.method === 'DELETE') return Promise.resolve(new Response(null, { status: 204 }));
+      if (init?.method === 'POST')
+        return Promise.resolve(new Response(JSON.stringify({ id: 'e1' })));
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({ tracks: [{ track: 'production', releases: producaoDaPlay }] }),
+        ),
+      );
+    }
+    if (url.includes('play.google.com/store')) {
+      return Promise.resolve(new Response('', { status: paginaPublica }));
     }
 
     const r = url.includes('appStoreVersions') ? respostaDaVersao : respostaDoApp;
@@ -170,7 +206,25 @@ describe('GET /api/jobs/review-status', () => {
     const resposta = await GET(requisicao());
 
     expect(resposta.status).toBe(200);
-    expect(gravacoes()).toEqual([{ p_id: BUILD, p_status: 'in_review', p_erro: undefined }]);
+    expect(gravacoes()).toEqual([
+      { p_id: BUILD, p_status: 'in_review', p_erro: undefined, p_estado: 'IN_REVIEW' },
+    ]);
+  });
+
+  /* Cada build tem o seu número: a mais recente da App Store Connect pode ser a que já está na loja. */
+  it('pergunta à Apple pela versão do build', async () => {
+    const pedidos: string[] = [];
+    vi.stubGlobal('fetch', (entrada: RequestInfo | URL) => {
+      const url = entrada instanceof Request ? entrada.url : entrada.toString();
+      pedidos.push(url);
+      const r = url.includes('appStoreVersions') ? respostaDaVersao : respostaDoApp;
+      return Promise.resolve(new Response(JSON.stringify(r.corpo), { status: r.status }));
+    });
+
+    await GET(requisicao());
+    expect(pedidos.find((url) => url.includes('appStoreVersions'))).toContain(
+      'filter[versionString]=1.0.3',
+    );
   });
 
   it('recusa quando a versão foi aprovada, e limpa o erro anterior', async () => {
@@ -180,7 +234,9 @@ describe('GET /api/jobs/review-status', () => {
     };
 
     await GET(requisicao());
-    expect(gravacoes()).toEqual([{ p_id: BUILD, p_status: 'approved', p_erro: undefined }]);
+    expect(gravacoes()).toEqual([
+      { p_id: BUILD, p_status: 'approved', p_erro: undefined, p_estado: 'READY_FOR_SALE' },
+    ]);
   });
 
   it('recusa da Apple vira status e instrução', async () => {
@@ -196,17 +252,79 @@ describe('GET /api/jobs/review-status', () => {
   });
 
   /*
-   * Estado de trânsito não mexe na linha. `PROCESSING_FOR_APP_STORE` não é
+   * Estado sem decisão não mexe no status — `PREPARE_FOR_SUBMISSION` não é
    * decisão nenhuma, e movê-lo contaria ao lojista algo que ninguém decidiu.
+   * Mas o ESTADO é gravado: é ele que diz que falta o lojista mandar para a
+   * revisão, e antes era jogado fora.
    */
-  it('estado de trânsito não grava nada', async () => {
+  it('estado sem decisão grava só o estado', async () => {
     respostaDaVersao = {
       status: 200,
-      corpo: { data: [{ attributes: { appStoreState: 'PROCESSING_FOR_APP_STORE' } }] },
+      corpo: { data: [{ attributes: { appStoreState: 'PREPARE_FOR_SUBMISSION' } }] },
     };
 
     await GET(requisicao());
-    expect(gravacoes()).toEqual([]);
+    expect(gravacoes()).toEqual([
+      { p_id: BUILD, p_status: undefined, p_erro: undefined, p_estado: 'PREPARE_FOR_SUBMISSION' },
+    ]);
+  });
+
+  it('sem a versão do build na App Store Connect, grava que falta criá-la', async () => {
+    respostaDaVersao = { status: 200, corpo: { data: [] } };
+
+    await GET(requisicao());
+    expect(gravacoes()).toEqual([
+      { p_id: BUILD, p_status: undefined, p_erro: undefined, p_estado: 'NO_APP_STORE_VERSION' },
+    ]);
+  });
+
+  describe('Android', () => {
+    const android = () =>
+      linha({
+        platform: 'android',
+        build_number: 7,
+        bundle_id_ios: null,
+        package_android: 'br.com.loja',
+        asc_key_enc: null,
+        asc_key_id: null,
+        asc_issuer_id: null,
+        // Cifrada aqui, e não no topo: a chave de cifra só existe dentro do teste.
+        google_service_account_enc: criptografar(CONTA_DO_GOOGLE),
+      });
+
+    it('no teste interno, grava o estado e o build fica onde está', async () => {
+      emRevisao = [android()];
+      await GET(requisicao());
+      expect(gravacoes()).toEqual([
+        { p_id: BUILD, p_status: undefined, p_erro: undefined, p_estado: 'PLAY_INTERNAL' },
+      ]);
+    });
+
+    it('enviado à produção com o app ainda fechado: em revisão', async () => {
+      emRevisao = [android()];
+      producaoDaPlay = [{ status: 'completed', versionCodes: ['7'] }];
+      await GET(requisicao());
+      expect(gravacoes()).toEqual([
+        { p_id: BUILD, p_status: 'in_review', p_erro: undefined, p_estado: 'PLAY_PRODUCTION' },
+      ]);
+    });
+
+    it('em produção com o app aberto na Play Store: aprovado, e o e-mail sai', async () => {
+      emRevisao = [android()];
+      producaoDaPlay = [{ status: 'completed', versionCodes: ['7'] }];
+      paginaPublica = 200;
+      await GET(requisicao());
+      expect(gravacoes()).toEqual([
+        { p_id: BUILD, p_status: 'approved', p_erro: undefined, p_estado: 'PLAY_LIVE' },
+      ]);
+      expect(chamadas.some((chamada) => chamada.nome === 'reservar_aviso')).toBe(true);
+    });
+
+    it('sem a conta do Google, a linha é pulada', async () => {
+      emRevisao = [linha({ ...android(), google_service_account_enc: null })];
+      await GET(requisicao());
+      expect(gravacoes()).toEqual([]);
+    });
   });
 
   /*
@@ -253,7 +371,9 @@ describe('GET /api/jobs/review-status', () => {
     ];
 
     await GET(requisicao());
-    expect(gravacoes()).toEqual([{ p_id: BUILD, p_status: 'in_review', p_erro: undefined }]);
+    expect(gravacoes()).toEqual([
+      { p_id: BUILD, p_status: 'in_review', p_erro: undefined, p_estado: 'IN_REVIEW' },
+    ]);
   });
 
   it('linha sem bundle ou sem chave é pulada', async () => {

@@ -11,6 +11,7 @@ const build = (status: BuildNaLista['status']): BuildNaLista => ({
   logsUrl: null,
   artifactUrl: null,
   acaoManual: null,
+  storeState: null,
   createdAt: '2026-09-19T12:00:00.000Z',
   finishedAt: null,
 });

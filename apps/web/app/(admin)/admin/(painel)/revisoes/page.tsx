@@ -53,10 +53,16 @@ export default async function PaginaRevisoes({
   } = await supabase
     .from('builds')
     .select(
-      'id, platform, status, version, error, submitted_at, updated_at, apps(display_name, stores(name, organizations(id, name)))',
+      'id, platform, status, version, error, submitted_at, updated_at, store_state, apps(display_name, stores(name, organizations(id, name)))',
       { count: 'exact' },
     )
-    .in('status', ['submitted', 'in_review', 'rejected'])
+    /*
+     * O aprovado esperando o lojista liberar também entra: para o cliente, o
+     * app não está na loja, e é a equipe quem lembra.
+     */
+    .or(
+      'status.in.(submitted,in_review,rejected),and(status.eq.approved,store_state.eq.PENDING_DEVELOPER_RELEASE)',
+    )
     // Do mais antigo para o mais novo: quem espera há mais tempo vem primeiro.
     // `nullsFirst: false` porque um build sem data de envio não é o mais
     // urgente — é um dado incompleto, e ele iria para o topo sem merecer.

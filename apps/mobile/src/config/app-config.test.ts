@@ -65,6 +65,15 @@ describe('app.config.ts', () => {
     expect((config.extra as { apiBase: string }).apiBase).toBe('https://painel.exemplo.com');
   });
 
+  /*
+   * Sem a declaração, cada versão para na App Store Connect esperando o
+   * lojista responder à pergunta da criptografia antes da revisão.
+   */
+  it('declara à Apple que só usa a criptografia isenta do sistema', async () => {
+    const config = await avaliar({});
+    expect(config.ios?.config?.usesNonExemptEncryption).toBe(false);
+  });
+
   /* Sem ele, a atualização obrigatória (M11) não tem como abrir a App Store. */
   it('o número do app na App Store vai para o extra', async () => {
     const config = await avaliar({ IOS_APP_STORE_ID: '6478123456' });

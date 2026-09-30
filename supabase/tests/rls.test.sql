@@ -2455,17 +2455,18 @@ select tests.ok('revisão',
   'build de iOS esperando decisão entra na fila do cron');
 
 /*
- * Um build de Android da MESMA LOJA, com a mesma conta Apple conectada, NÃO
- * entra: a trilha interna do Google não passa por revisão, e perguntar à Apple
- * sobre ele seria perguntar à loja errada. A loja é a mesma de propósito —
- * usar outra provaria só que a outra não tem conta Apple.
+ * Um build de Android da MESMA LOJA, com só a conta Apple conectada, NÃO
+ * entra: o Android é perguntado ao Google, com a conta de serviço do lojista
+ * (migration 66), e perguntar à Apple sobre ele seria perguntar à loja errada.
+ * A loja é a mesma de propósito — usar outra provaria só que a outra não tem
+ * conta Apple.
  */
 insert into public.builds (app_id, platform, profile, status, submitted_at)
 select app_a, 'android', 'production', 'submitted', now() from tests.lojas;
 
 select tests.ok('revisão',
   tests.contar('select count(*) from public.builds_em_revisao(50)') = 1,
-  'e o de Android da mesma loja não entra: a trilha do Google não tem revisão');
+  'e o de Android da mesma loja não entra sem a conta do Google: a Apple não sabe dele');
 
 /*
  * Sem bundle não há o que perguntar: a Apple é consultada POR bundle. Deixar
@@ -2639,17 +2640,19 @@ reset role;
 set role service_role;
 
 /*
- * Build parado há semanas sai da fila sozinho. A Apple às vezes simplesmente
- * não responde — app abandonado, conta cancelada, versão substituída — e sem
- * este corte o cron perguntaria por ele para sempre.
+ * Build parado há meses sai da fila sozinho. A loja às vezes simplesmente não
+ * responde — app abandonado, conta cancelada — e sem este corte o cron
+ * perguntaria por ele para sempre. O corte é de 60 dias, e não menos: a
+ * primeira publicação espera o lojista tirar as capturas e responder o
+ * questionário de privacidade, e isso leva semanas (migration 66).
  */
 update public.builds
-   set status = 'submitted', submitted_at = now() - interval '30 days'
+   set status = 'submitted', submitted_at = now() - interval '61 days'
  where id = (select id from tests.build_ios);
 
 select tests.ok('revisão',
   tests.contar('select count(*) from public.builds_em_revisao(50)') = 0,
-  'build esquecido há um mês para de gastar cota da chave do lojista');
+  'build esquecido há dois meses para de gastar cota da chave do lojista');
 
 reset role;
 
@@ -8529,6 +8532,140 @@ set role authenticated;
 select tests.ok('colunas do servidor',
   tests.permitido('select * from public.push_do_admin(30)'),
   'o push global da equipe (A08) não estoura com o número gigante');
+
+reset role;
+select tests.logout();
+
+-- ============================== grupo: o último passo da publicação (C12, migration 66)
+--
+-- Cada build guarda o que a loja de aplicativos diz dele, e é por esse estado
+-- que a tela conta ao lojista se falta um passo dele. O job pergunta às duas
+-- lojas, só pela versão mais nova de cada app.
+
+reset role;
+select tests.logout();
+
+insert into auth.users (email, raw_user_meta_data, email_confirmed_at) values
+  ('ult-dono@teste.local', '{"company_name":"Ultimo Passo"}'::jsonb, now());
+
+drop table if exists tests.ult;
+create table tests.ult as
+select (select m.org_id from public.memberships m
+          join auth.users u on u.id = m.user_id
+         where u.email = 'ult-dono@teste.local') as org;
+
+insert into public.stores (org_id, name, primary_url)
+select org, 'Loja Ultimo Passo', 'https://ultimo-passo.teste' from tests.ult;
+
+alter table tests.ult add column app uuid, add column ios_velho uuid, add column ios uuid,
+  add column android uuid;
+update tests.ult set app = (select a.id from public.apps a join public.stores s on s.id = a.store_id
+                             where s.name = 'Loja Ultimo Passo');
+update public.apps set bundle_id_ios = 'br.teste.ultimopasso', package_android = 'br.teste.ultimopasso'
+ where id = (select app from tests.ult);
+
+insert into public.developer_accounts (org_id, platform, status, asc_key_id, asc_issuer_id, asc_key_enc)
+select org, 'apple', 'verified', 'KEYULT', 'ISS-ULT', 'cifrado-apple' from tests.ult;
+insert into public.developer_accounts (org_id, platform, status, google_service_account_enc)
+select org, 'google', 'verified', 'cifrado-google' from tests.ult;
+
+insert into public.builds (app_id, platform, profile, status, submitted_at, build_number)
+select app, 'ios', 'production', 'submitted', now() - interval '3 days', 1 from tests.ult;
+insert into public.builds (app_id, platform, profile, status, submitted_at, build_number)
+select app, 'ios', 'production', 'submitted', now(), 2 from tests.ult;
+insert into public.builds (app_id, platform, profile, status, submitted_at, build_number)
+select app, 'android', 'production', 'submitted', now(), 7 from tests.ult;
+update tests.ult set
+  ios_velho = (select id from public.builds where app_id = tests.ult.app and platform = 'ios' and build_number = 1),
+  ios = (select id from public.builds where app_id = tests.ult.app and platform = 'ios' and build_number = 2),
+  android = (select id from public.builds where app_id = tests.ult.app and platform = 'android');
+grant select on tests.ult to authenticated, service_role;
+
+set role service_role;
+
+select tests.ok('último passo',
+  tests.contar($q$select count(*) from public.builds_em_revisao(200) r, tests.ult u
+    where r.id in (u.ios, u.android)$q$) = 2
+  and tests.contar($q$select count(*) from public.builds_em_revisao(200) r, tests.ult u
+    where r.id = u.ios_velho$q$) = 0,
+  'o job pergunta pela versão mais nova de cada loja, a do Android com a conta do Google, e não pela substituída');
+
+select tests.ok('último passo',
+  tests.contar($q$select count(*) from public.builds_em_revisao(200) r, tests.ult u
+    where r.id = u.android and r.google_service_account_enc = 'cifrado-google'
+      and r.package_android = 'br.teste.ultimopasso' and r.build_number = 7$q$) = 1,
+  'e o do Android vem com a conta, o pacote e o número da versão que a Play conhece');
+
+-- A chamada e a leitura em comandos separados: um subselect no MESMO comando
+-- enxerga a foto de antes da função, e o teste mentiria que não gravou.
+select tests.ok('último passo',
+  (select public.gravar_revisao((select ios from tests.ult), null, null, 'PREPARE_FOR_SUBMISSION')),
+  'o estado da Apple é gravado mesmo sem decisão');
+
+select tests.ok('último passo',
+  (select status = 'submitted' and store_state = 'PREPARE_FOR_SUBMISSION'
+          and store_state_at is not null
+     from public.builds where id = (select ios from tests.ult)),
+  'e o build continua enviado: é a vez do lojista mandar para a revisão');
+
+select tests.ok('último passo',
+  not (select public.gravar_revisao((select ios from tests.ult), null, null, 'PREPARE_FOR_SUBMISSION')),
+  'e repetir o mesmo estado não diz que mudou');
+
+select tests.ok('último passo',
+  tests.erro($q$select public.gravar_revisao((select ios from tests.ult), null, null, 'texto qualquer')$q$),
+  'estado fora do formato de token é recusado pelo banco');
+
+select tests.ok('último passo',
+  (select public.gravar_revisao((select android from tests.ult), 'in_review', null, 'PLAY_PRODUCTION')),
+  'no Android, a ida para a produção é gravada');
+
+select tests.ok('último passo',
+  (select status = 'in_review' and store_state = 'PLAY_PRODUCTION'
+     from public.builds where id = (select android from tests.ult)),
+  'e põe o build em revisão');
+
+select tests.ok('último passo',
+  (select public.gravar_revisao((select ios from tests.ult), 'approved', null, 'PENDING_DEVELOPER_RELEASE'))
+  and tests.contar($q$select count(*) from public.builds_em_revisao(200) r, tests.ult u
+    where r.id = u.ios$q$) = 1,
+  'aprovado esperando o lojista liberar continua na fila: o job precisa ver quando ele libera');
+
+select tests.ok('último passo',
+  not (select public.gravar_revisao((select ios from tests.ult), 'in_review', null, 'IN_REVIEW'))
+  and (select status = 'approved' and store_state = 'PENDING_DEVELOPER_RELEASE'
+         from public.builds where id = (select ios from tests.ult)),
+  'uma leitura velha ("em revisão") não volta o aprovado nem reescreve o estado');
+
+select tests.ok('último passo',
+  (select public.gravar_revisao((select ios from tests.ult), 'approved', null, 'READY_FOR_SALE')),
+  'liberado pelo lojista, o aprovado ainda anda para "na loja"');
+
+select tests.ok('último passo',
+  (select status = 'approved' and store_state = 'READY_FOR_SALE'
+     from public.builds where id = (select ios from tests.ult))
+  and tests.contar($q$select count(*) from public.builds_em_revisao(200) r, tests.ult u
+    where r.id = u.ios$q$) = 0,
+  'e o build sai da fila');
+
+select tests.ok('último passo',
+  (select status from public.stores where name = 'Loja Ultimo Passo') = 'live',
+  'e a loja fica no ar');
+
+reset role;
+
+select tests.login('ult-dono@teste.local');
+set role authenticated;
+
+select tests.ok('último passo',
+  tests.contar($q$select count(*) from public.builds
+    where id = (select ios from tests.ult) and store_state = 'READY_FOR_SALE'$q$) = 1,
+  'o dono lê o estado da loja, que a tela usa para dizer o que falta');
+
+select tests.ok('último passo',
+  tests.bloqueado($q$update public.builds set store_state = 'READY_FOR_SALE'
+    where id = (select android from tests.ult)$q$),
+  'mas não escreve: "na loja" é a loja quem diz');
 
 reset role;
 select tests.logout();

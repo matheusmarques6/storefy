@@ -34,6 +34,23 @@ export function montarAviso(dados: DadosDoAviso): Omit<Mensagem, 'para'> {
   const loja = dados.nomeDaLoja.trim() === '' ? 'sua loja' : dados.nomeDaLoja.trim();
   const nomeDaStore = dados.plataforma === 'ios' ? 'App Store' : 'Play Store';
 
+  /*
+   * No Android, "aprovado" é "em produção, com o app aberto na Play Store"
+   * (`lib/google-play.ts`): a API da Google não diz quando a revisão de uma
+   * atualização acabou. O e-mail diz o que se sabe, e não "passou na revisão".
+   */
+  if (dados.decisao === 'approved' && dados.plataforma === 'android') {
+    const assunto = `O app de ${loja} está na Play Store 🎉`;
+    const linhas = [
+      `O app de ${loja} está em produção na Play Store, aberto para os clientes baixarem.`,
+      '',
+      'Uma atualização chega aos celulares de quem já tem o app assim que a Google libera — normalmente em algumas horas.',
+      '',
+      `Acompanhe por aqui: ${dados.url}`,
+    ];
+    return { assunto, texto: linhas.join('\n'), html: html(assunto, linhas, dados.url) };
+  }
+
   if (dados.decisao === 'approved') {
     const assunto = `O app de ${loja} foi aprovado na ${nomeDaStore} 🎉`;
     const linhas = [

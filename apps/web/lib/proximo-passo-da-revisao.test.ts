@@ -11,7 +11,14 @@ const AGORA = Date.parse('2026-09-29T12:00:00Z');
 const haDias = (dias: number): string => new Date(AGORA - dias * 86_400_000).toISOString();
 
 function build(parcial: Partial<BuildNaRevisao>): BuildNaRevisao {
-  return { platform: 'ios', status: 'in_review', error: null, submitted_at: haDias(1), ...parcial };
+  return {
+    platform: 'ios',
+    status: 'in_review',
+    error: null,
+    submitted_at: haDias(1),
+    store_state: null,
+    ...parcial,
+  };
 }
 
 describe('proximoPassoDaRevisao', () => {
@@ -97,5 +104,54 @@ describe('proximoPassoDaRevisao', () => {
     expect(
       proximoPassoDaRevisao(build({ submitted_at: haDias(DIAS_ATE_ESTRANHAR) }), AGORA).urgente,
     ).toBe(true);
+  });
+
+  /*
+   * O defeito da auditoria: "Esperar a Apple" de um binário que ninguém tinha
+   * mandado para a revisão. Quem pode agir é o lojista.
+   */
+  it('iPhone enviado e parado em "Preparar para envio": a vez é do lojista', () => {
+    for (const store_state of [null, 'PREPARE_FOR_SUBMISSION', 'READY_FOR_REVIEW']) {
+      const naoEnviado = build({ status: 'submitted', store_state, submitted_at: haDias(20) });
+      expect(proximoPassoDaRevisao(naoEnviado, AGORA)).toMatchObject({
+        titulo: 'Lojista enviar para a revisão',
+        quem: 'lojista',
+        urgente: false,
+      });
+      expect(situacaoNaRevisao(naoEnviado)).toBe('Não enviado para a revisão');
+    }
+  });
+
+  it('na fila da Apple, espera — e cobra quando passa do normal', () => {
+    const naFila = build({ status: 'submitted', store_state: 'WAITING_FOR_REVIEW' });
+    expect(proximoPassoDaRevisao(naFila, AGORA).titulo).toBe('Esperar a Apple');
+    expect(situacaoNaRevisao(naFila)).toBe('Na fila da Apple');
+    expect(
+      proximoPassoDaRevisao({ ...naFila, submitted_at: haDias(DIAS_ATE_ESTRANHAR) }, AGORA).titulo,
+    ).toBe('Cobrar a Apple');
+  });
+
+  it('versão sem número na Apple, criptografia, contratos e liberar: passos do lojista', () => {
+    const titulo = (parcial: Partial<BuildNaRevisao>) =>
+      proximoPassoDaRevisao(build({ status: 'submitted', ...parcial }), AGORA).titulo;
+    expect(titulo({ store_state: 'NO_APP_STORE_VERSION' })).toBe('Lojista criar a versão na Apple');
+    expect(titulo({ store_state: 'WAITING_FOR_EXPORT_COMPLIANCE' })).toBe(
+      'Lojista responder a criptografia',
+    );
+    expect(titulo({ store_state: 'PENDING_CONTRACT' })).toBe('Lojista aceitar os contratos');
+
+    const aprovado = build({ status: 'approved', store_state: 'PENDING_DEVELOPER_RELEASE' });
+    expect(proximoPassoDaRevisao(aprovado, AGORA).titulo).toBe('Lojista liberar a versão');
+    expect(situacaoNaRevisao(aprovado)).toBe('Aprovado, sem liberar');
+  });
+
+  it('no Android, rascunho e lançamento interrompido também são do lojista', () => {
+    const android = (store_state: string) =>
+      build({ platform: 'android', status: 'submitted', store_state });
+    expect(proximoPassoDaRevisao(android('PLAY_PRODUCTION_DRAFT'), AGORA).titulo).toBe(
+      'Lojista enviar a versão de produção',
+    );
+    expect(situacaoNaRevisao(android('PLAY_HALTED'))).toBe('Lançamento interrompido');
+    expect(situacaoNaRevisao(android('PLAY_INTERNAL'))).toBe('Na trilha interna');
   });
 });

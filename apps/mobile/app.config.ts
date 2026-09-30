@@ -167,6 +167,13 @@ const config: ExpoConfig = {
     supportsTablet: false,
     // Universal Links: faz o link da loja abrir no app em vez do navegador.
     associatedDomains: dominioDaLoja === '' ? [] : [`applinks:${dominioDaLoja}`],
+    /*
+     * O app só usa a criptografia do próprio sistema (o HTTPS da WebView e das
+     * notificações), que é isenta. Sem a declaração, a Apple para CADA versão
+     * enviada em "Conformidade de exportação" e espera o lojista responder à
+     * mão antes de deixar mandar para a revisão.
+     */
+    config: { usesNonExemptEncryption: false },
     infoPlist: {
       // A WebView carrega o site do lojista, que pode ter recurso em http.
       NSAppTransportSecurity: { NSAllowsArbitraryLoads: true },

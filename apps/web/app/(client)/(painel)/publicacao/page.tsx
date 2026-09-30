@@ -25,6 +25,8 @@ import { BuildsAoVivo } from './ao-vivo';
 import { FichaDaLoja } from './ficha';
 import { IdentificadorDoApp } from './identificador';
 import { LinksDaLoja } from './links-da-loja';
+import { UltimoPasso } from './ultimo-passo';
+import { passosPendentes } from '@/lib/ultimo-passo';
 
 export const metadata: Metadata = { title: 'Publicação' };
 
@@ -82,6 +84,11 @@ export default async function PaginaDePublicacao() {
         */}
         <BuildsAoVivo appId={dados.appId} emAndamento={temBuildEmAndamento(dados.builds)} />
       </div>
+
+      {/* Quando a vez é do lojista, é a primeira coisa da tela. */}
+      <UltimoPasso
+        pendentes={passosPendentes(dados.builds, { iosAscAppId: dados.identidade.iosAscAppId })}
+      />
 
       <IdentificadorDoApp
         identificador={dados.identidade.identificador}
@@ -144,7 +151,11 @@ export default async function PaginaDePublicacao() {
         )}
       />
 
-      <HistoricoDeBuilds builds={dados.builds} fuso={lojaAtiva.timezone} />
+      <HistoricoDeBuilds
+        builds={dados.builds}
+        fuso={lojaAtiva.timezone}
+        iosAscAppId={dados.identidade.iosAscAppId}
+      />
     </div>
   );
 }

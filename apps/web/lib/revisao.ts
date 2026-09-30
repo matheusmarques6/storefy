@@ -39,7 +39,11 @@ export function traduzirEstadoDaApple(estado: string): StatusDaRevisao | null {
      * disse sim, e o que falta é um clique do lojista. Deixá-lo em "em
      * revisão" esconderia justamente o momento em que ele precisa agir.
      */
+    // `READY_FOR_DISTRIBUTION` é o nome novo de `READY_FOR_SALE` no
+    // `appVersionState`: quando a Apple deixar de mandar o campo antigo, é ele
+    // que diz "na loja".
     case 'READY_FOR_SALE':
+    case 'READY_FOR_DISTRIBUTION':
     case 'PENDING_DEVELOPER_RELEASE':
     case 'PENDING_APPLE_RELEASE':
     case 'APPROVED':
@@ -54,6 +58,19 @@ export function traduzirEstadoDaApple(estado: string): StatusDaRevisao | null {
     default:
       return null;
   }
+}
+
+/**
+ * O estado da loja como `builds.store_state` aceita: um token em maiúsculas.
+ *
+ * A Apple manda `PREPARE_FOR_SUBMISSION`, `WAITING_FOR_REVIEW`... e é por ele
+ * que a tela diz se falta um passo do lojista. Qualquer outra coisa (vazio,
+ * texto estranho) não é gravada: o banco recusaria, e a linha do build
+ * falharia inteira por causa de um detalhe.
+ */
+export function estadoGravavel(estado: string): string | null {
+  const token = estado.trim().toUpperCase();
+  return /^[A-Z][A-Z_]{1,59}$/.test(token) ? token : null;
 }
 
 /** O que o lojista lê quando a Apple decide. */
@@ -126,14 +143,27 @@ export type ConsultaDaRevisao =
   | { ok: false; passageiro: boolean; motivo: string };
 
 /**
- * Pergunta à Apple em que pé está a versão mais recente do app.
+ * O estado que a Storefy grava quando a App Store Connect ainda não tem uma
+ * versão com o número do build. Não é da Apple: é o que diz ao lojista que
+ * falta criar a versão (ou trocar o número da que está em preparo).
+ */
+export const SEM_VERSAO_NA_APPLE = 'NO_APP_STORE_VERSION';
+
+/**
+ * Pergunta à Apple em que pé está a versão `versao` do app.
  *
  * São duas chamadas porque a App Store Connect não deixa filtrar versão por
  * bundle direto: primeiro o app, depois as versões dele.
+ *
+ * PELO NÚMERO da versão, e não a mais recente: cada build sai com o seu
+ * (`1.0.<n>`), e a mais recente da App Store Connect pode ser a que já está
+ * na loja. Emprestar o estado dela diria "aprovado" a uma atualização que
+ * ninguém revisou. Sem número (build antigo), fica a mais recente.
  */
 export async function consultarRevisao(
   chave: ChaveDaAppStore,
   bundleId: string,
+  versao: string | null = null,
   buscador: typeof fetch = fetch,
   agoraS: number = Math.floor(Date.now() / 1000),
 ): Promise<ConsultaDaRevisao> {
@@ -178,16 +208,26 @@ export async function consultarRevisao(
       };
     }
 
+    const filtro =
+      versao === null || versao === ''
+        ? 'sort=-versionString'
+        : `filter[versionString]=${encodeURIComponent(versao)}`;
     const versoes = await pegar(
-      `/v1/apps/${appId}/appStoreVersions?limit=1&sort=-versionString&fields[appStoreVersions]=versionString,appStoreState,appVersionState`,
+      `/v1/apps/${appId}/appStoreVersions?limit=1&${filtro}&fields[appStoreVersions]=versionString,appStoreState,appVersionState`,
     );
     const falhaDaVersao = falhaDaApple(versoes.status);
     if (falhaDaVersao !== null) return falhaDaVersao;
 
     const lido = lerEstadoDaVersao(versoes.corpo);
     if (lido === null) {
-      // App cadastrado e sem nenhuma versão ainda: não é erro, é cedo demais.
-      return { ok: true, status: null, estado: '', versao: '' };
+      /*
+       * Nenhuma versão com este número: o binário chegou, mas a App Store
+       * Connect não tem onde colocá-lo — a vez é do lojista. Sem número
+       * pedido, é só cedo demais (app cadastrado e sem versão ainda).
+       */
+      return versao === null || versao === ''
+        ? { ok: true, status: null, estado: '', versao: '' }
+        : { ok: true, status: null, estado: SEM_VERSAO_NA_APPLE, versao };
     }
 
     return {

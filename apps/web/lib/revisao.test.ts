@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { BASE_DA_API } from '@/lib/apple';
 import {
+  SEM_VERSAO_NA_APPLE,
   consultarRevisao,
+  estadoGravavel,
   lerEstadoDaVersao,
   lerIdDoApp,
   mensagemDaRevisao,
@@ -165,6 +167,7 @@ describe('consultarRevisao', () => {
     const resultado = await consultarRevisao(
       CHAVE,
       'br.com.loja',
+      null,
       falsa(
         {
           '/v1/apps?filter': { status: 200, corpo: { data: [{ id: 'app-1' }] } },
@@ -193,6 +196,7 @@ describe('consultarRevisao', () => {
     await consultarRevisao(
       CHAVE,
       'br.com/loja?x=1',
+      null,
       falsa({ '/v1/apps?filter': { status: 200, corpo: { data: [] } } }, pedidos),
     );
     expect(pedidos[0]).toContain('br.com%2Floja%3Fx%3D1');
@@ -202,6 +206,7 @@ describe('consultarRevisao', () => {
     const r = await consultarRevisao(
       CHAVE,
       'br.com.loja',
+      null,
       falsa({ '/v1/apps?filter': { status: 200, corpo: { data: [] } } }),
     );
     expect(r.ok).toBe(false);
@@ -221,6 +226,7 @@ describe('consultarRevisao', () => {
       const r = await consultarRevisao(
         CHAVE,
         'br.com.loja',
+        null,
         falsa({ '/v1/apps?filter': { status, corpo: {} } }),
       );
       expect(r.ok).toBe(false);
@@ -231,6 +237,7 @@ describe('consultarRevisao', () => {
       const r = await consultarRevisao(
         CHAVE,
         'br.com.loja',
+        null,
         falsa({ '/v1/apps?filter': { status, corpo: {} } }),
       );
       expect(r.ok).toBe(false);
@@ -245,6 +252,7 @@ describe('consultarRevisao', () => {
     const r = await consultarRevisao(
       CHAVE,
       'br.com.loja',
+      null,
       falsa({
         '/v1/apps?filter': { status: 200, corpo: { data: [{ id: 'app-1' }] } },
         '/appStoreVersions': { status: 200, corpo: { data: [] } },
@@ -253,10 +261,55 @@ describe('consultarRevisao', () => {
     expect(r).toEqual({ ok: true, status: null, estado: '', versao: '' });
   });
 
+  /*
+   * Cada build sai com o seu número. A mais recente da App Store Connect pode
+   * ser a versão que já está na loja — o estado dela aprovaria a atualização
+   * que ninguém revisou.
+   */
+  it('pergunta pela versão do build, e não pela mais recente', async () => {
+    const pedidos: string[] = [];
+    const r = await consultarRevisao(
+      CHAVE,
+      'br.com.loja',
+      '1.0.7',
+      falsa(
+        {
+          '/v1/apps?filter': { status: 200, corpo: { data: [{ id: 'app-1' }] } },
+          '/appStoreVersions': {
+            status: 200,
+            corpo: {
+              data: [
+                { attributes: { appVersionState: 'WAITING_FOR_REVIEW', versionString: '1.0.7' } },
+              ],
+            },
+          },
+        },
+        pedidos,
+      ),
+    );
+    expect(pedidos[1]).toContain('filter[versionString]=1.0.7');
+    expect(pedidos[1]).not.toContain('sort=');
+    expect(r).toEqual({ ok: true, status: null, estado: 'WAITING_FOR_REVIEW', versao: '1.0.7' });
+  });
+
+  it('sem a versão do build na App Store Connect, a vez é do lojista', async () => {
+    const r = await consultarRevisao(
+      CHAVE,
+      'br.com.loja',
+      '1.0.8',
+      falsa({
+        '/v1/apps?filter': { status: 200, corpo: { data: [{ id: 'app-1' }] } },
+        '/appStoreVersions': { status: 200, corpo: { data: [] } },
+      }),
+    );
+    expect(r).toEqual({ ok: true, status: null, estado: SEM_VERSAO_NA_APPLE, versao: '1.0.8' });
+  });
+
   it('chave que não assina vira falha permanente, e não exceção', async () => {
     const r = await consultarRevisao(
       { p8: 'isto não é uma chave', keyId: 'K', issuerId: 'I' },
       'br.com.loja',
+      null,
       falsa({}),
     );
     expect(r.ok).toBe(false);
@@ -264,10 +317,31 @@ describe('consultarRevisao', () => {
   });
 
   it('rede fora do ar vira falha passageira', async () => {
-    const r = await consultarRevisao(CHAVE, 'br.com.loja', () =>
+    const r = await consultarRevisao(CHAVE, 'br.com.loja', null, () =>
       Promise.reject(new Error('sem rede')),
     );
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.passageiro).toBe(true);
+  });
+});
+
+describe('estadoGravavel', () => {
+  it('guarda o estado da loja como token em maiúsculas', () => {
+    expect(estadoGravavel('PREPARE_FOR_SUBMISSION')).toBe('PREPARE_FOR_SUBMISSION');
+    expect(estadoGravavel(' waiting_for_review ')).toBe('WAITING_FOR_REVIEW');
+  });
+
+  it('o que não é token não vai ao banco (que o recusaria)', () => {
+    for (const estado of ['', '   ', 'EM REVISÃO', '1_ESTADO', 'A'.repeat(61), 'IN-REVIEW']) {
+      expect(estadoGravavel(estado), estado).toBeNull();
+    }
+  });
+});
+
+describe('o nome novo do "na loja"', () => {
+  /* Quando a Apple deixar de mandar o `appStoreState`, é o `appVersionState` que fala. */
+  it('READY_FOR_DISTRIBUTION é aprovado, como READY_FOR_SALE', () => {
+    expect(traduzirEstadoDaApple('READY_FOR_DISTRIBUTION')).toBe('approved');
+    expect(traduzirEstadoDaApple('READY_FOR_SALE')).toBe('approved');
   });
 });

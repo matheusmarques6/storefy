@@ -7,6 +7,7 @@
  */
 import { Download, History } from 'lucide-react';
 import type { BuildNaLista } from '@/lib/publicacao-servidor';
+import { situacaoNaLoja, type ContextoDaLoja } from '@/lib/ultimo-passo';
 import { formatarDataHora } from '@/lib/fuso';
 import { ROTULO_STATUS_BUILD, type Database } from '@storefy/db';
 import { Badge } from '@/components/ui/badge';
@@ -21,7 +22,9 @@ const EXPLICACAO: Record<Status, string> = {
   building: 'Gerando o binário. Leva de 15 a 30 minutos.',
   finished: 'Binário pronto, indo para a loja.',
   errored: 'Não foi possível gerar o binário.',
-  submitted: 'A loja recebeu. Agora é aguardar a revisão.',
+  // Os quatro abaixo, na verdade, dependem de ONDE a versão está na loja:
+  // quem responde é `situacaoNaLoja`. Estes são só o chão.
+  submitted: 'Chegou à loja de aplicativos.',
   in_review: 'Alguém da loja está analisando o app.',
   approved: 'Aprovado. O app já está disponível.',
   rejected: 'A loja recusou. Veja o motivo e corrija.',
@@ -36,11 +39,16 @@ const EXPLICACAO: Record<Status, string> = {
  * binário" ao lado de um card que diz "o app está pronto" faz o lojista achar
  * que a tela está quebrada, e é exatamente o que aparecia antes desta função.
  */
-export function explicacaoDoBuild(build: BuildNaLista): string {
+export function explicacaoDoBuild(build: BuildNaLista, contexto: ContextoDaLoja): string {
   if (build.status === 'errored' && build.acaoManual !== null) {
     return 'O app foi gerado, mas não chegou à loja. Veja abaixo como enviá-lo.';
   }
-  return EXPLICACAO[build.status];
+  /*
+   * Chegou à loja: o que dizer depende do que a loja diz. "A loja recebeu,
+   * agora é aguardar a revisão" era dito de um binário que ninguém tinha
+   * mandado para a revisão.
+   */
+  return situacaoNaLoja(build, contexto)?.explicacao ?? EXPLICACAO[build.status];
 }
 
 const COR: Record<Status, 'default' | 'secondary' | 'destructive' | 'outline'> = {
@@ -58,10 +66,13 @@ const COR: Record<Status, 'default' | 'secondary' | 'destructive' | 'outline'> =
 export function HistoricoDeBuilds({
   builds,
   fuso,
+  iosAscAppId,
 }: {
   builds: readonly BuildNaLista[];
   /** O fuso da loja: a hora de um build é lida por quem está nela. */
   fuso: string;
+  /** O número do app na App Store Connect, para a explicação apontar para ele. */
+  iosAscAppId: string | null;
 }) {
   if (builds.length === 0) {
     return (
@@ -97,7 +108,9 @@ export function HistoricoDeBuilds({
                   )}
                 </div>
 
-                <p className="text-muted-foreground text-sm">{explicacaoDoBuild(build)}</p>
+                <p className="text-muted-foreground text-sm">
+                  {explicacaoDoBuild(build, { iosAscAppId })}
+                </p>
 
                 {/*
                   O motivo do erro fica na tela, e não só no log. É a diferença

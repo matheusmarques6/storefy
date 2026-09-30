@@ -23,7 +23,15 @@ export interface BuildNaRevisao {
   /** A mensagem da recusa, como o job de revisão gravou. */
   error: string | null;
   submitted_at: string | null;
+  /**
+   * O que a loja diz da versão (migration 66). É o que separa "a Apple está
+   * revisando" de "ninguém mandou para a revisão ainda".
+   */
+  store_state: string | null;
 }
+
+/** Na Apple, a versão parada esperando o LOJISTA mandar para a revisão. */
+const APPLE_SEM_ENVIO = new Set(['PREPARE_FOR_SUBMISSION', 'READY_FOR_REVIEW']);
 
 export interface ProximoPasso {
   /** O passo, curto: vira o título da célula. */
@@ -37,7 +45,22 @@ export interface ProximoPasso {
 
 /** A situação do build na linguagem da equipe, para a coluna de situação. */
 export function situacaoNaRevisao(build: BuildNaRevisao): string | null {
-  if (build.platform === 'android' && build.status === 'submitted') return 'Na trilha interna';
+  const estado = build.store_state ?? '';
+  if (build.status === 'approved' && estado === 'PENDING_DEVELOPER_RELEASE') {
+    return 'Aprovado, sem liberar';
+  }
+  if (build.status !== 'submitted') return null;
+
+  if (build.platform === 'android') {
+    if (estado === 'PLAY_PRODUCTION_DRAFT') return 'Rascunho na produção';
+    if (estado === 'PLAY_HALTED') return 'Lançamento interrompido';
+    return 'Na trilha interna';
+  }
+  if (estado === '' || APPLE_SEM_ENVIO.has(estado)) return 'Não enviado para a revisão';
+  if (estado === 'NO_APP_STORE_VERSION') return 'Sem a versão na Apple';
+  if (estado === 'WAITING_FOR_REVIEW') return 'Na fila da Apple';
+  if (estado === 'WAITING_FOR_EXPORT_COMPLIANCE') return 'Falta a criptografia';
+  if (estado === 'PENDING_CONTRACT') return 'Contratos pendentes';
   return null;
 }
 
@@ -100,15 +123,8 @@ export function proximoPassoDaRevisao(
     };
   }
 
-  if (build.platform === 'android' && build.status === 'submitted') {
-    return {
-      titulo: 'Promover para produção',
-      detalhe:
-        'Está na trilha interna do Play, que não passa por revisão. O lojista promove a versão para produção no Play Console (Produção › Criar versão › Adicionar da biblioteca); a partir daí, a Google revisa lá.',
-      quem: 'lojista',
-      urgente: false,
-    };
-  }
+  const daVez = passoDoLojista(build);
+  if (daVez !== null) return daVez;
 
   const loja = build.platform === 'ios' ? 'a Apple' : 'a Google';
   if (dias != null && dias >= DIAS_ATE_ESTRANHAR) {
@@ -132,4 +148,96 @@ export function proximoPassoDaRevisao(
     quem: 'esperar',
     urgente: false,
   };
+}
+
+/**
+ * Quando a vez é do LOJISTA, o passo é dele — e a equipe só precisa saber
+ * qual, para lembrar se demorar. Sem isto, a tela dizia "Esperar a Apple" de
+ * um binário que ninguém tinha mandado para a revisão.
+ *
+ * Nenhum desses é urgente: a primeira publicação espera capturas, textos e
+ * questionários, e isso leva o tempo do lojista, não da loja.
+ */
+function passoDoLojista(build: BuildNaRevisao): ProximoPasso | null {
+  const estado = build.store_state ?? '';
+
+  if (build.status === 'approved') {
+    return estado === 'PENDING_DEVELOPER_RELEASE'
+      ? {
+          titulo: 'Lojista liberar a versão',
+          detalhe:
+            'A Apple aprovou e está esperando o clique em "Liberar esta versão" na App Store Connect. O passo a passo está na Publicação do lojista.',
+          quem: 'lojista',
+          urgente: false,
+        }
+      : null;
+  }
+  if (build.status !== 'submitted') return null;
+
+  if (build.platform === 'android') {
+    if (estado === 'PLAY_PRODUCTION_DRAFT') {
+      return {
+        titulo: 'Lojista enviar a versão de produção',
+        detalhe:
+          'A versão de produção foi criada no Play Console e não foi enviada. O lojista abre o rascunho em Produção, salva e envia as mudanças para a revisão.',
+        quem: 'lojista',
+        urgente: false,
+      };
+    }
+    if (estado === 'PLAY_HALTED') {
+      return {
+        titulo: 'Retomar o lançamento',
+        detalhe:
+          'O lançamento em produção foi interrompido no Play Console. Confirme com o lojista o motivo antes de retomar (Produção › Retomar lançamento).',
+        quem: 'lojista',
+        urgente: false,
+      };
+    }
+    if (estado === 'PLAY_REPLACED') return null;
+    return {
+      titulo: 'Promover para produção',
+      detalhe:
+        'Está na trilha interna do Play, que não passa por revisão. O lojista promove a versão para produção no Play Console (Produção › Criar versão › Adicionar da biblioteca); a partir daí, a Google revisa lá.',
+      quem: 'lojista',
+      urgente: false,
+    };
+  }
+
+  if (estado === '' || APPLE_SEM_ENVIO.has(estado)) {
+    return {
+      titulo: 'Lojista enviar para a revisão',
+      detalhe:
+        'O binário está na App Store Connect, mas ninguém o mandou para a revisão. O lojista escolhe o build, completa a ficha e o questionário de privacidade e clica em "Enviar para a revisão do app" — o passo a passo está na Publicação dele.',
+      quem: 'lojista',
+      urgente: false,
+    };
+  }
+  if (estado === 'NO_APP_STORE_VERSION') {
+    return {
+      titulo: 'Lojista criar a versão na Apple',
+      detalhe:
+        'A App Store Connect não tem uma versão com o número deste build. O lojista cria a versão (ou troca o número da que está em "Preparar para envio"), escolhe o build e envia para a revisão.',
+      quem: 'lojista',
+      urgente: false,
+    };
+  }
+  if (estado === 'WAITING_FOR_EXPORT_COMPLIANCE') {
+    return {
+      titulo: 'Lojista responder a criptografia',
+      detalhe:
+        'A Apple parou a versão em "Conformidade de exportação". O lojista responde que o app só usa a criptografia do sistema (HTTPS). Os builds novos já declaram isso sozinhos.',
+      quem: 'lojista',
+      urgente: false,
+    };
+  }
+  if (estado === 'PENDING_CONTRACT') {
+    return {
+      titulo: 'Lojista aceitar os contratos',
+      detalhe:
+        'A Apple espera o titular da conta aceitar os contratos em "Negócios" na App Store Connect. Sem isso, nada anda.',
+      quem: 'lojista',
+      urgente: false,
+    };
+  }
+  return null;
 }

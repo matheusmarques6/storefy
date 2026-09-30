@@ -8,6 +8,7 @@
  * discordando, e o lojista não saberia em qual acreditar.
  */
 import type { Database } from '@storefy/db';
+import { passosPendentes, type BuildNaLoja } from '@/lib/ultimo-passo';
 
 type StatusDoBuild = Database['public']['Enums']['build_status'];
 
@@ -20,6 +21,12 @@ export interface EntradaDosPrimeirosPassos {
   googleConectada: boolean;
   /** O status de cada build da loja, em qualquer ordem. */
   statusDosBuilds: readonly StatusDoBuild[];
+  /**
+   * Há um passo do LOJISTA para o app ir ao ar (enviar para a revisão da
+   * Apple, publicar em produção no Google)? Sem isto, o checklist dizia
+   * "Acompanhar a revisão" de um app que ninguém tinha mandado revisar.
+   */
+  ultimoPassoPendente: boolean;
 }
 
 export type ChaveDoPasso =
@@ -49,7 +56,8 @@ export function entradaDaPublicacao(dados: {
     googleConectada: boolean;
   };
   links: { shopifyConectada: boolean };
-  builds: readonly { status: StatusDoBuild }[];
+  builds: readonly (BuildNaLoja & { createdAt: string })[];
+  identidade: { iosAscAppId: string | null };
 }): EntradaDosPrimeirosPassos {
   return {
     iconePronto: dados.estado.iconePronto,
@@ -59,6 +67,8 @@ export function entradaDaPublicacao(dados: {
     appleConectada: dados.estado.appleConectada,
     googleConectada: dados.estado.googleConectada,
     statusDosBuilds: dados.builds.map((build) => build.status),
+    ultimoPassoPendente:
+      passosPendentes(dados.builds, { iosAscAppId: dados.identidade.iosAscAppId }).length > 0,
   };
 }
 
@@ -121,10 +131,12 @@ export function primeirosPassos(entrada: EntradaDosPrimeirosPassos): PassoInicia
     {
       chave: 'no-ar',
       titulo: 'App aprovado e no ar',
-      porque: 'Daqui em diante, os clientes baixam o app e você fala com eles por notificação.',
+      porque: entrada.ultimoPassoPendente
+        ? 'A loja de aplicativos está esperando um passo seu: mandar para a revisão ou publicar.'
+        : 'Daqui em diante, os clientes baixam o app e você fala com eles por notificação.',
       feito: aprovado,
       caminho: '/publicacao',
-      acao: 'Acompanhar a revisão',
+      acao: entrada.ultimoPassoPendente ? 'Fazer o último passo' : 'Acompanhar a revisão',
     },
   ];
 }
