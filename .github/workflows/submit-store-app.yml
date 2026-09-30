@@ -163,7 +163,7 @@ jobs:
           SEGREDO: ${{ secrets.BUILD_API_SECRET }}
           BUILD_ID: ${{ github.event.client_payload.buildId }}
         run: |
-          curl -sS -X POST "$API/api/internal/build/status" \
+          curl -sS --retry 5 --retry-connrefused -X POST "$API/api/internal/build/status" \
             -H "Authorization: Bearer $SEGREDO" \
             -H 'Content-Type: application/json' \
             -d "$(jq -n \
@@ -186,7 +186,7 @@ jobs:
           # A tradução para português e a decisão do passo manual são da
           # Storefy, e não deste shell: a rota `/api/internal/build/status`
           # recebe o texto cru e a plataforma.
-          curl -sS -X POST "$API/api/internal/build/status" \
+          curl -sS --retry 5 --retry-connrefused -X POST "$API/api/internal/build/status" \
             -H "Authorization: Bearer $SEGREDO" \
             -H 'Content-Type: application/json' \
             -d "$(jq -n \

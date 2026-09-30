@@ -22,8 +22,9 @@
 import { revalidatePath } from 'next/cache';
 import { exigirPlatformAdmin } from '@/lib/contexto';
 import { FALHA_GENERICA, mensagemDaFalha } from '@/lib/erros';
+import { log } from '@/lib/log';
 import { criarClientServiceRole } from '@/lib/supabase/admin';
-import { podeReexecutar } from '@/lib/builds-admin';
+import { MOTIVO_DO_PARADO, buildParado, podeReexecutar } from '@/lib/builds-admin';
 import { dispararBuild, faltaConfiguracaoDoDisparo } from '@/lib/disparo-de-build';
 
 export interface EstadoDoBuild {
@@ -120,7 +121,7 @@ export async function reexecutarBuild(buildId: string): Promise<EstadoDoBuild> {
      * mostraria ao cliente uma publicação que ninguém vai gerar, e travaria a
      * próxima tentativa na checagem de "já existe um em andamento".
      */
-    await servico
+    const { error: erroDaMarca } = await servico
       .from('builds')
       .update({
         status: 'errored',
@@ -130,9 +131,94 @@ export async function reexecutarBuild(buildId: string): Promise<EstadoDoBuild> {
       .eq('id', novo.id);
 
     revalidatePath('/admin/builds');
+    if (erroDaMarca != null) {
+      // Sem a marca, o build fica "na fila" e trava a próxima publicação da loja.
+      log.erro('admin-build.erro-nao-marcado', { build: novo.id, falha: erroDaMarca });
+      return {
+        mensagem: `${disparo.motivo} E o build ficou na fila: marque-o como parado nesta tela antes de tentar de novo.`,
+      };
+    }
     return { mensagem: disparo.motivo };
   }
 
   revalidatePath('/admin/builds');
   return { ok: true, mensagem: 'Build na fila. O cliente vê o andamento na tela de publicação.' };
+}
+
+/**
+ * Encerra um build que parou no meio (A05): "na fila" ou "gerando" há tempo
+ * demais. Sem isto, a loja não publica mais — a publicação recusa enquanto há
+ * um em andamento, e o reexecutar só aceita o que falhou.
+ *
+ * O build vira `errored` com um motivo que o lojista entende, e só se ainda
+ * estiver no MESMO estado em que foi julgado parado, conferido no banco: entre
+ * a tela carregar e o clique, o webhook da EAS pode ter chegado, ou o workflow
+ * pode ter tirado o build da fila.
+ *
+ * A trilha é gravada aqui, com quem encerrou e a organização da loja: a
+ * trigger de `builds` só audita a criação, de propósito (os status que o
+ * webhook escreve encheriam a trilha de linhas sem autor).
+ */
+export async function marcarBuildParado(buildId: string): Promise<EstadoDoBuild> {
+  const usuario = await exigirPlatformAdmin();
+  const servico = criarClientServiceRole({ ator: usuario.id });
+
+  const { data: build, error: erroDaLeitura } = await servico
+    .from('builds')
+    .select('id, status, error, created_at, started_at, apps!inner(stores!inner(org_id))')
+    .eq('id', buildId)
+    .maybeSingle();
+  if (erroDaLeitura != null) {
+    return { mensagem: mensagemDaFalha('build', erroDaLeitura, FALHA_GENERICA) };
+  }
+  if (build == null) return { mensagem: 'Build não encontrado.' };
+
+  const emAndamento = {
+    status: build.status,
+    criadoEm: build.created_at,
+    iniciadoEm: build.started_at,
+  };
+  if (!buildParado(emAndamento)) {
+    return {
+      mensagem:
+        build.status === 'queued' || build.status === 'building'
+          ? 'Este build ainda está dentro do tempo normal. Veja os logs antes de encerrar.'
+          : 'Este build já terminou.',
+    };
+  }
+
+  const { data: encerrado, error } = await servico
+    .from('builds')
+    .update({ status: 'errored', error: MOTIVO_DO_PARADO, finished_at: new Date().toISOString() })
+    .eq('id', build.id)
+    .eq('status', build.status)
+    .select('id')
+    .maybeSingle();
+  if (error != null) return { mensagem: mensagemDaFalha('build', error, FALHA_GENERICA) };
+  if (encerrado == null) {
+    return { mensagem: 'O build mudou de estado enquanto isso. Atualize a página.' };
+  }
+
+  const { error: erroDaTrilha } = await servico.from('audit_logs').insert({
+    actor_id: usuario.id,
+    org_id: build.apps.stores.org_id,
+    action: 'update',
+    entity: 'builds',
+    entity_id: build.id,
+    diff: {
+      status: { de: build.status, para: 'errored' },
+      error: { de: build.error, para: MOTIVO_DO_PARADO },
+    },
+  });
+  // O build já foi encerrado; a trilha que faltar precisa chegar à equipe.
+  if (erroDaTrilha != null) {
+    log.erro('admin-build.encerrado-sem-auditoria', { build: build.id, falha: erroDaTrilha });
+  }
+
+  revalidatePath('/admin/builds');
+  return {
+    ok: true,
+    mensagem:
+      'Build encerrado. A loja já pode publicar de novo, e o motivo aparece para o lojista.',
+  };
 }

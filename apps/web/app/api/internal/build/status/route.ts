@@ -165,13 +165,15 @@ export async function POST(requisicao: NextRequest): Promise<NextResponse> {
      */
     const appId = linhas[0]?.app_id;
     if (expoProjectId != null && appId != null) {
-      await servico
+      const { error: erroDoProjeto } = await servico
         .from('apps')
         .update({ expo_project_id: expoProjectId })
         .eq('id', appId)
         // Só preenche o que está vazio: o id de um projeto que já existe não
         // muda, e sobrescrevê-lo órfãozaria todo o histórico de builds da loja.
         .is('expo_project_id', null);
+      // Sem ele, a próxima publicação criaria um segundo projeto no Expo.
+      if (erroDoProjeto != null) throw new Error(`projeto Expo: ${erroDoProjeto.message}`);
     }
   } catch (erroDoBanco) {
     log.erro('build-status.falhou', { erro: erroDoBanco });

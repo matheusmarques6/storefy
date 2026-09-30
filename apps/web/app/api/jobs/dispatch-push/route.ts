@@ -91,6 +91,10 @@ async function responder(requisicao: NextRequest): Promise<NextResponse> {
 
     await despacharCampanhas(supabase, resumo);
     await despacharAutomacoes(supabase, resumo);
+    // O que saiu e não foi anotado precisa aparecer no batimento, e não só no log.
+    if (resumo.naoAnotados > 0) {
+      throw new Error(`${String(resumo.naoAnotados)} desfecho(s) não foram anotados no banco.`);
+    }
   } catch (erro) {
     log.erro('job-despacho.falhou', { erro });
     await registrarBatimento('dispatch-push', inicio, erro);
@@ -107,6 +111,24 @@ async function responder(requisicao: NextRequest): Promise<NextResponse> {
 
 type Client = ReturnType<typeof criarClientServiceRole>;
 
+/**
+ * Anota o desfecho de um envio. A falha não interrompe a leva — os outros
+ * envios seguem —, mas vai para o log e para o resumo, e o job termina
+ * acusando-a no batimento. A notificação que saiu e não foi anotada volta
+ * para a fila em 15 minutos; a chave de idempotência faz a OneSignal
+ * devolver a de antes em vez de mandar de novo.
+ */
+async function anotar(
+  resumo: ResumoDoJob,
+  oQue: string,
+  chamada: PromiseLike<{ error: { message: string } | null }>,
+): Promise<void> {
+  const { error } = await chamada;
+  if (error == null) return;
+  resumo.naoAnotados += 1;
+  log.erro('job-despacho.desfecho-nao-anotado', { oQue, falha: error.message });
+}
+
 async function despacharCampanhas(supabase: Client, resumo: ResumoDoJob): Promise<void> {
   const { data: campanhas, error } = await supabase.rpc('reservar_campanhas', { p_limite: 20 });
   if (error != null) throw new Error(error.message);
@@ -116,10 +138,14 @@ async function despacharCampanhas(supabase: Client, resumo: ResumoDoJob): Promis
 
     const falta = faltaConfiguracao(campanha.onesignal_app_id, campanha.onesignal_api_key_enc);
     if (falta !== null || campanha.id === null) {
-      await supabase.rpc('falhar_campanha', {
-        p_id: campanha.id ?? '',
-        p_motivo: falta ?? 'Campanha sem identificador.',
-      });
+      await anotar(
+        resumo,
+        'falhar_campanha',
+        supabase.rpc('falhar_campanha', {
+          p_id: campanha.id ?? '',
+          p_motivo: falta ?? 'Campanha sem identificador.',
+        }),
+      );
       resumo.falhas += 1;
       continue;
     }
@@ -133,10 +159,14 @@ async function despacharCampanhas(supabase: Client, resumo: ResumoDoJob): Promis
        * configuração, não instabilidade: repetir a cada minuto só encheria o
        * log de uma falha que só uma pessoa resolve.
        */
-      await supabase.rpc('falhar_campanha', {
-        p_id: campanha.id,
-        p_motivo: 'Não conseguimos ler a chave de envio desta loja.',
-      });
+      await anotar(
+        resumo,
+        'falhar_campanha',
+        supabase.rpc('falhar_campanha', {
+          p_id: campanha.id,
+          p_motivo: 'Não conseguimos ler a chave de envio desta loja.',
+        }),
+      );
       resumo.falhas += 1;
       continue;
     }
@@ -151,23 +181,32 @@ async function despacharCampanhas(supabase: Client, resumo: ResumoDoJob): Promis
         imagem:
           campanha.image_path === null ? null : urlDaImagemDoPush(supabase, campanha.image_path),
         origem: { tipo: 'campanha', id: campanha.id },
+        idempotencia: campanha.id,
       },
     );
 
     if (resultado.ok) {
-      await supabase.rpc('concluir_campanha', {
-        p_id: campanha.id,
-        p_notification_id: resultado.notificationId,
-        // `enviados` já vem agora; entregues e aberturas chegam no job de
-        // estatísticas, algumas horas depois.
-        p_stats: resultado.destinatarios === null ? {} : { enviados: resultado.destinatarios },
-      });
+      await anotar(
+        resumo,
+        'concluir_campanha',
+        supabase.rpc('concluir_campanha', {
+          p_id: campanha.id,
+          p_notification_id: resultado.notificationId,
+          // `enviados` já vem agora; entregues e aberturas chegam no job de
+          // estatísticas, algumas horas depois.
+          p_stats: resultado.destinatarios === null ? {} : { enviados: resultado.destinatarios },
+        }),
+      );
       resumo.enviados += 1;
       continue;
     }
 
     if (destinoDaFalha(resultado.permanente) === 'falhar') {
-      await supabase.rpc('falhar_campanha', { p_id: campanha.id, p_motivo: resultado.motivo });
+      await anotar(
+        resumo,
+        'falhar_campanha',
+        supabase.rpc('falhar_campanha', { p_id: campanha.id, p_motivo: resultado.motivo }),
+      );
       resumo.falhas += 1;
     }
     /*
@@ -189,7 +228,11 @@ async function despacharAutomacoes(supabase: Client, resumo: ResumoDoJob): Promi
 
     const falta = faltaConfiguracao(envio.onesignal_app_id, envio.onesignal_api_key_enc);
     if (falta !== null) {
-      await supabase.rpc('falhar_envio', { p_id: envio.id, p_motivo: falta });
+      await anotar(
+        resumo,
+        'falhar_envio',
+        supabase.rpc('falhar_envio', { p_id: envio.id, p_motivo: falta }),
+      );
       resumo.falhas += 1;
       continue;
     }
@@ -198,10 +241,14 @@ async function despacharAutomacoes(supabase: Client, resumo: ResumoDoJob): Promi
     try {
       chave = descriptografar(envio.onesignal_api_key_enc ?? '');
     } catch {
-      await supabase.rpc('falhar_envio', {
-        p_id: envio.id,
-        p_motivo: 'Não conseguimos ler a chave de envio desta loja.',
-      });
+      await anotar(
+        resumo,
+        'falhar_envio',
+        supabase.rpc('falhar_envio', {
+          p_id: envio.id,
+          p_motivo: 'Não conseguimos ler a chave de envio desta loja.',
+        }),
+      );
       resumo.falhas += 1;
       continue;
     }
@@ -219,17 +266,22 @@ async function despacharAutomacoes(supabase: Client, resumo: ResumoDoJob): Promi
           : { origem: { tipo: 'automacao', id: envio.automation_id } as const }),
         // O id do envio volta no toque: é por ele que a automação conta as aberturas.
         envio: envio.id,
+        idempotencia: envio.id,
       },
     );
 
     if (resultado.ok) {
-      await supabase.rpc('concluir_envio', { p_id: envio.id });
+      await anotar(resumo, 'concluir_envio', supabase.rpc('concluir_envio', { p_id: envio.id }));
       resumo.enviados += 1;
       continue;
     }
 
     if (destinoDaFalha(resultado.permanente) === 'falhar') {
-      await supabase.rpc('falhar_envio', { p_id: envio.id, p_motivo: resultado.motivo });
+      await anotar(
+        resumo,
+        'falhar_envio',
+        supabase.rpc('falhar_envio', { p_id: envio.id, p_motivo: resultado.motivo }),
+      );
       resumo.falhas += 1;
     }
   }

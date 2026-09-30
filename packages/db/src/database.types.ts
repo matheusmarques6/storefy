@@ -1037,6 +1037,8 @@ export type Database = {
           finished_at: string | null;
           created_at: string;
           updated_at: string;
+          lojas_contadas: string[];
+          lojas_com_falha: string[];
         };
         Insert: {
           id?: string;
@@ -1052,6 +1054,8 @@ export type Database = {
           finished_at?: string | null;
           created_at?: string;
           updated_at?: string;
+          lojas_contadas?: string[];
+          lojas_com_falha?: string[];
         };
         Update: {
           id?: string;
@@ -1067,6 +1071,8 @@ export type Database = {
           finished_at?: string | null;
           created_at?: string;
           updated_at?: string;
+          lojas_contadas?: string[];
+          lojas_com_falha?: string[];
         };
         Relationships: [];
       };
@@ -1816,7 +1822,7 @@ export type Database = {
         Returns: unknown;
       };
       contar_ota: {
-        Args: { p_id: string; p_ok: boolean };
+        Args: { p_id: string; p_ok: boolean; p_store_id?: string };
         Returns: unknown;
       };
       criar_codigo_de_teste: {

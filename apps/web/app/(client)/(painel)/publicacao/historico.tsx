@@ -8,6 +8,7 @@
 import { Download, History } from 'lucide-react';
 import type { BuildNaLista } from '@/lib/publicacao-servidor';
 import { situacaoNaLoja, type ContextoDaLoja } from '@/lib/ultimo-passo';
+import { buildParado } from '@/lib/builds-admin';
 import { formatarDataHora } from '@/lib/fuso';
 import { ROTULO_STATUS_BUILD, type Database } from '@storefy/db';
 import { Badge } from '@/components/ui/badge';
@@ -39,7 +40,23 @@ const EXPLICACAO: Record<Status, string> = {
  * binário" ao lado de um card que diz "o app está pronto" faz o lojista achar
  * que a tela está quebrada, e é exatamente o que aparecia antes desta função.
  */
-export function explicacaoDoBuild(build: BuildNaLista, contexto: ContextoDaLoja): string {
+export function explicacaoDoBuild(
+  build: BuildNaLista,
+  contexto: ContextoDaLoja,
+  agora: number = Date.now(),
+): string {
+  /*
+   * Parado no meio: "esperando a vez" dito de um build na fila há horas faz o
+   * lojista esperar o dia inteiro por nada. A equipe consegue encerrá-lo.
+   */
+  if (
+    buildParado(
+      { status: build.status, criadoEm: build.createdAt, iniciadoEm: build.startedAt },
+      agora,
+    )
+  ) {
+    return 'Está demorando mais que o normal e pode ter parado. Fale com o suporte pela Ajuda: a equipe confere e libera a publicação.';
+  }
   if (build.status === 'errored' && build.acaoManual !== null) {
     return 'O app foi gerado, mas não chegou à loja. Veja abaixo como enviá-lo.';
   }

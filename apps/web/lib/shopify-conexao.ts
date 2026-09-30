@@ -138,7 +138,7 @@ async function renovar(
     return { ok: false, motivo: troca.motivo, reconectar: true };
   }
 
-  await servico
+  const { error: erroDaGravacao } = await servico
     .from('stores')
     .update({
       shopify_access_token_enc: criptografar(troca.valor.token),
@@ -149,6 +149,13 @@ async function renovar(
       shopify_scopes: troca.valor.escopos,
     })
     .eq('id', storeId);
+  /*
+   * O token novo vale para esta chamada; sem gravá-lo, a próxima troca de
+   * novo. Nada quebra para o lojista, mas a falha precisa aparecer.
+   */
+  if (erroDaGravacao != null) {
+    log.erro('shopify-conexao.token-nao-gravado', { loja: storeId, falha: erroDaGravacao });
+  }
 
   return { ok: true, token: troca.valor.token, dominio };
 }

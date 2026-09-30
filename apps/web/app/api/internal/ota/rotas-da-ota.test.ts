@@ -26,6 +26,8 @@ let dadosDaLoja: Record<string, unknown>[] = [];
 let chamadas: { nome: string; args: unknown }[] = [];
 /** O que foi gravado em `ota_updates`. */
 let gravado: Record<string, unknown> | null = null;
+/** De quais status a gravação em `ota_updates` aceitava sair (o `.in` depois do `update`). */
+let origensDaGravacao: readonly string[] | null = null;
 /** O que foi gravado em `apps`: o segredo criado para a loja que não tinha. */
 let gravadoNoApp: Record<string, unknown> | null = null;
 /** A leitura de progresso que a rota de status faz. */
@@ -57,6 +59,7 @@ vi.mock('@/lib/supabase/admin', () => ({
        * segredo do app de um cliente para um `otaId` de uma rodada encerrada.
        */
       let statusAceitos: readonly string[] | null = null;
+      let atualizando = false;
 
       Object.assign(encadeavel, {
         select: () => encadeavel,
@@ -66,6 +69,7 @@ vi.mock('@/lib/supabase/admin', () => ({
             atualizouOApp = true;
           } else {
             gravado = valores;
+            atualizando = true;
           }
           return encadeavel;
         },
@@ -73,6 +77,7 @@ vi.mock('@/lib/supabase/admin', () => ({
         is: () => encadeavel,
         in: (_coluna: string, valores: readonly string[]) => {
           statusAceitos = valores;
+          if (atualizando) origensDaGravacao = valores;
           return encadeavel;
         },
         maybeSingle: () => {
@@ -110,6 +115,7 @@ beforeEach(() => {
 
   chamadas = [];
   gravado = null;
+  origensDaGravacao = null;
   gravadoNoApp = null;
   progresso = null;
   configPublicada = { config: { version: 4, store: { name: 'Loja A' } } };
@@ -372,6 +378,62 @@ describe('POST /api/internal/ota/status', () => {
       nome: 'contar_ota',
       args: { p_id: OTA, p_ok: true },
     });
+  });
+
+  /*
+   * Com a loja, a conta aguenta a mesma loja duas vezes: o workflow tenta de
+   * novo quando a Storefy não responde, e a resposta que se perdeu não pode
+   * somar a loja em dobro.
+   */
+  it('manda a loja junto, quando o workflow diz qual é', async () => {
+    progresso = { total: 5, concluidas: 1, falhas: 0, status: 'running', error: null };
+
+    await postarStatus(
+      requisicao('/api/internal/ota/status', { otaId: OTA, ok: false, storeId: LOJA_A }),
+    );
+
+    expect(chamadas).toContainEqual({
+      nome: 'contar_ota',
+      args: { p_id: OTA, p_ok: false, p_store_id: LOJA_A },
+    });
+  });
+
+  it('loja que não é um id vira 400, sem contar nada', async () => {
+    const resposta = await postarStatus(
+      requisicao('/api/internal/ota/status', { otaId: OTA, ok: true, storeId: 'loja-a' }),
+    );
+    expect(resposta.status).toBe(400);
+    expect(chamadas).toEqual([]);
+  });
+
+  /*
+   * O job que falhou, reexecutado no GitHub, deu certo: a rodada que tinha
+   * fechado só por essa falha passa a publicada — e não "com falha" de uma
+   * correção que chegou a todas as lojas.
+   */
+  it('a rodada fechada só pelas falhas vira publicada quando elas dão certo depois', async () => {
+    progresso = { total: 3, concluidas: 3, falhas: 0, status: 'errored', error: null };
+
+    await postarStatus(
+      requisicao('/api/internal/ota/status', { otaId: OTA, ok: true, storeId: LOJA_A }),
+    );
+    expect(gravado).toMatchObject({ status: 'finished' });
+    expect(origensDaGravacao).toContain('errored');
+  });
+
+  it('mas a encerrada pela equipe, ou com erro da rodada inteira, continua como está', async () => {
+    progresso = {
+      total: 3,
+      concluidas: 3,
+      falhas: 0,
+      status: 'errored',
+      error: 'Encerrada pela equipe: a rodada parou no meio.',
+    };
+
+    await postarStatus(
+      requisicao('/api/internal/ota/status', { otaId: OTA, ok: true, storeId: LOJA_A }),
+    );
+    expect(origensDaGravacao).toEqual(['queued', 'running']);
   });
 
   it('a rodada fecha quando a última loja responde', async () => {

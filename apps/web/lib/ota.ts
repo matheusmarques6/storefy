@@ -72,3 +72,51 @@ export function resumoDaOta(status: string, progresso: ProgressoDaOta): string {
     progresso.falhas === 1 ? 'falha' : 'falhas'
   }.`;
 }
+
+/** Na fila há mais que isto, a rodada parou: o GitHub nem chegou a montar a lista de lojas. */
+export const MINUTOS_NA_FILA_DA_OTA = 30;
+
+/**
+ * Publicando sem notícia de loja nenhuma há mais que isto, a rodada parou.
+ * Cada job da matriz leva no máximo 20 minutos, e cinco correm juntos: uma
+ * hora inteira sem nenhum terminar não é demora.
+ */
+export const MINUTOS_SEM_NOTICIA_DA_OTA = 60;
+
+export interface RodadaEmAndamento {
+  status: string;
+  criadaEm: string;
+  /** A última notícia (`updated_at`): a lista montada e cada loja contada a atualizam. */
+  atualizadaEm: string;
+}
+
+/**
+ * A rodada parou no meio? Devolve o que a A-OTA mostra dela ("Na fila há
+ * 45 min", "Sem notícia há 2 h"), ou `null` quando ela anda ou já terminou.
+ *
+ * Parar é o workflow que morreu, ou a conta de uma loja que se perdeu — e a
+ * rodada aberta trava todas as correções depois dela. Não há prazo
+ * automático, de propósito: encerrar sozinha uma rodada que só está lenta
+ * liberaria uma segunda, que o GitHub poria para esperar a primeira. Quem
+ * encerra é a equipe, olhando o GitHub.
+ */
+export function paradaDaRodada(
+  rodada: RodadaEmAndamento,
+  agora: number = Date.now(),
+): string | null {
+  const naFila = rodada.status === 'queued';
+  if (!naFila && rodada.status !== 'running') return null;
+
+  const desde = Date.parse(naFila ? rodada.criadaEm : rodada.atualizadaEm);
+  if (Number.isNaN(desde)) return null;
+
+  const minutos = Math.max(0, Math.floor((agora - desde) / 60_000));
+  if (minutos <= (naFila ? MINUTOS_NA_FILA_DA_OTA : MINUTOS_SEM_NOTICIA_DA_OTA)) return null;
+
+  const tempo = minutos < 60 ? `${String(minutos)} min` : `${String(Math.floor(minutos / 60))} h`;
+  return `${naFila ? 'Na fila' : 'Sem notícia'} há ${tempo}`;
+}
+
+/** O motivo gravado na rodada que a equipe encerrou. */
+export const MOTIVO_DA_RODADA_PARADA =
+  'Encerrada pela equipe: a rodada parou no meio. As lojas que já tinham recebido ficam com a correção; publique de novo para chegar às outras.';

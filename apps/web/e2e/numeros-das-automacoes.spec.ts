@@ -177,6 +177,20 @@ test('a automação conta as aberturas pelo app, e o detalhe mostra o funil e o 
   await page.goto('/push/automacoes');
   await page.getByRole('switch', { name: 'Desligar Carrinho abandonado' }).click();
   await expect(page.getByRole('switch', { name: 'Ligar Carrinho abandonado' })).toBeVisible();
+  /*
+   * A chave vira na tela antes de a gravação terminar. Sair da página antes
+   * faria o detalhe ler a automação de antes e os envios de depois.
+   */
+  await expect
+    .poll(async () => {
+      const { data } = await bancoDeTeste()
+        .from('push_automations')
+        .select('enabled')
+        .eq('id', automacao.id)
+        .single();
+      return data?.enabled;
+    })
+    .toBe(false);
   await page.goto(`/push/automacoes/${automacao.id}`);
   await expect(page.getByText('Desligada', { exact: true })).toBeVisible();
   await expect(naoSairam).toContainText('Não saíram porque a automação foi desligada');

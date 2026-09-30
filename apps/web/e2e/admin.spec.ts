@@ -590,3 +590,219 @@ test('A05: a fila de builds filtra por loja, cliente e plataforma', async ({ pag
   await expect(page.getByText('Só os builds de')).toHaveCount(0);
   await expect(page.getByRole('heading', { name: 'Builds' })).toBeVisible();
 });
+
+/*
+ * O build que parou no meio — na fila há horas, o workflow morreu antes da
+ * EAS — travava a loja para sempre: a publicação recusa com um em andamento,
+ * e o reexecutar só aceita o que falhou. Agora o lojista lê que pode ter
+ * parado, e a equipe o encerra na A05, com o nome dela na trilha.
+ */
+test('A05: o build parado aparece com problema, e a equipe o encerra', async ({ browser }) => {
+  test.setTimeout(90_000);
+  const sufixo = Math.random().toString(36).slice(2, 8);
+  const banco = bancoDeTeste();
+
+  const emailCliente = emailDeTeste('a05-parado');
+  const idCliente = await criarUsuarioConfirmado(emailCliente, `Empresa Parada ${sufixo}`);
+  const contextoCliente = await browser.newContext();
+  const paginaCliente = await contextoCliente.newPage();
+  await entrar(paginaCliente, emailCliente);
+  const lojaId = await criarLojaPelaTela(
+    paginaCliente,
+    `Loja Parada ${sufixo}`,
+    `parada-${sufixo}.com.br`,
+  );
+  const { data: app } = await banco.from('apps').select('id').eq('store_id', lojaId).single();
+
+  // Na fila há duas horas: o workflow nunca chamou a Storefy de volta.
+  const duasHoras = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
+  const { data: build, error } = await banco
+    .from('builds')
+    .insert({
+      app_id: app?.id ?? '',
+      platform: 'ios',
+      status: 'queued',
+      triggered_by: idCliente,
+      created_at: duasHoras,
+    })
+    .select('id')
+    .single();
+  if (error != null) throw new Error(error.message);
+
+  // O lojista lê que pode ter parado, e não "esperando a vez".
+  await paginaCliente.goto('/publicacao');
+  await expect(paginaCliente.getByText('Está demorando mais que o normal')).toBeVisible();
+  await expect(paginaCliente.getByText('Esperando a vez.')).toHaveCount(0);
+
+  // A equipe o vê em "Com problema", o recorte com que a A05 abre.
+  const emailAdmin = emailDeTeste('equipe-a05-parado');
+  const idAdmin = await criarUsuarioConfirmado(emailAdmin, 'Equipe A05 Parado');
+  await tornarPlatformAdmin(idAdmin);
+  const contextoAdmin = await browser.newContext();
+  const paginaAdmin = await contextoAdmin.newPage();
+  await entrar(paginaAdmin, emailAdmin);
+  await paginaAdmin.goto(`/admin/builds?q=${encodeURIComponent(`Loja Parada ${sufixo}`)}`);
+  const linha = paginaAdmin.getByRole('row', { name: new RegExp(`Loja Parada ${sufixo}`) });
+  await expect(linha.getByText(/Parado · Na fila há 2 h/)).toBeVisible();
+
+  // Encerrar pede confirmação, e "Voltar" não mexe em nada.
+  await linha.getByRole('button', { name: 'Encerrar' }).click();
+  const confirmacao = paginaAdmin.getByRole('alertdialog');
+  await expect(confirmacao).toContainText('confira nos logs');
+  await confirmacao.getByRole('button', { name: 'Voltar' }).click();
+  await linha.getByRole('button', { name: 'Encerrar' }).click();
+  await confirmacao.getByRole('button', { name: 'Encerrar build' }).click();
+  await expect(paginaAdmin.getByText('Build encerrado.', { exact: false })).toBeVisible();
+  await expect(linha.getByText('Parado', { exact: false })).toHaveCount(0);
+
+  // O build vira falha com o motivo, e a trilha diz quem encerrou.
+  const { data: encerrado } = await banco
+    .from('builds')
+    .select('status, error')
+    .eq('id', build.id)
+    .single();
+  expect(encerrado?.status).toBe('errored');
+  expect(encerrado?.error).toContain('encerrada pela equipe da Storefy');
+  // Na organização da loja, para aparecer no detalhe do cliente (A04) e na A12.
+  const { data: lojaDoBuild } = await banco
+    .from('stores')
+    .select('org_id')
+    .eq('id', lojaId)
+    .single();
+  await expect
+    .poll(async () => {
+      const { data } = await banco
+        .from('audit_logs')
+        .select('actor_id, org_id')
+        .eq('entity', 'builds')
+        .eq('entity_id', build.id)
+        .eq('action', 'update');
+      return (data ?? []).map((trilha) => `${trilha.actor_id ?? ''}:${trilha.org_id ?? ''}`);
+    })
+    .toContain(`${idAdmin}:${lojaDoBuild?.org_id ?? ''}`);
+
+  // O lojista vê o motivo, e a publicação deixa de estar travada.
+  await paginaCliente.goto('/publicacao');
+  await expect(paginaCliente.getByText('encerrada pela equipe da Storefy')).toBeVisible();
+  await expect(paginaCliente.getByText('Está demorando mais que o normal')).toHaveCount(0);
+
+  await contextoCliente.close();
+  await contextoAdmin.close();
+});
+
+test('A-OTA: a rodada parada trava a próxima correção até a equipe encerrá-la', async ({
+  page,
+}) => {
+  test.setTimeout(90_000);
+  const sufixo = Math.random().toString(36).slice(2, 8);
+  const banco = bancoDeTeste();
+
+  const email = emailDeTeste('equipe-ota-parada');
+  const idAdmin = await criarUsuarioConfirmado(email, `Equipe OTA ${sufixo}`);
+  await tornarPlatformAdmin(idAdmin);
+
+  // Uma loja em que a rodada anterior falhou, para a lista dizer onde.
+  const { data: membro } = await banco
+    .from('memberships')
+    .select('org_id')
+    .eq('user_id', idAdmin)
+    .single();
+  const { data: loja, error: erroDaLoja } = await banco
+    .from('stores')
+    .insert({
+      org_id: membro?.org_id ?? '',
+      name: `Loja Sem Correção ${sufixo}`,
+      primary_url: `https://sem-correcao-${sufixo}.com.br`,
+    })
+    .select('id')
+    .single();
+  if (erroDaLoja != null) throw new Error(erroDaLoja.message);
+
+  // A de três horas falhou numa loja; a de duas está na fila até hoje.
+  const horasAtras = (horas: number) => new Date(Date.now() - horas * 3_600_000).toISOString();
+  const { data: rodadas, error } = await banco
+    .from('ota_updates')
+    .insert(
+      [
+        {
+          message: `Rodada com falha ${sufixo}`,
+          status: 'errored',
+          total: 2,
+          concluidas: 1,
+          falhas: 1,
+          lojas_contadas: [loja.id, crypto.randomUUID()],
+          lojas_com_falha: [loja.id],
+          created_at: horasAtras(3),
+          finished_at: horasAtras(3),
+        },
+        { message: `Rodada parada ${sufixo}`, triggered_by: idAdmin, created_at: horasAtras(2) },
+        // Sem isto, a coluna que só a primeira linha traz vai nula na segunda.
+      ],
+      { defaultToNull: false },
+    )
+    .select('id, message');
+  if (error != null) throw new Error(error.message);
+  const idDaParada = rodadas.find((rodada) => rodada.message.startsWith('Rodada parada'))?.id ?? '';
+
+  try {
+    await entrar(page, email);
+    await page.goto('/admin/ota');
+
+    // A lista diz em que loja a correção falhou, com o caminho até o cliente.
+    const comFalha = page.getByRole('listitem').filter({ hasText: `Rodada com falha ${sufixo}` });
+    await expect(comFalha.getByRole('link', { name: `Loja Sem Correção ${sufixo}` })).toBeVisible();
+
+    // A rodada parada trava o formulário, e a tela diz por quê e o que fazer.
+    await expect(
+      page.getByText('A rodada anterior parou no meio.', { exact: false }),
+    ).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Publicar em todas as lojas' })).toHaveCount(0);
+    const parada = page.getByRole('listitem').filter({ hasText: `Rodada parada ${sufixo}` });
+    await expect(parada.getByText('Parada · Na fila há 2 h')).toBeVisible();
+
+    // Encerrar pede confirmação, e "Voltar" não mexe em nada.
+    await parada.getByRole('button', { name: 'Encerrar' }).click();
+    const confirmacao = page.getByRole('alertdialog');
+    await expect(confirmacao).toContainText('Actions › ota-update');
+    await confirmacao.getByRole('button', { name: 'Voltar' }).click();
+    const { data: antes } = await banco
+      .from('ota_updates')
+      .select('status')
+      .eq('id', idDaParada)
+      .single();
+    expect(antes?.status).toBe('queued');
+
+    await parada.getByRole('button', { name: 'Encerrar' }).click();
+    await confirmacao.getByRole('button', { name: 'Encerrar rodada' }).click();
+    await expect(page.getByText('Rodada encerrada.', { exact: false })).toBeVisible();
+    await expect(parada.getByText('Com falha')).toBeVisible();
+    await expect(parada.getByText('Encerrada pela equipe', { exact: false })).toBeVisible();
+    await expect(parada.getByText(/^Parada ·/)).toHaveCount(0);
+
+    // O formulário volta: a próxima correção já pode sair.
+    await expect(page.getByRole('button', { name: 'Publicar em todas as lojas' })).toBeVisible();
+
+    // A trilha diz quem encerrou, sem organização: a correção é da plataforma.
+    await expect
+      .poll(async () => {
+        const { data } = await banco
+          .from('audit_logs')
+          .select('actor_id, org_id')
+          .eq('entity', 'ota_updates')
+          .eq('entity_id', idDaParada)
+          .eq('action', 'update');
+        return (data ?? []).map(
+          (trilha) => `${trilha.actor_id ?? ''}:${trilha.org_id ?? 'sem-org'}`,
+        );
+      })
+      .toContain(`${idAdmin}:sem-org`);
+  } finally {
+    await banco
+      .from('ota_updates')
+      .delete()
+      .in(
+        'id',
+        rodadas.map((rodada) => rodada.id),
+      );
+  }
+});

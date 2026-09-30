@@ -1,5 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { MAXIMO_DA_MENSAGEM, canalDaOta, mensagemValida, resumoDaOta, terminou } from '@/lib/ota';
+import {
+  MAXIMO_DA_MENSAGEM,
+  canalDaOta,
+  mensagemValida,
+  paradaDaRodada,
+  resumoDaOta,
+  terminou,
+} from '@/lib/ota';
 import {
   MOTIVO_NAO_DISPAROU,
   MOTIVO_SEM_CONFIGURACAO,
@@ -206,5 +213,45 @@ describe('resumoDaOta', () => {
         expect(texto).not.toContain('NaN');
       }
     }
+  });
+});
+
+describe('paradaDaRodada', () => {
+  const AGORA = Date.parse('2026-09-30T15:00:00.000Z');
+  const antes = (minutos: number) => new Date(AGORA - minutos * 60_000).toISOString();
+
+  /* O defeito: a rodada que parava travava todas as correções depois dela. */
+  it('na fila há mais de meia hora, parou: o GitHub nem montou a lista', () => {
+    expect(
+      paradaDaRodada({ status: 'queued', criadaEm: antes(45), atualizadaEm: antes(45) }, AGORA),
+    ).toBe('Na fila há 45 min');
+    expect(
+      paradaDaRodada({ status: 'queued', criadaEm: antes(10), atualizadaEm: antes(10) }, AGORA),
+    ).toBeNull();
+  });
+
+  it('publicando conta desde a última loja que deu notícia, e não desde o começo', () => {
+    // Começou há cinco horas, mas uma loja contou há dez minutos: está andando.
+    expect(
+      paradaDaRodada({ status: 'running', criadaEm: antes(300), atualizadaEm: antes(10) }, AGORA),
+    ).toBeNull();
+    expect(
+      paradaDaRodada({ status: 'running', criadaEm: antes(300), atualizadaEm: antes(130) }, AGORA),
+    ).toBe('Sem notícia há 2 h');
+  });
+
+  it('a rodada que terminou, bem ou mal, nunca está parada', () => {
+    for (const status of ['finished', 'errored']) {
+      expect(
+        paradaDaRodada({ status, criadaEm: antes(10_000), atualizadaEm: antes(10_000) }, AGORA),
+        status,
+      ).toBeNull();
+    }
+  });
+
+  it('data ilegível não vira parada', () => {
+    expect(
+      paradaDaRodada({ status: 'queued', criadaEm: 'lixo', atualizadaEm: 'lixo' }, AGORA),
+    ).toBeNull();
   });
 });

@@ -181,11 +181,17 @@ async function montar(buildId: string): Promise<DadosParaOBuild | null> {
   }
 
   // A partir daqui o build está de fato começando.
-  await servico
+  const { error: erroDoInicio } = await servico
     .from('builds')
     .update({ status: 'building', started_at: new Date().toISOString() })
     .eq('id', build.id)
     .eq('status', 'queued');
+  /*
+   * O build segue do mesmo jeito: "na fila" em vez de "gerando" só atrasa a
+   * tela, e o webhook da EAS grava o desfecho. Mas a falha vai para o log.
+   */
+  if (erroDoInicio != null)
+    log.erro('build.inicio-nao-marcado', { build: build.id, falha: erroDoInicio });
 
   const tema = fundoDoApp(config.config);
 

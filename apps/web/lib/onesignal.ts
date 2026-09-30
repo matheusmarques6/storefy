@@ -16,6 +16,9 @@ import { filtrosDoPublico, publicoDoSegmento } from '@/lib/publico-do-push';
 
 export const BASE_DA_API = 'https://api.onesignal.com';
 
+/** O formato que a `idempotency_key` da OneSignal aceita. */
+const UUID_V3_OU_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-[34][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
 export interface CredenciaisDaOneSignal {
   appId: string;
   /** Chave REST da loja, já em claro. */
@@ -48,6 +51,15 @@ export interface NotificacaoParaEnviar {
    * toque, e é assim que a automação ganha aberturas (C09, C10 e C11).
    */
   envio?: string;
+  /**
+   * A chave que impede a mesma notificação de sair duas vezes (a
+   * `idempotency_key` da OneSignal, válida por 30 dias): o id da campanha ou
+   * do envio. Se a OneSignal já criou a notificação e a resposta se perdeu —
+   * ou o desfecho não foi anotado no banco —, a campanha volta para a fila em
+   * 15 minutos; com a chave, a nova tentativa devolve a notificação de antes
+   * em vez de mandar de novo para todos os clientes.
+   */
+  idempotencia?: string;
 }
 
 export type ResultadoDoEnvio =
@@ -86,6 +98,15 @@ export function corpoDaNotificacao(
   if (notificacao.origem !== undefined) Object.assign(dados, dadosDaOrigem(notificacao.origem));
   if (notificacao.envio !== undefined) Object.assign(dados, dadosDoEnvio(notificacao.envio));
   if (Object.keys(dados).length > 0) corpo.data = dados;
+
+  /*
+   * A OneSignal só aceita UUID v3 ou v4 como chave. Os ids da Storefy são v4
+   * (`gen_random_uuid`); um fora do formato vai sem a chave, em vez de fazer
+   * a OneSignal recusar a notificação inteira.
+   */
+  if (notificacao.idempotencia !== undefined && UUID_V3_OU_V4.test(notificacao.idempotencia)) {
+    corpo.idempotency_key = notificacao.idempotencia;
+  }
 
   /*
    * A imagem vai nos DOIS campos: `big_picture` é o Android; o iPhone lê

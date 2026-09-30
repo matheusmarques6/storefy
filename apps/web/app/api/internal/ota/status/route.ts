@@ -11,6 +11,7 @@ import { criarClientServiceRole } from '@/lib/supabase/admin';
 import { serviceRoleConfigurada, supabaseConfigurado } from '@/lib/env';
 import { CABECALHO_DO_SEGREDO, autorizarWorkflow } from '@/lib/build-interno';
 import { terminou } from '@/lib/ota';
+import type { Database } from '@storefy/db';
 import { log } from '@/lib/log';
 
 export const dynamic = 'force-dynamic';
@@ -21,6 +22,11 @@ const Corpo = z.object({
   otaId: z.uuid(),
   /** Uma loja terminou: deu certo ou não. */
   ok: z.boolean().optional(),
+  /**
+   * Qual loja. Com ela, a mesma loja contada de novo (o workflow tentou outra
+   * vez) não soma, e a que falhou e deu certo depois passa a concluída.
+   */
+  storeId: z.uuid().optional(),
   /** A rodada inteira falhou antes de montar a matriz. */
   erro: z.string().trim().min(1).max(2000).optional(),
   commitSha: z.string().trim().min(7).max(64).optional(),
@@ -51,7 +57,7 @@ export async function POST(requisicao: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ erro: 'corpo_invalido' }, { status: 400, headers: SEM_CACHE });
   }
 
-  const { otaId, ok, erro, commitSha } = analise.data;
+  const { otaId, ok, storeId, erro, commitSha } = analise.data;
 
   try {
     const servico = criarClientServiceRole();
@@ -62,13 +68,17 @@ export async function POST(requisicao: NextRequest): Promise<NextResponse> {
        * terminando ao mesmo tempo escreveriam por cima um do outro se o
        * contador fosse lido e gravado em duas idas.
        */
-      const { error } = await servico.rpc('contar_ota', { p_id: otaId, p_ok: ok });
+      const { error } = await servico.rpc('contar_ota', {
+        p_id: otaId,
+        p_ok: ok,
+        ...(storeId === undefined ? {} : { p_store_id: storeId }),
+      });
       if (error != null) throw new Error(error.message);
     }
 
     const { data: rodada, error: erroDaLeitura } = await servico
       .from('ota_updates')
-      .select('total, concluidas, falhas, status')
+      .select('total, concluidas, falhas, status, error')
       .eq('id', otaId)
       .maybeSingle();
     if (erroDaLeitura != null) throw new Error(erroDaLeitura.message);
@@ -81,18 +91,35 @@ export async function POST(requisicao: NextRequest): Promise<NextResponse> {
 
     const fim = erro !== undefined || terminou(rodada);
     if (fim) {
-      await servico
+      const final = erro !== undefined || rodada.falhas > 0 ? 'errored' : 'finished';
+      /*
+       * A rodada aberta fecha. E a que fechou só pelas falhas das lojas — sem
+       * erro da rodada inteira, e sem ter sido encerrada pela equipe — vira
+       * publicada quando o job que falhou é reexecutado no GitHub e dá certo:
+       * senão a tela diria "com falha" de uma rodada que chegou a todas.
+       */
+      const origens: Database['public']['Enums']['ota_status'][] =
+        final === 'finished' && rodada.error === null
+          ? ['queued', 'running', 'errored']
+          : ['queued', 'running'];
+      const { error: erroDoFim } = await servico
         .from('ota_updates')
         .update({
-          status: erro !== undefined || rodada.falhas > 0 ? 'errored' : 'finished',
+          status: final,
           error: erro,
           commit_sha: commitSha,
           finished_at: new Date().toISOString(),
         })
         .eq('id', otaId)
-        .in('status', ['queued', 'running']);
+        .in('status', origens);
+      // A rodada ficaria "publicando" para sempre, e travaria a próxima.
+      if (erroDoFim != null) throw new Error(`fim da rodada: ${erroDoFim.message}`);
     } else if (commitSha !== undefined) {
-      await servico.from('ota_updates').update({ commit_sha: commitSha }).eq('id', otaId);
+      const { error: erroDoCommit } = await servico
+        .from('ota_updates')
+        .update({ commit_sha: commitSha })
+        .eq('id', otaId);
+      if (erroDoCommit != null) throw new Error(`commit da rodada: ${erroDoCommit.message}`);
     }
   } catch (erroDoBanco) {
     log.erro('ota-status.falhou', { erro: erroDoBanco });

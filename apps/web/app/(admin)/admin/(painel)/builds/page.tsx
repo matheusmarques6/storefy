@@ -28,15 +28,19 @@ import {
   PLATAFORMAS_DO_FILTRO,
   ROTULO_DA_PLATAFORMA,
   ROTULO_DO_FILTRO,
+  buildParado,
+  descricaoDoParado,
   lerFiltro,
   lerOrganizacao,
   lerPlataforma,
   podeReexecutar,
+  prazosDoParado,
   statusDoFiltro,
   type Filtro,
   type PlataformaDoFiltro,
 } from '@/lib/builds-admin';
 import { CampoBusca, Paginacao, lerParams } from '../paginacao';
+import { BotaoParado } from './botao-parado';
 import { BotaoReexecutar } from './botao-reexecutar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -139,14 +143,31 @@ export default async function PaginaBuilds({
   let consulta = supabase
     .from('builds')
     .select(
-      'id, platform, profile, status, version, build_number, error, logs_url, created_at, apps!inner(display_name, stores!inner(name, org_id, organizations(name)))',
+      'id, platform, profile, status, version, build_number, error, logs_url, created_at, started_at, apps!inner(display_name, stores!inner(name, org_id, organizations(name)))',
       { count: 'exact' },
     )
     .order('created_at', { ascending: false })
     .range(de, ate);
 
-  const status = statusDoFiltro(recorte.filtro);
-  if (status !== null) consulta = consulta.in('status', status);
+  /*
+   * "Com problema" inclui o build PARADO — na fila ou gerando há tempo demais —,
+   * que trava a loja tanto quanto um que falhou. Os prazos são os de
+   * `buildParado`, contados agora.
+   */
+  const { agora, limiteDaFila, limiteGerando } = prazosDoParado();
+  if (recorte.filtro === 'problema') {
+    consulta = consulta.or(
+      [
+        'status.in.(errored,rejected)',
+        `and(status.eq.queued,created_at.lt.${limiteDaFila})`,
+        `and(status.eq.building,started_at.lt.${limiteGerando})`,
+        `and(status.eq.building,started_at.is.null,created_at.lt.${limiteGerando})`,
+      ].join(','),
+    );
+  } else {
+    const status = statusDoFiltro(recorte.filtro);
+    if (status !== null) consulta = consulta.in('status', status);
+  }
   if (recorte.plataforma !== null) consulta = consulta.eq('platform', recorte.plataforma);
   if (recorte.org !== null) consulta = consulta.eq('apps.stores.org_id', recorte.org);
   if (termo !== '') {
@@ -245,7 +266,7 @@ export default async function PaginaBuilds({
             comRecorte
               ? 'Tire um dos filtros, ou escolha outra situação, para ver mais.'
               : recorte.filtro === 'problema'
-                ? 'Nada falhou nem foi rejeitado. Os outros recortes mostram a fila inteira.'
+                ? 'Nada falhou, foi rejeitado ou parou no meio. Os outros recortes mostram a fila inteira.'
                 : 'Os builds aparecem aqui conforme os clientes publicam.'
           }
         />
@@ -267,6 +288,12 @@ export default async function PaginaBuilds({
                 {builds.map((build) => {
                   const loja = build.apps.stores;
                   const nomeDaLoja = loja.name;
+                  const emAndamento = {
+                    status: build.status,
+                    criadoEm: build.created_at,
+                    iniciadoEm: build.started_at,
+                  };
+                  const parado = buildParado(emAndamento, agora);
 
                   return (
                     <TableRow key={build.id}>
@@ -301,6 +328,11 @@ export default async function PaginaBuilds({
                         >
                           {ROTULO_STATUS_BUILD[build.status]}
                         </Badge>
+                        {parado ? (
+                          <span className="mt-1 block text-xs font-medium text-amber-700 dark:text-amber-400">
+                            Parado · {descricaoDoParado(emAndamento, agora)}
+                          </span>
+                        ) : null}
                       </TableCell>
                       <TableCell className="text-muted-foreground text-sm">
                         {formatarDataHora(build.created_at, FUSO_PADRAO)}
@@ -318,6 +350,7 @@ export default async function PaginaBuilds({
                           {podeReexecutar(build.status) ? (
                             <BotaoReexecutar buildId={build.id} loja={nomeDaLoja} />
                           ) : null}
+                          {parado ? <BotaoParado buildId={build.id} loja={nomeDaLoja} /> : null}
                         </div>
                       </TableCell>
                     </TableRow>

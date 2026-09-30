@@ -31,6 +31,36 @@ describe('corpoDaNotificacao', () => {
   });
 
   /*
+   * A mesma campanha tentada de novo (a resposta que se perdeu, o desfecho
+   * que não foi anotado) não pode sair duas vezes: a OneSignal devolve a
+   * notificação de antes para a mesma chave.
+   */
+  it('leva a chave de idempotência quando há uma, e só então', () => {
+    const id = '5b0f3a4e-1c2d-4e5f-8a9b-0c1d2e3f4a5b';
+    expect(
+      corpoDaNotificacao(CREDENCIAIS, { title: 'a', body: 'b', deepLink: null, idempotencia: id }),
+    ).toMatchObject({ idempotency_key: id });
+    expect(
+      corpoDaNotificacao(CREDENCIAIS, { title: 'a', body: 'b', deepLink: null }),
+    ).not.toHaveProperty('idempotency_key');
+  });
+
+  /* A OneSignal recusa a notificação inteira por uma chave fora de UUID v3/v4. */
+  it('uma chave fora do formato da OneSignal fica de fora, e a notificação sai', () => {
+    for (const chave of ['campanha-1', '', '5b0f3a4e-1c2d-7e5f-8a9b-0c1d2e3f4a5b']) {
+      expect(
+        corpoDaNotificacao(CREDENCIAIS, {
+          title: 'a',
+          body: 'b',
+          deepLink: null,
+          idempotencia: chave,
+        }),
+        chave,
+      ).not.toHaveProperty('idempotency_key');
+    }
+  });
+
+  /*
    * O caminho vai em `data.deep_link`, e não em `url`. `url` abre o NAVEGADOR
    * do celular: o cliente sai do app e cai numa aba sem carrinho e sem login.
    */

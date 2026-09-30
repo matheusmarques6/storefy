@@ -9478,6 +9478,103 @@ select tests.ok('slides',
 reset role;
 select tests.logout();
 
+-- ============================== grupo: A-OTA — a conta por loja (migration 72)
+--
+-- O workflow agora tenta de novo quando a Storefy não responde, e a mesma
+-- loja chegando duas vezes não pode somar em dobro. A que falhou e deu certo
+-- depois (o job reexecutado no GitHub) passa a concluída; e as que falharam
+-- ficam guardadas, para a equipe saber quais foram.
+
+reset role;
+select tests.logout();
+
+set role service_role;
+insert into public.ota_updates (message) values ('Rodada da conta por loja');
+reset role;
+
+drop table if exists tests.op;
+create table tests.op as
+select (select id from public.ota_updates where message = 'Rodada da conta por loja') as rodada,
+       gen_random_uuid() as loja_a,
+       gen_random_uuid() as loja_b;
+grant select on tests.op to anon, authenticated, service_role;
+
+set role service_role;
+select public.contar_ota((select rodada from tests.op), true, (select loja_a from tests.op));
+-- A mesma loja de novo: a primeira tentativa chegou, e a resposta se perdeu.
+select public.contar_ota((select rodada from tests.op), true, (select loja_a from tests.op));
+select public.contar_ota((select rodada from tests.op), false, (select loja_b from tests.op));
+select public.contar_ota((select rodada from tests.op), false, (select loja_b from tests.op));
+reset role;
+
+select tests.ok('ota por loja',
+  (select concluidas = 1 and falhas = 1 and status = 'running' and started_at is not null
+          and lojas_com_falha = array[(select loja_b from tests.op)]
+          and cardinality(lojas_contadas) = 2
+     from public.ota_updates where id = (select rodada from tests.op)),
+  'a mesma loja contada duas vezes conta uma, e a que falhou fica guardada');
+
+set role service_role;
+-- O job da loja B, reexecutado no GitHub, deu certo.
+select public.contar_ota((select rodada from tests.op), true, (select loja_b from tests.op));
+-- A loja A, que já tinha recebido, falha numa reexecução: o canal dela segue com a correção.
+select public.contar_ota((select rodada from tests.op), false, (select loja_a from tests.op));
+reset role;
+
+select tests.ok('ota por loja',
+  (select concluidas = 2 and falhas = 0 and cardinality(lojas_com_falha) = 0
+     from public.ota_updates where id = (select rodada from tests.op)),
+  'a loja que falhou e deu certo depois passa a concluída; a que recebeu não volta a falhar');
+
+set role service_role;
+select public.contar_ota((select rodada from tests.op), true);
+select public.contar_ota((select rodada from tests.op), true);
+reset role;
+
+select tests.ok('ota por loja',
+  (select concluidas = 4 and cardinality(lojas_contadas) = 2
+     from public.ota_updates where id = (select rodada from tests.op)),
+  'sem a loja (o workflow de antes desta migration), soma como sempre somou');
+
+set role service_role;
+select public.contar_ota(gen_random_uuid(), true, (select loja_a from tests.op));
+reset role;
+
+select tests.ok('ota por loja',
+  tests.contar($q$select count(*) from public.ota_updates where message = 'Rodada da conta por loja'$q$) = 1,
+  'uma rodada que não existe não cria nada nem dá erro');
+
+select tests.login('a-owner@teste.local');
+set role authenticated;
+
+select tests.ok('ota por loja',
+  tests.erro($q$select public.contar_ota(gen_random_uuid(), true, gen_random_uuid())$q$),
+  'o lojista não mexe na conta de uma rodada');
+
+select tests.ok('ota por loja',
+  tests.contar('select count(*) from public.ota_updates') = 0,
+  'nem vê quais lojas receberam a correção');
+
+reset role;
+select tests.logout();
+
+set role anon;
+select tests.ok('ota por loja',
+  tests.erro($q$select public.contar_ota(gen_random_uuid(), true, gen_random_uuid())$q$),
+  'nem quem não entrou');
+reset role;
+
+select tests.login('equipe@teste.local');
+set role authenticated;
+
+select tests.ok('ota por loja',
+  (select cardinality(lojas_contadas) = 2 and cardinality(lojas_com_falha) = 0
+     from public.ota_updates where id = (select rodada from tests.op)),
+  'a equipe da Storefy vê quais lojas contaram e quais falharam');
+
+reset role;
+select tests.logout();
+
 -- ============================== grupo: varredura de segurança (Fase 8)
 --
 -- Duas travas que valem para o schema inteiro, e não para uma tabela: uma

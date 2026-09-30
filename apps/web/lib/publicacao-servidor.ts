@@ -73,6 +73,8 @@ export interface BuildNaLista {
    */
   storeState: string | null;
   createdAt: string;
+  /** Quando saiu da fila e começou a gerar. */
+  startedAt: string | null;
   finishedAt: string | null;
 }
 
@@ -166,7 +168,7 @@ export async function dadosDaPublicacao(
     supabase
       .from('builds')
       .select(
-        'id, platform, status, version, build_number, error, logs_url, artifact_url, manual_action, store_state, created_at, finished_at',
+        'id, platform, status, version, build_number, error, logs_url, artifact_url, manual_action, store_state, created_at, started_at, finished_at',
       )
       .eq('app_id', app.id)
       .order('created_at', { ascending: false })
@@ -252,6 +254,7 @@ export async function dadosDaPublicacao(
       acaoManual: lerAcaoManual(linha.manual_action),
       storeState: linha.store_state,
       createdAt: linha.created_at,
+      startedAt: linha.started_at,
       finishedAt: linha.finished_at,
     })),
   };

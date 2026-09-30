@@ -212,6 +212,43 @@ describe('GET /api/jobs/dispatch-push', () => {
     });
     // O id da campanha vai nos dados: é por ele que o pedido chega à receita.
     expect(corposDaOneSignal[0]).toMatchObject({ data: { campanha: CAMPANHA } });
+    // E como chave de idempotência: a mesma campanha tentada de novo não sai duas vezes.
+    expect(corposDaOneSignal[0]).toMatchObject({ idempotency_key: CAMPANHA });
+  });
+
+  /*
+   * A OneSignal entregou, e o banco não anotou: a campanha continua "enviando"
+   * e volta para a fila em 15 minutos. A chave de idempotência impede o
+   * segundo envio; o job acusa a falha no batimento, sem parar a leva.
+   */
+  it('o desfecho que o banco não anota é acusado, e a leva continua', async () => {
+    respostas = {
+      reservar_campanhas: campanhaReservada(),
+      reservar_envios_de_automacao: [
+        {
+          id: ENVIO,
+          automation_id: 'auto-1',
+          app_id: 'app-1',
+          subscription_id: 'sub-do-cliente',
+          title: 'Esqueceu algo?',
+          body: 'Seu carrinho continua aqui.',
+          deep_link: '/cart',
+          onesignal_app_id: 'os-1',
+          onesignal_api_key_enc: criptografar('chave-rest'),
+        },
+      ],
+    };
+    rpcQuebrada = 'concluir_campanha';
+
+    const resposta = await despachar(comSegredo('/api/jobs/dispatch-push'));
+    expect(resposta.status).toBe(500);
+    await expect(resposta.json()).resolves.toMatchObject({
+      erro: 'falhou',
+      enviados: 2,
+      naoAnotados: 1,
+    });
+    // A automação da mesma leva saiu e foi anotada.
+    expect(chamou('concluir_envio')[0]?.args).toEqual({ p_id: ENVIO });
   });
 
   it('a imagem e o público da campanha vão para a OneSignal', async () => {
@@ -323,6 +360,8 @@ describe('GET /api/jobs/dispatch-push', () => {
     });
     // E não para todo mundo, que seria o desastre silencioso desta rota.
     expect(corpos[0]).not.toHaveProperty('included_segments');
+    // Um envio é uma notificação: a chave dele impede que saia duas vezes.
+    expect(corpos[0]).toMatchObject({ idempotency_key: ENVIO });
     expect(chamou('concluir_envio')[0]?.args).toEqual({ p_id: ENVIO });
   });
 

@@ -13,6 +13,7 @@ const build = (status: BuildNaLista['status']): BuildNaLista => ({
   acaoManual: null,
   storeState: null,
   createdAt: '2026-09-19T12:00:00.000Z',
+  startedAt: null,
   finishedAt: null,
 });
 

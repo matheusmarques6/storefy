@@ -96,11 +96,13 @@ export async function POST(requisicao: NextRequest): Promise<NextResponse> {
 
       // O total fica gravado aqui, e não no fim: é ele que o admin usa para
       // mostrar "3 de 12" enquanto a matriz roda.
-      await servico
+      const { error: erroDoInicio } = await servico
         .from('ota_updates')
         .update({ total: lista.length, status: 'running', started_at: new Date().toISOString() })
         .eq('id', rodada.id)
         .eq('status', 'queued');
+      // Sem o total gravado, o admin não acompanha a rodada: o workflow tenta de novo.
+      if (erroDoInicio != null) throw new Error(`início da rodada: ${erroDoInicio.message}`);
 
       return NextResponse.json({ lojas: lista }, { headers: SEM_CACHE });
     }

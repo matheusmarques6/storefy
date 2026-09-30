@@ -203,7 +203,7 @@ export async function registrarFalha(
   plataforma: Plataforma,
   motivo: string,
 ): Promise<void> {
-  await servico.from('developer_accounts').upsert(
+  const { error } = await servico.from('developer_accounts').upsert(
     {
       org_id: orgId,
       platform: plataforma,
@@ -213,6 +213,8 @@ export async function registrarFalha(
     },
     { onConflict: 'org_id,platform' },
   );
+  // O lojista já vê o motivo na tela; é o suporte que ficaria sem ele.
+  if (error != null) log.erro('contas.falha-nao-registrada', { plataforma, falha: error });
 }
 
 /** Desconecta uma conta, apagando as credenciais guardadas. */

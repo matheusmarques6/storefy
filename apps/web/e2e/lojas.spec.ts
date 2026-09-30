@@ -72,7 +72,8 @@ test('cria duas lojas, alterna entre elas, edita e exclui uma', async ({ page })
 
   await page.waitForURL(/\/lojas/);
   // A exclusão diz que deu certo, e não só some com a loja.
-  await expect(page.getByRole('alert')).toContainText('Loja excluída.');
+  // Filtrado pelo texto: o anúncio de rota do Next também tem `role="alert"`.
+  await expect(page.getByRole('alert').filter({ hasText: 'Loja excluída.' })).toBeVisible();
   await expect(page.getByRole('cell', { name: 'Loja Um Renomeada' })).toHaveCount(0);
   await expect(page.getByRole('cell', { name: 'Loja Dois' })).toBeVisible();
 });

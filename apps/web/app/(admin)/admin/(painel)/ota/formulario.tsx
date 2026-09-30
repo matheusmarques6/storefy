@@ -29,7 +29,13 @@ import {
 } from '@/components/ui/alert-dialog';
 import { publicarCorrecao } from './acoes';
 
-export function FormularioDaOta({ bloqueado }: { bloqueado: boolean }) {
+export function FormularioDaOta({
+  bloqueio,
+}: {
+  /** Há uma rodada aberta — andando, ou parada no meio à espera de ser encerrada. */
+  bloqueio: 'andamento' | 'parada' | null;
+}) {
+  const bloqueado = bloqueio !== null;
   const router = useRouter();
   const [texto, setTexto] = useState('');
   const [confirmando, setConfirmando] = useState(false);
@@ -87,7 +93,12 @@ export function FormularioDaOta({ bloqueado }: { bloqueado: boolean }) {
             lugar. Um botão desabilitado sem explicação faz a pessoa clicar três
             vezes achando que a tela travou.
           */}
-          {bloqueado ? (
+          {bloqueio === 'parada' ? (
+            <p className="text-muted-foreground text-sm">
+              A rodada anterior parou no meio. Confira no GitHub e encerre-a no histórico abaixo
+              para publicar outra.
+            </p>
+          ) : bloqueio === 'andamento' ? (
             <p className="text-muted-foreground text-sm">
               Já existe uma correção sendo publicada. Espere ela terminar para publicar outra — duas
               ao mesmo tempo podem deixar uma loja com a versão mais velha.

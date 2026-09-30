@@ -134,4 +134,32 @@ describe('ota-update.yml', () => {
     expect(embutir).toContain("jq '.config' /tmp/loja.json");
     expect(embutir).toContain('registrar-config-embutida.ts');
   });
+
+  /*
+   * A conta perdida num instante em que a Storefy não respondeu deixava a
+   * rodada "publicando" para sempre — e a trava de uma de cada vez impedia
+   * qualquer correção depois dela. Tentar de novo só é seguro com a loja na
+   * chamada: é por ela que a Storefy não soma a mesma loja duas vezes.
+   */
+  it('cada loja conta com a loja junto, tentando de novo se a Storefy não responder', () => {
+    const contar = passo('ota-update.yml', 'Contar esta loja');
+    expect(contar).toMatch(/^\s+STORE_ID: \$\{\{ matrix\.loja\.storeId \}\}$/m);
+    expect(contar).toContain('storeId: $loja');
+    expect(contar).toContain('--retry 5 --retry-connrefused');
+  });
+});
+
+describe('os avisos de andamento', () => {
+  /* Sem o aviso, o build fica "gerando" e a rodada "publicando" para sempre. */
+  it('todo aviso à Storefy tenta de novo, em todos os workflows', () => {
+    for (const workflow of ['build-store-app.yml', 'submit-store-app.yml', 'ota-update.yml']) {
+      const chamadas = ler(`.github/workflows/${workflow}`).match(
+        /curl [^\n]*\/api\/internal\/(?:build|ota)\/status/g,
+      );
+      expect(chamadas, workflow).not.toBeNull();
+      for (const chamada of chamadas ?? []) {
+        expect(chamada, workflow).toContain('--retry 5 --retry-connrefused');
+      }
+    }
+  });
 });

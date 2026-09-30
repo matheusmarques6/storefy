@@ -102,7 +102,7 @@ jobs:
           SEGREDO: ${{ secrets.BUILD_API_SECRET }}
           BUILD_ID: ${{ github.event.client_payload.buildId }}
         run: |
-          curl -sS -X POST "$API/api/internal/build/status" \
+          curl -sS --retry 5 --retry-connrefused -X POST "$API/api/internal/build/status" \
             -H "Authorization: Bearer $SEGREDO" \
             -H 'Content-Type: application/json' \
             -d "{\"buildId\":\"$BUILD_ID\",\"status\":\"building\"}" > /dev/null
@@ -361,7 +361,7 @@ jobs:
           SEGREDO: ${{ secrets.BUILD_API_SECRET }}
           BUILD_ID: ${{ github.event.client_payload.buildId }}
         run: |
-          curl -sS -X POST "$API/api/internal/build/status" \
+          curl -sS --retry 5 --retry-connrefused -X POST "$API/api/internal/build/status" \
             -H "Authorization: Bearer $SEGREDO" \
             -H 'Content-Type: application/json' \
             -d "$(jq -n \
@@ -382,7 +382,7 @@ jobs:
           SEGREDO: ${{ secrets.BUILD_API_SECRET }}
           BUILD_ID: ${{ github.event.client_payload.buildId }}
         run: |
-          curl -sS -X POST "$API/api/internal/build/status" \
+          curl -sS --retry 5 --retry-connrefused -X POST "$API/api/internal/build/status" \
             -H "Authorization: Bearer $SEGREDO" \
             -H 'Content-Type: application/json' \
             -d "$(jq -n \

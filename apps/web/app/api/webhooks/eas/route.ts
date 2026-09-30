@@ -160,7 +160,7 @@ async function comecarEnvio(
 
   log.aviso('webhook-eas.envio-nao-disparado', { motivo: disparo.motivo });
 
-  await servico
+  const { error } = await servico
     .from('builds')
     .update({
       status: 'errored',
@@ -170,6 +170,9 @@ async function comecarEnvio(
     })
     .eq('id', buildId)
     .eq('status', 'finished');
+  // Sem a marca, a tela diz "binário pronto, indo para a loja" de um envio que não sai.
+  if (error != null)
+    log.erro('webhook-eas.envio-manual-nao-marcado', { build: buildId, falha: error });
 }
 
 /** JSON inválido vira `null`, que o Zod recusa com um 400 limpo. */

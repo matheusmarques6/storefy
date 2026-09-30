@@ -17,6 +17,7 @@ import { exigirPlatformAdmin, exigirPlatformAdminComPapel } from '@/lib/contexto
 import { criarClientServidor } from '@/lib/supabase/server';
 import { formatarDia } from '@/lib/cobranca';
 import { FALHA_GENERICA, mensagemDaFalha } from '@/lib/erros';
+import { log } from '@/lib/log';
 import { criarClientServiceRole } from '@/lib/supabase/admin';
 import { conferirNota } from '@/lib/notas-internas';
 import { DURACAO_DA_VISITA_MS, conferirMotivo, criarToken } from '@/lib/visita';
@@ -83,7 +84,7 @@ export async function apagarNota(notaId: string): Promise<EstadoDaNota> {
   const { error } = await servico.from('org_notes').delete().eq('id', notaId);
   if (error != null) return { mensagem: 'Não conseguimos apagar a nota. Tente de novo.' };
 
-  await servico.from('audit_logs').insert({
+  const { error: erroDaTrilha } = await servico.from('audit_logs').insert({
     actor_id: usuario.id,
     org_id: nota.org_id,
     action: 'delete',
@@ -91,6 +92,9 @@ export async function apagarNota(notaId: string): Promise<EstadoDaNota> {
     entity_id: nota.id,
     diff: { body: nota.body },
   });
+  // A nota já saiu; a trilha que faltar precisa chegar à equipe.
+  if (erroDaTrilha != null)
+    log.erro('admin-nota.auditoria-nao-gravada', { nota: nota.id, falha: erroDaTrilha });
 
   revalidatePath(`/admin/organizacoes/${nota.org_id}`);
   return { ok: true, mensagem: 'Nota apagada.' };

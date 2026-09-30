@@ -80,7 +80,7 @@ jobs:
           SEGREDO: ${{ secrets.BUILD_API_SECRET }}
           OTA_ID: ${{ github.event.client_payload.otaId }}
         run: |
-          curl -sS -X POST "$API/api/internal/ota/status" \
+          curl -sS --retry 5 --retry-connrefused -X POST "$API/api/internal/ota/status" \
             -H "Authorization: Bearer $SEGREDO" \
             -H 'Content-Type: application/json' \
             -d "$(jq -n --arg id "$OTA_ID" \
@@ -93,7 +93,7 @@ jobs:
           SEGREDO: ${{ secrets.BUILD_API_SECRET }}
           OTA_ID: ${{ github.event.client_payload.otaId }}
         run: |
-          curl -sS -X POST "$API/api/internal/ota/status" \
+          curl -sS --retry 5 --retry-connrefused -X POST "$API/api/internal/ota/status" \
             -H "Authorization: Bearer $SEGREDO" \
             -H 'Content-Type: application/json' \
             -d "$(jq -n --arg id "$OTA_ID" \
@@ -216,18 +216,23 @@ jobs:
           API: ${{ secrets.STOREFY_API_URL }}
           SEGREDO: ${{ secrets.BUILD_API_SECRET }}
           OTA_ID: ${{ github.event.client_payload.otaId }}
+          STORE_ID: ${{ matrix.loja.storeId }}
           DEU_CERTO: ${{ job.status == 'success' }}
         run: |
           # `always()` porque uma loja que falha PRECISA ser contada: sem isso
           # a rodada nunca fecha e o admin vê "publicando" para sempre.
-          curl -sS -X POST "$API/api/internal/ota/status" \
+          # `--retry`: a conta perdida num instante em que a Storefy não
+          # respondeu também deixava a rodada aberta. A loja vai junto, e a
+          # Storefy não a soma duas vezes se a primeira tentativa tiver chegado.
+          curl -sS --retry 5 --retry-connrefused -X POST "$API/api/internal/ota/status" \
             -H "Authorization: Bearer $SEGREDO" \
             -H 'Content-Type: application/json' \
             -d "$(jq -n \
               --arg id "$OTA_ID" \
+              --arg loja "$STORE_ID" \
               --argjson ok "$DEU_CERTO" \
               --arg sha "${{ github.sha }}" \
-              '{otaId: $id, ok: $ok, commitSha: $sha}')" > /dev/null || true
+              '{otaId: $id, storeId: $loja, ok: $ok, commitSha: $sha}')" > /dev/null || true
 
       - name: Limpar os segredos do disco
         if: always()

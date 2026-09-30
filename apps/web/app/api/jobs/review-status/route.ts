@@ -254,7 +254,7 @@ async function avisar(
   if (erroDosDestinos != null) {
     // Sem saber para quem, a reserva volta: "ninguém para avisar" seria mentira.
     log.erro('job-revisao.destinos-falharam', { build: buildId, falha: erroDosDestinos });
-    await supabase.rpc('devolver_aviso', { p_id: buildId });
+    await devolverAviso(supabase, buildId);
     return false;
   }
   const para = destinos
@@ -275,7 +275,7 @@ async function avisar(
   if (erroDaPlataforma != null) {
     // O e-mail diria a loja errada ("App Store" para um build do Android).
     log.erro('job-revisao.plataforma-falhou', { build: buildId, falha: erroDaPlataforma });
-    await supabase.rpc('devolver_aviso', { p_id: buildId });
+    await devolverAviso(supabase, buildId);
     return false;
   }
 
@@ -293,4 +293,16 @@ async function avisar(
   log.aviso('job-revisao.aviso-nao-saiu', { motivo: envio.motivo });
   if (envio.passageiro) await supabase.rpc('devolver_aviso', { p_id: buildId });
   return false;
+}
+
+/**
+ * Devolve a reserva do aviso para a próxima rodada. Se nem isso gravar, o
+ * aviso fica reservado sem sair — e só o log conta que alguém não foi avisado.
+ */
+async function devolverAviso(
+  supabase: ReturnType<typeof criarClientServiceRole>,
+  buildId: string,
+): Promise<void> {
+  const { error } = await supabase.rpc('devolver_aviso', { p_id: buildId });
+  if (error != null) log.erro('job-revisao.aviso-nao-devolvido', { build: buildId, falha: error });
 }

@@ -49,6 +49,8 @@ export interface ResumoDoJob {
   falhas: number;
   /** Envios devolvidos à fila por queda de uma execução anterior. */
   destravados: number;
+  /** Desfechos (enviado, falhou) que o banco não gravou. */
+  naoAnotados: number;
 }
 
 export const RESUMO_VAZIO: ResumoDoJob = {
@@ -56,6 +58,7 @@ export const RESUMO_VAZIO: ResumoDoJob = {
   enviados: 0,
   falhas: 0,
   destravados: 0,
+  naoAnotados: 0,
 };
 
 /**

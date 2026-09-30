@@ -10,6 +10,9 @@
 import { describe, expect, it } from 'vitest';
 import type { BuildStatus } from '@storefy/db';
 import {
+  MINUTOS_NA_FILA,
+  buildParado,
+  descricaoDoParado,
   diasEsperando,
   lerFiltro,
   lerOrganizacao,
@@ -123,5 +126,62 @@ describe('lerPlataforma e lerOrganizacao', () => {
     for (const bruto of [undefined, '', 'empresa', `${id},outro`, `${id})`]) {
       expect(lerOrganizacao(bruto), String(bruto)).toBeNull();
     }
+  });
+});
+
+describe('buildParado', () => {
+  const agora = Date.parse('2026-09-30T12:00:00Z');
+  const antes = (minutos: number) => new Date(agora - minutos * 60_000).toISOString();
+
+  it('na fila há mais de meia hora é parado; há menos, está esperando a vez', () => {
+    expect(
+      buildParado(
+        { status: 'queued', criadoEm: antes(MINUTOS_NA_FILA + 1), iniciadoEm: null },
+        agora,
+      ),
+    ).toBe(true);
+    expect(
+      buildParado(
+        { status: 'queued', criadoEm: antes(MINUTOS_NA_FILA - 1), iniciadoEm: null },
+        agora,
+      ),
+    ).toBe(false);
+  });
+
+  it('gerando conta desde o começo, e não desde a fila', () => {
+    // Criado há 5 h, mas começou há 1 h: só está demorando.
+    expect(
+      buildParado({ status: 'building', criadoEm: antes(300), iniciadoEm: antes(60) }, agora),
+    ).toBe(false);
+    expect(
+      buildParado({ status: 'building', criadoEm: antes(300), iniciadoEm: antes(200) }, agora),
+    ).toBe(true);
+    // Sem o começo gravado, vale a criação.
+    expect(buildParado({ status: 'building', criadoEm: antes(200), iniciadoEm: null }, agora)).toBe(
+      true,
+    );
+  });
+
+  it('o que já terminou, bem ou mal, nunca está parado', () => {
+    for (const status of ['finished', 'errored', 'submitted', 'approved', 'canceled'] as const) {
+      expect(
+        buildParado({ status, criadoEm: antes(10_000), iniciadoEm: antes(10_000) }, agora),
+      ).toBe(false);
+    }
+    expect(buildParado({ status: 'queued', criadoEm: 'lixo', iniciadoEm: null }, agora)).toBe(
+      false,
+    );
+  });
+
+  it('diz onde parou e há quanto tempo', () => {
+    expect(
+      descricaoDoParado({ status: 'queued', criadoEm: antes(45), iniciadoEm: null }, agora),
+    ).toBe('Na fila há 45 min');
+    expect(
+      descricaoDoParado(
+        { status: 'building', criadoEm: antes(600), iniciadoEm: antes(250) },
+        agora,
+      ),
+    ).toBe('Gerando há 4 h');
   });
 });

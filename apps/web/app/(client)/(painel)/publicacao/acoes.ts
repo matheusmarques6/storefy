@@ -16,6 +16,7 @@
 import { revalidatePath } from 'next/cache';
 import { exigirContextoCliente } from '@/lib/contexto';
 import { FALHA_GENERICA, mensagemDaFalha } from '@/lib/erros';
+import { buildParado } from '@/lib/builds-admin';
 import { log } from '@/lib/log';
 import { criarClientServiceRole } from '@/lib/supabase/admin';
 import { criarClientServidor } from '@/lib/supabase/server';
@@ -107,7 +108,7 @@ export async function publicarApp(plataforma: 'ios' | 'android'): Promise<Estado
   // Com o banco fora, seguir poderia disparar um segundo build da mesma versão.
   const { data: emAndamento, error: erroDoAndamento } = await servico
     .from('builds')
-    .select('id')
+    .select('id, status, created_at, started_at')
     .eq('app_id', dados.appId)
     .eq('platform', plataforma)
     .in('status', ['queued', 'building'])
@@ -116,9 +117,18 @@ export async function publicarApp(plataforma: 'ios' | 'android'): Promise<Estado
   if (erroDoAndamento != null) {
     return { mensagem: mensagemDaFalha('publicacao', erroDoAndamento, FALHA_GENERICA) };
   }
-  if (emAndamento.length > 0) {
+  const andamento = emAndamento[0];
+  if (andamento !== undefined) {
+    // "Aguarde" dito de um build parado há horas deixaria o lojista esperando por nada.
+    const parado = buildParado({
+      status: andamento.status,
+      criadoEm: andamento.created_at,
+      iniciadoEm: andamento.started_at,
+    });
     return {
-      mensagem: 'Já existe uma publicação em andamento para esta plataforma. Aguarde ela terminar.',
+      mensagem: parado
+        ? 'A publicação anterior desta plataforma parou no meio. Fale com o suporte pela Ajuda: a equipe confere e libera para você publicar de novo.'
+        : 'Já existe uma publicação em andamento para esta plataforma. Aguarde ela terminar.',
     };
   }
 
@@ -168,12 +178,19 @@ export async function publicarApp(plataforma: 'ios' | 'android'): Promise<Estado
      * "na fila" mostraria ao lojista uma publicação que ninguém vai processar
      * — e ele esperaria por ela o dia inteiro.
      */
-    await servico
+    const { error: erroDaMarca } = await servico
       .from('builds')
       .update({ status: 'errored', error: disparo.motivo, finished_at: new Date().toISOString() })
       .eq('id', build.id);
 
     revalidatePath('/publicacao');
+    if (erroDaMarca != null) {
+      // Sem a marca, a publicação fica "na fila" e trava a próxima tentativa.
+      log.erro('publicacao.erro-nao-marcado', { build: build.id, falha: erroDaMarca });
+      return {
+        mensagem: `${disparo.motivo} A publicação ficou presa na fila: fale com o suporte pela Ajuda para liberá-la.`,
+      };
+    }
     return { mensagem: disparo.motivo };
   }
 
