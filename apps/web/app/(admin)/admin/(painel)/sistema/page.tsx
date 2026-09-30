@@ -338,7 +338,9 @@ function Secao({
               <ul className="flex flex-wrap gap-1">
                 {item.variaveis.map((nome) => {
                   // Opcional desligada não "falta": a chave fica neutra, sem
-                  // o tracejado vermelho de quem precisa de conserto.
+                  // o tracejado vermelho de quem precisa de conserto. O nome vai
+                  // na cor do texto: o cinza de apoio sobre o fundo cinza não
+                  // chega a 4,5:1 (AA).
                   const falta = item.nivel !== 'opcional' && item.faltando.includes(nome);
                   return (
                     <li
@@ -346,7 +348,7 @@ function Secao({
                       className={
                         falta
                           ? 'border-destructive/40 text-destructive rounded border border-dashed px-1.5 py-0.5 font-mono text-xs'
-                          : 'bg-muted text-muted-foreground rounded px-1.5 py-0.5 font-mono text-xs'
+                          : 'bg-muted text-foreground rounded px-1.5 py-0.5 font-mono text-xs'
                       }
                     >
                       {nome}

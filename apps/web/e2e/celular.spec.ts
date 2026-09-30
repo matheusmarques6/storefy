@@ -17,6 +17,7 @@ import { expect, test, type Page } from '@playwright/test';
 import {
   MOTIVO_PULO,
   SUPABASE_DISPONIVEL,
+  abrirChamadoPelaTela,
   bancoDeTeste,
   criarLojaPelaTela,
   criarUsuarioConfirmado,
@@ -121,20 +122,6 @@ async function medir(page: Page, caminho: string): Promise<void> {
   await conferirLargura(page, caminho);
 }
 
-/** Abre um chamado pela Ajuda (C17), como o lojista, e devolve o id. */
-async function abrirChamado(page: Page, titulo: string): Promise<string> {
-  await page.goto('/ajuda');
-  await page.waitForLoadState('networkidle');
-  await page.getByLabel('Assunto').selectOption({ label: 'Publicação nas lojas de aplicativos' });
-  await page.getByLabel('Título').fill(titulo);
-  await page
-    .getByLabel('Mensagem')
-    .fill('A Apple recusou o app dizendo que falta a política de privacidade. O que eu faço?');
-  await page.getByRole('button', { name: 'Abrir chamado' }).click();
-  await page.waitForURL(/\/ajuda\/chamados\/[0-9a-f-]{36}$/);
-  return /chamados\/([0-9a-f-]{36})/.exec(page.url())?.[1] ?? '';
-}
-
 test('o painel do lojista cabe no celular, tela por tela, e o menu leva a cada seção', async ({
   page,
 }) => {
@@ -189,7 +176,10 @@ test('o painel do lojista cabe no celular, tela por tela, e o menu leva a cada s
   await conferirLargura(page, 'o detalhe da automação');
 
   // Um chamado aberto pela Ajuda, a conversa dele e um guia (C17).
-  await abrirChamado(page, 'O app foi recusado pela Apple por causa da política de privacidade');
+  await abrirChamadoPelaTela(
+    page,
+    'O app foi recusado pela Apple por causa da política de privacidade',
+  );
   await conferirLargura(page, 'o chamado');
   await medir(page, '/ajuda');
   await page.getByRole('link', { name: /Primeiros passos/ }).click();
@@ -251,7 +241,7 @@ test('o admin cabe no celular, com um cliente de verdade para mostrar', async ({
   await criarUsuarioConfirmado(emailCliente, 'Irmãs Albuquerque Comércio de Roupas e Acessórios');
   await entrar(page, emailCliente);
   const lojaId = await criarLojaPelaTela(page, NOME_DA_LOJA, enderecoDaLoja());
-  const chamadoId = await abrirChamado(page, 'Não consigo publicar o app na Google Play');
+  const chamadoId = await abrirChamadoPelaTela(page, 'Não consigo publicar o app na Google Play');
   const { data: loja } = await bancoDeTeste()
     .from('stores')
     .select('org_id')

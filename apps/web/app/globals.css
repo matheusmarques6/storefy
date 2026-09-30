@@ -56,3 +56,16 @@
     outline-offset: 2px;
   }
 }
+
+/*
+ * Os avisos (Sonner, com `richColors`) com contraste AA. As cores de fábrica
+ * sobre o fundo claro de cada tipo ficavam abaixo de 4,5:1 — o verde do
+ * "Rascunho salvo." em 4,26, o azul e o vermelho em 4,35, e o laranja do
+ * alerta em 3,08. O `:root` na frente ganha da folha que o Sonner injeta.
+ */
+:root [data-sonner-toaster][data-sonner-theme='light'] {
+  --success-text: hsl(140, 100%, 22%);
+  --info-text: hsl(210, 92%, 36%);
+  --warning-text: hsl(31, 92%, 27%);
+  --error-text: hsl(360, 100%, 38%);
+}

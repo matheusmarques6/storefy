@@ -273,3 +273,17 @@ export async function entrar(page: Page, email: string): Promise<void> {
   await page.waitForURL((url) => url.pathname === '/admin');
   await page.goto('/');
 }
+
+/** Abre um chamado pela Ajuda (C17), como o lojista, e devolve o id. */
+export async function abrirChamadoPelaTela(page: Page, titulo: string): Promise<string> {
+  await page.goto('/ajuda');
+  await page.waitForLoadState('networkidle');
+  await page.getByLabel('Assunto').selectOption({ label: 'Publicação nas lojas de aplicativos' });
+  await page.getByLabel('Título').fill(titulo);
+  await page
+    .getByLabel('Mensagem')
+    .fill('A Apple recusou o app dizendo que falta a política de privacidade. O que eu faço?');
+  await page.getByRole('button', { name: 'Abrir chamado' }).click();
+  await page.waitForURL(/\/ajuda\/chamados\/[0-9a-f-]{36}$/);
+  return /chamados\/([0-9a-f-]{36})/.exec(page.url())?.[1] ?? '';
+}

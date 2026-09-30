@@ -29,7 +29,15 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="pt-BR" className={inter.variable}>
       <body>
         {children}
-        <Toaster position="top-right" richColors closeButton />
+        <Toaster
+          position="top-right"
+          richColors
+          closeButton
+          // Os rótulos de fábrica são em inglês ("Close toast", "Notifications"),
+          // e é assim que o leitor de tela os leria para o lojista.
+          containerAriaLabel="Avisos"
+          toastOptions={{ closeButtonAriaLabel: 'Fechar aviso' }}
+        />
       </body>
     </html>
   );

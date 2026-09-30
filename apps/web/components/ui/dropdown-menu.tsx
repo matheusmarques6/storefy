@@ -5,7 +5,20 @@ import { Check } from 'lucide-react';
 import type * as React from 'react';
 import { cn } from '@/lib/utils';
 
-export const DropdownMenu = Primitive.Root;
+/**
+ * O menu NÃO é modal por padrão (`modal={false}`), como pede o padrão de
+ * botão de menu do WAI-ARIA: Esc fecha, Tab sai, e o resto da página continua
+ * da pessoa. O modal do Radix marcava a página inteira com `aria-hidden`
+ * enquanto o menu estava aberto, com os botões e links dela ainda focáveis —
+ * o leitor de tela perdia a página, e a varredura de acessibilidade acusava.
+ */
+export function DropdownMenu({
+  modal = false,
+  ...props
+}: React.ComponentProps<typeof Primitive.Root>) {
+  return <Primitive.Root modal={modal} {...props} />;
+}
+
 export const DropdownMenuTrigger = Primitive.Trigger;
 
 export function DropdownMenuContent({
